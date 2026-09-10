@@ -74,10 +74,17 @@ class Frais(models.Model):
         (le tarif plein) : un élève « Fondation 50% » ou avec la réduction fidélité de 5% se
         voyait donc réclamer/afficher le montant intégral partout où ce frais est utilisé (liste
         des frais, encaissement d'un paiement, fiche de paiement PDF) — seul le rapport séparé
-        « suivi mensuel » (`_calculer_suivi_mensuel`) appliquait déjà correctement la réduction."""
+        « suivi mensuel » (`_calculer_suivi_mensuel`) appliquait déjà correctement la réduction.
+
+        Le montant dû ne redescend jamais en dessous de ce qui a déjà été payé (`max(...,
+        self.montant_paye)`) : la réduction ne s'applique donc plus à une somme déjà versée. Sans
+        ce plancher, changer la catégorie de paiement de l'élève APRÈS des paiements déjà encaissés
+        recalculerait rétroactivement le montant dû — un frais déjà soldé au tarif plein
+        repasserait « impayé/partiel » si la réduction est retirée après coup, ou au contraire
+        deviendrait « payé en trop » si une réduction est accordée après coup."""
         if not self.type_frais.est_mensuel:
             return self.montant
-        return self.montant * self.eleve.facteur_mensualite
+        return max(self.montant * self.eleve.facteur_mensualite, self.montant_paye)
 
     @property
     def montant_paye(self):

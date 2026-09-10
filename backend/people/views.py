@@ -212,6 +212,15 @@ class EleveProfileViewSet(viewsets.ModelViewSet):
         if len(eleves) != len(set(payload["eleves"])):
             raise ValidationError("Un ou plusieurs élèves sont introuvables ou déjà inactifs.")
 
+        # Un élève déjà dans classe_destination (rare, mais possible) n'occupe pas de place
+        # supplémentaire — seuls les nouveaux arrivants comptent contre l'effectif maximum.
+        nouveaux_eleves = sum(1 for e in eleves if e.classe_id != classe_destination.id)
+        if nouveaux_eleves > classe_destination.places_disponibles:
+            raise ValidationError(
+                f"« {classe_destination.nom} » n'a que {classe_destination.places_disponibles} "
+                f"place(s) disponible(s) pour {nouveaux_eleves} nouvel(le)s élève(s) à réinscrire."
+            )
+
         type_frais = None
         if payload.get("type_frais"):
             type_frais = TypeFrais.objects.filter(pk=payload["type_frais"], ecole_id=request.user.ecole_id).first()

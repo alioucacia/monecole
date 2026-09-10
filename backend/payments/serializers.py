@@ -1,3 +1,6 @@
+from decimal import Decimal
+
+from django.db.models import Sum
 from rest_framework import serializers
 
 from .models import Frais, Paiement, TarifClasse, TypeFrais
@@ -30,6 +33,25 @@ class PaiementSerializer(serializers.ModelSerializer):
         model = Paiement
         fields = ["id", "frais", "montant", "date_paiement", "mode_paiement", "reference", "mois", "enregistre_par", "enregistre_par_nom"]
         read_only_fields = ["date_paiement", "enregistre_par"]
+
+    def validate(self, attrs):
+        frais = attrs.get("frais", getattr(self.instance, "frais", None))
+        mois = attrs.get("mois", getattr(self.instance, "mois", None))
+        # Seuls les frais mensuels (scolarité...) sont suivis mois par mois — un frais ponctuel
+        # (cantine, transport, inscription...) n'a pas cette notion, rien à vérifier ici.
+        if not (frais and mois and frais.type_frais.est_mensuel):
+            return attrs
+
+        deja_verses = Paiement.objects.filter(frais=frais, mois=mois)
+        if self.instance:
+            deja_verses = deja_verses.exclude(pk=self.instance.pk)
+        total_deja_verse = deja_verses.aggregate(total=Sum("montant"))["total"] or Decimal("0")
+        montant_du_ce_mois = frais.montant_du
+        if montant_du_ce_mois > 0 and total_deja_verse >= montant_du_ce_mois:
+            raise serializers.ValidationError({
+                "mois": f"Le mois {mois.strftime('%m/%Y')} est déjà intégralement payé pour ce frais."
+            })
+        return attrs
 
 
 class FraisSerializer(serializers.ModelSerializer):
