@@ -5,7 +5,7 @@ from django.conf import settings
 from django.db import models
 import uuid
 
-from academics.models import Classe
+from academics.models import AnneeScolaire, Classe
 
 
 def _deux_lettres(texte: str) -> str:
@@ -29,6 +29,23 @@ def generer_matricule_eleve(first_name: str, last_name: str, ecole) -> str:
     rang = EleveProfile.objects.filter(user__ecole=ecole).count() + 1
     matricule = f"{prefixe}{rang}"
     while EleveProfile.objects.filter(matricule=matricule).exists() or User.objects.filter(username=matricule).exists():
+        rang += 1
+        matricule = f"{prefixe}{rang}"
+    return matricule
+
+
+def generer_matricule_enseignant(first_name: str, last_name: str, ecole) -> str:
+    """Matricule auto-généré pour un enseignant, sur le même principe que celui des élèves
+    (voir `generer_matricule_eleve`) : 2 premières lettres du prénom + 2 premières lettres du
+    nom + le numéro de place de cet enseignant dans l'école (ex: 5e enseignant embauché dans
+    cette école -> "OUBA5"). Sert aussi d'identifiant de connexion (`username`), donc unique sur
+    toute la plateforme."""
+    from accounts.models import User
+
+    prefixe = _deux_lettres(first_name) + _deux_lettres(last_name)
+    rang = EnseignantProfile.objects.filter(user__ecole=ecole).count() + 1
+    matricule = f"{prefixe}{rang}"
+    while EnseignantProfile.objects.filter(matricule=matricule).exists() or User.objects.filter(username=matricule).exists():
         rang += 1
         matricule = f"{prefixe}{rang}"
     return matricule
@@ -117,6 +134,41 @@ class EleveProfile(models.Model):
         if self.reduction_fidelite_mensualite:
             facteur *= Decimal("0.95")
         return facteur
+
+
+class HistoriqueClasse(models.Model):
+    """Classe d'un élève pour une année scolaire donnée — nécessaire car `EleveProfile.classe`
+    ne garde que l'affectation ACTUELLE : sans cet historique, un bulletin ou un certificat émis
+    pour une année passée afficherait la classe d'aujourd'hui plutôt que celle de l'époque (bug
+    corrigé en introduisant ce modèle). Alimenté automatiquement (voir
+    `enregistrer_historique_classe` ci-dessous) à la création d'un élève, à chaque réinscription
+    et à tout changement manuel de classe — jamais à modifier à la main."""
+
+    eleve = models.ForeignKey(EleveProfile, on_delete=models.CASCADE, related_name="historique_classes")
+    classe = models.ForeignKey(Classe, on_delete=models.CASCADE, related_name="historique_eleves")
+    annee_scolaire = models.ForeignKey(AnneeScolaire, on_delete=models.CASCADE, related_name="historique_classes_eleves")
+
+    class Meta:
+        unique_together = ["eleve", "annee_scolaire"]
+        ordering = ["-annee_scolaire__date_debut"]
+        verbose_name = "Historique de classe"
+        verbose_name_plural = "Historique de classe"
+
+    def __str__(self):
+        return f"{self.eleve} — {self.classe} ({self.annee_scolaire})"
+
+
+def enregistrer_historique_classe(eleve, classe):
+    """Enregistre/met à jour la classe de l'élève pour l'année scolaire de `classe` — à appeler
+    partout où `EleveProfile.classe` est affecté (création, réinscription, modification manuelle
+    depuis la fiche élève), jamais en écrivant directement sur `HistoriqueClasse`. Sans effet si
+    `classe` est vide (élève retiré de toute classe : on ne veut pas perdre la dernière classe
+    connue pour cette année dans l'historique)."""
+    if not classe:
+        return
+    HistoriqueClasse.objects.update_or_create(
+        eleve=eleve, annee_scolaire=classe.annee_scolaire, defaults={"classe": classe},
+    )
 
 
 class EnseignantProfile(models.Model):

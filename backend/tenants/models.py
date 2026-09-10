@@ -133,7 +133,7 @@ class Ecole(models.Model):
         # dédiée pour cette valeur et retombent alors sur leur rendu Classique.
         OFFICIEL = 5, "Officiel (IRE/DPE)"
 
-    # Modèle de mise en page choisi par le Super Admin, indépendamment pour chacun de ces 4
+    # Modèle de mise en page choisi par le Super Admin, indépendamment pour chacun de ces
     # documents (EcoleDetailPage, onglet Personnalisation) — lu par le template PDF concerné
     # via une variable `modele` (voir les blocs `{% if modele == ... %}` dans chaque gabarit).
     modele_recu = models.PositiveSmallIntegerField(choices=ModeleDocument.choices, default=ModeleDocument.CLASSIQUE)
@@ -142,6 +142,7 @@ class Ecole(models.Model):
     modele_fiche_inscription = models.PositiveSmallIntegerField(
         choices=ModeleDocument.choices, default=ModeleDocument.CLASSIQUE
     )
+    modele_certificat = models.PositiveSmallIntegerField(choices=ModeleDocument.choices, default=ModeleDocument.CLASSIQUE)
 
     # Fonctionnalités optionnelles désactivées par le Super Admin pour cette école (liste de
     # clés parmi `tenants.features.FONCTIONNALITES`) — voir `a_fonctionnalite()` ci-dessous et

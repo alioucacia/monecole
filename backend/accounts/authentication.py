@@ -23,6 +23,17 @@ class PlateformeJWTAuthentication(JWTAuthentication):
         if user.role == "superadmin":
             return result
 
+        if user.role == "admin":
+            # Session unique (voir User.session_id / CustomTokenObtainPairSerializer.get_token) :
+            # un jeton dont la revendication "session_id" ne correspond plus à la valeur courante
+            # a été invalidé par une connexion plus récente ailleurs — on ne peut jamais avoir
+            # deux sessions admin valides en même temps.
+            if token.get("session_id") != user.session_id:
+                raise AuthenticationFailed(
+                    "Votre session a été fermée car une connexion a été détectée ailleurs avec ce compte.",
+                    code="session_expiree",
+                )
+
         from tenants.models import ParametresPlateforme
 
         parametres = ParametresPlateforme.charger()

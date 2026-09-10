@@ -1,3 +1,5 @@
+import secrets
+
 from django.contrib.auth import password_validation
 from django.contrib.auth.tokens import default_token_generator
 from django.utils.encoding import force_str
@@ -5,6 +7,8 @@ from django.utils.http import urlsafe_base64_decode
 from rest_framework import serializers
 from rest_framework_simplejwt.exceptions import AuthenticationFailed
 from rest_framework_simplejwt.serializers import TokenObtainPairSerializer
+
+from core.validators import EXTENSIONS_IMAGE, TAILLE_MAX_IMAGE, valider_taille_fichier
 
 from .models import JournalUtilisateur, User
 
@@ -54,6 +58,9 @@ class UserSerializer(UniqueLoginFieldsMixin, serializers.ModelSerializer):
             "ecole_couleur_principale", "ecole_couleur_secondaire", "ecole_fonctionnalites_desactivees",
         ]
         read_only_fields = ["id", "date_joined", "last_login", "ecole", "doit_changer_mot_de_passe"]
+
+    def validate_photo(self, value):
+        return valider_taille_fichier(value, TAILLE_MAX_IMAGE, EXTENSIONS_IMAGE)
 
 
 class JournalUtilisateurSerializer(serializers.ModelSerializer):
@@ -121,6 +128,13 @@ class CustomTokenObtainPairSerializer(TokenObtainPairSerializer):
         token = super().get_token(user)
         token["role"] = user.role
         token["full_name"] = user.get_full_name() or user.username
+        if user.role == User.Role.ADMIN:
+            # Session unique pour le rôle admin (voir User.session_id) : chaque connexion
+            # régénère cette valeur et invalide immédiatement toute session précédente, vérifiée
+            # à chaque requête par PlateformeJWTAuthentication.
+            user.session_id = secrets.token_urlsafe(24)
+            user.save(update_fields=["session_id"])
+            token["session_id"] = user.session_id
         return token
 
     def validate(self, attrs):

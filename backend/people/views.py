@@ -5,7 +5,10 @@ from datetime import date, datetime, timedelta
 from decimal import Decimal
 from io import BytesIO
 
+import openpyxl
 import qrcode
+from openpyxl.utils import get_column_letter
+from PIL import Image
 from django.conf import settings
 from django.db.models import Q
 from django.http import HttpResponse
@@ -36,6 +39,7 @@ from . import assistant_ia
 from .models import (
     AlerteParent, EleveBadge, EleveProfile, EnseignantBadge, EnseignantProfile,
     GroupeRevision, MessageIA, PaieEnseignant, PointageEnseignant,
+    enregistrer_historique_classe,
 )
 from .serializers import (
     AlerteParentSerializer,
@@ -144,6 +148,7 @@ class EleveProfileViewSet(viewsets.ModelViewSet):
             "total": queryset.count(),
             "classe_nom": classe_nom,
             "date_generation": timezone.now(),
+            "ecole_nom": _ecole_nom(request.user),
         })
         buffer = BytesIO()
         pisa.CreatePDF(html, dest=buffer, encoding="utf-8")
@@ -169,6 +174,7 @@ class EleveProfileViewSet(viewsets.ModelViewSet):
         réimprimable à tout moment. Reprend le(s) frais d'inscription déjà enregistré(s), s'il y en a."""
         eleve = self.get_object()
         ecole = eleve.user.ecole
+        annee = _annee_active(eleve.user)
         frais_inscription = list(
             eleve.frais.select_related("type_frais")
             .filter(type_frais__nom__icontains="inscription")
@@ -176,10 +182,11 @@ class EleveProfileViewSet(viewsets.ModelViewSet):
         )
         html = render_to_string("people/recu_inscription_pdf.html", {
             "eleve": eleve,
+            "classe_eleve": _classe_pour_annee(eleve, annee),
             "ecole_nom": _ecole_nom(eleve.user),
             "ecole_logo_data_uri": _image_data_uri(ecole.logo) if ecole else None,
-            "annee_scolaire": _annee_active_libelle(eleve.user),
-            "photo_data_uri": _image_data_uri(eleve.user.photo),
+            "annee_scolaire": annee.libelle if annee else "",
+            "photo_data_uri": _image_data_uri(eleve.user.photo, _mm_px(24, 28)),
             **_couleurs_ecole(ecole, ecole.modele_fiche_inscription if ecole else 1),
             "frais_inscription": frais_inscription,
             "date_edition": timezone.localdate(),
@@ -188,6 +195,33 @@ class EleveProfileViewSet(viewsets.ModelViewSet):
         pisa.CreatePDF(html, dest=buffer, encoding="utf-8")
         response = HttpResponse(buffer.getvalue(), content_type="application/pdf")
         response["Content-Disposition"] = f'attachment; filename="recu_inscription_{eleve.matricule}.pdf"'
+        return response
+
+    @action(detail=True, methods=["get"], url_path="certificat-scolarite")
+    def certificat_scolarite(self, request, pk=None):
+        """Certificat de scolarité (PDF) — atteste que l'élève est régulièrement inscrit pour
+        l'année scolaire active. Même permission que `recu_inscription` (pas de restriction
+        ajoutée) : accessible à l'admin comme à l'élève/parent concerné, déjà limités à leur
+        propre dossier par `get_queryset`."""
+        eleve = self.get_object()
+        ecole = eleve.user.ecole
+        annee = _annee_active(eleve.user)
+        if not annee:
+            raise ValidationError("Aucune année scolaire active pour cet établissement.")
+
+        html = render_to_string("people/certificat_scolarite_pdf.html", {
+            "eleve": eleve,
+            "classe_eleve": _classe_pour_annee(eleve, annee),
+            "ecole_nom": _ecole_nom(eleve.user),
+            "ecole_logo_data_uri": _image_data_uri(ecole.logo, _mm_px(20, 20), mode="contain") if ecole and ecole.logo else None,
+            "annee_scolaire": annee.libelle,
+            **_couleurs_ecole(ecole, ecole.modele_certificat if ecole else 1),
+            "date_edition": timezone.localdate(),
+        })
+        buffer = BytesIO()
+        pisa.CreatePDF(html, dest=buffer, encoding="utf-8")
+        response = HttpResponse(buffer.getvalue(), content_type="application/pdf")
+        response["Content-Disposition"] = f'attachment; filename="certificat_scolarite_{eleve.matricule}.pdf"'
         return response
 
     @action(detail=False, methods=["post"], url_path="reinscription", permission_classes=[IsAdmin])
@@ -231,6 +265,7 @@ class EleveProfileViewSet(viewsets.ModelViewSet):
         for eleve in eleves:
             eleve.classe = classe_destination
             eleve.save(update_fields=["classe"])
+            enregistrer_historique_classe(eleve, classe_destination)
             if type_frais and payload.get("montant_frais"):
                 Frais.objects.create(
                     eleve=eleve, type_frais=type_frais, annee_scolaire=classe_destination.annee_scolaire,
@@ -243,6 +278,130 @@ class EleveProfileViewSet(viewsets.ModelViewSet):
             "reinscrits": len(eleves), "frais_crees": frais_crees,
             "classe_destination": classe_destination.nom,
         })
+
+    @action(detail=False, methods=["get"], url_path="import-excel-modele", permission_classes=[IsAdmin])
+    def import_excel_modele(self, request):
+        """Modèle Excel (.xlsx) à remplir pour l'import en masse d'élèves — colonnes attendues
+        par `import_excel` ci-dessous, avec une ligne d'exemple."""
+        classeur = openpyxl.Workbook()
+        feuille = classeur.active
+        feuille.title = "Élèves"
+        entetes = [
+            "Prénom*", "Nom*", "Classe*", "Genre (M/F)", "Date de naissance (JJ/MM/AAAA)",
+            "Lieu de naissance", "Téléphone", "Email", "Adresse", "Nom du père", "Nom de la mère",
+            "Régime (externe/demi_pension/interne)",
+        ]
+        feuille.append(entetes)
+        feuille.append([
+            "Mamadou", "Diallo", "6ème A", "M", "15/03/2012", "Conakry",
+            "628000000", "", "Ratoma, Conakry", "Ibrahima Diallo", "Aïssatou Bah", "externe",
+        ])
+        for i, entete in enumerate(entetes, start=1):
+            feuille.column_dimensions[get_column_letter(i)].width = max(len(entete) * 0.9, 16)
+
+        buffer = BytesIO()
+        classeur.save(buffer)
+        response = HttpResponse(
+            buffer.getvalue(),
+            content_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        )
+        response["Content-Disposition"] = 'attachment; filename="modele_import_eleves.xlsx"'
+        return response
+
+    @action(detail=False, methods=["post"], url_path="import-excel", permission_classes=[IsAdmin])
+    def import_excel(self, request):
+        """Import en masse d'élèves depuis un fichier Excel (.xlsx, voir `import_excel_modele`
+        pour le format attendu) — chaque ligne valide passe par `EleveProfileWriteSerializer`,
+        exactement comme une création à l'unité (même génération de matricule, même quota de
+        plan, mêmes e-mails/SMS de bienvenue à l'élève et à son parent si un parent existant est
+        déjà rattaché par téléphone/e-mail — aucun compte parent n'est créé depuis cet import,
+        contrairement au formulaire de création manuelle).
+
+        Ne s'arrête jamais à la première erreur : chaque ligne est traitée indépendamment, le
+        rapport final liste les lignes créées et celles en échec avec leur motif, pour corriger
+        et réimporter seulement les lignes en erreur."""
+        fichier = request.FILES.get("fichier")
+        if not fichier:
+            raise ValidationError("Le paramètre 'fichier' (fichier .xlsx) est requis.")
+        try:
+            classeur = openpyxl.load_workbook(fichier, data_only=True)
+        except Exception:
+            raise ValidationError("Fichier illisible — vérifiez qu'il s'agit bien d'un fichier Excel (.xlsx) valide.")
+        feuille = classeur.active
+
+        ecole = request.user.ecole
+        classes_par_nom = {
+            c.nom.strip().lower(): c
+            for c in Classe.objects.filter(annee_scolaire__ecole=ecole, annee_scolaire__active=True)
+        }
+        regimes_valides = {valeur for valeur, _ in EleveProfile.Regime.choices}
+
+        lignes = list(feuille.iter_rows(min_row=2, values_only=True))
+        crees = 0
+        erreurs = []
+
+        for num_ligne, ligne in enumerate(lignes, start=2):
+            if not ligne or all(valeur in (None, "") for valeur in ligne):
+                continue  # ligne vide (souvent en fin de feuille) — ignorée silencieusement
+
+            valeurs = (list(ligne) + [None] * 12)[:12]
+            (prenom, nom, classe_nom, genre, date_naissance, lieu_naissance,
+             telephone, email, adresse, nom_pere, nom_mere, regime) = valeurs
+
+            if not prenom or not nom:
+                erreurs.append({"ligne": num_ligne, "message": "Le prénom et le nom sont obligatoires."})
+                continue
+
+            classe = classes_par_nom.get(str(classe_nom or "").strip().lower())
+            if classe_nom and not classe:
+                erreurs.append({
+                    "ligne": num_ligne,
+                    "message": f"Classe « {classe_nom} » introuvable pour l'année scolaire active.",
+                })
+                continue
+
+            sexe = str(genre).strip().upper() if genre and str(genre).strip().upper() in ("M", "F") else ""
+
+            date_iso = None
+            if date_naissance:
+                try:
+                    date_iso = (
+                        date_naissance.date().isoformat() if hasattr(date_naissance, "date")
+                        else datetime.strptime(str(date_naissance).strip(), "%d/%m/%Y").date().isoformat()
+                    )
+                except ValueError:
+                    erreurs.append({
+                        "ligne": num_ligne,
+                        "message": f"Date de naissance invalide : « {date_naissance} » (format attendu JJ/MM/AAAA).",
+                    })
+                    continue
+
+            regime_valeur = str(regime).strip().lower() if regime else EleveProfile.Regime.EXTERNE
+            if regime_valeur not in regimes_valides:
+                regime_valeur = EleveProfile.Regime.EXTERNE
+
+            payload = {
+                "first_name": str(prenom).strip(), "last_name": str(nom).strip(),
+                "classe": classe.id if classe else None,
+                "sexe": sexe, "date_of_birth": date_iso, "lieu_naissance": str(lieu_naissance or "").strip(),
+                "phone": str(telephone or "").strip(), "email": str(email or "").strip(),
+                "address": str(adresse or "").strip(), "nom_pere": str(nom_pere or "").strip(),
+                "nom_mere": str(nom_mere or "").strip(), "regime": regime_valeur,
+            }
+            serializer = EleveProfileWriteSerializer(data=payload, context={"request": request})
+            if not serializer.is_valid():
+                premiere = next(iter(serializer.errors.values()))
+                erreurs.append({"ligne": num_ligne, "message": str(premiere[0] if isinstance(premiere, list) else premiere)})
+                continue
+            try:
+                serializer.save()
+                crees += 1
+            except ValidationError as exc:
+                erreurs.append({"ligne": num_ligne, "message": str(exc.detail[0] if isinstance(exc.detail, list) else exc.detail)})
+            except Exception as exc:  # noqa: BLE001 — une ligne en erreur ne doit jamais interrompre les suivantes
+                erreurs.append({"ligne": num_ligne, "message": str(exc)})
+
+        return Response({"crees": crees, "erreurs": erreurs, "total_lignes": len(lignes)})
 
     @action(detail=True, methods=["post"], url_path="marquer-non-reinscrit", permission_classes=[IsAdmin])
     def marquer_non_reinscrit(self, request, pk=None):
@@ -340,9 +499,67 @@ def _barcode_data_uri(value):
     return f"data:image/png;base64,{base64.b64encode(buffer.getvalue()).decode()}"
 
 
-def _image_data_uri(image_field):
-    """Convertit un ImageField en data URI base64 pour l'incruster dans un PDF
-    (plus fiable que de laisser xhtml2pdf résoudre une URL MEDIA relative)."""
+# Résolution (pixels par mm) utilisée pour précalculer la taille cible d'une image recadrée
+# avant incrustation dans un PDF (voir _image_data_uri/_redimensionner_image) — largement
+# suffisant pour une netteté correcte à l'impression sur les petits cadres concernés (photos
+# d'identité, logos), sans alourdir inutilement le PDF (surtout pour les documents groupés :
+# badges/fiches de toute une classe, une image par élève).
+PX_PAR_MM = 10
+
+
+def _mm_px(largeur_mm, hauteur_mm):
+    return (round(largeur_mm * PX_PAR_MM), round(hauteur_mm * PX_PAR_MM))
+
+
+def _redimensionner_image(image, largeur_cible, hauteur_cible, mode):
+    """Recadre/redimensionne une image Pillow pour un cadre (largeur_cible × hauteur_cible en
+    pixels) donné — remplace l'usage de `object-fit` en CSS dans les gabarits PDF, silencieusement
+    ignoré par xhtml2pdf/reportlab (confirmé par son propre log : « Ignoring CSS properties
+    xhtml2pdf does not implement: ... object-fit »). Sans ce prétraitement, reportlab étire
+    l'image pour remplir exactement la balise <img>, la déformant dès que son ratio diffère du
+    cadre (ex: une photo d'identité au format paysage plaquée dans un cadre portrait).
+    mode='cover' (photos) : recadre au centre pour remplir tout le cadre, sans déformation.
+    mode='contain' (logos) : réduit pour tenir entièrement dans le cadre, complété de blanc."""
+    ratio_cible = largeur_cible / hauteur_cible
+    largeur, hauteur = image.size
+    ratio_source = largeur / hauteur if hauteur else ratio_cible
+
+    if mode == "cover":
+        if ratio_source > ratio_cible:
+            nouvelle_largeur = max(round(hauteur * ratio_cible), 1)
+            gauche = (largeur - nouvelle_largeur) // 2
+            image = image.crop((gauche, 0, gauche + nouvelle_largeur, hauteur))
+        else:
+            nouvelle_hauteur = max(round(largeur / ratio_cible), 1)
+            haut = (hauteur - nouvelle_hauteur) // 2
+            image = image.crop((0, haut, largeur, haut + nouvelle_hauteur))
+        return image.resize((largeur_cible, hauteur_cible), Image.LANCZOS)
+
+    # mode == "contain" : l'image entière tient dans le cadre, marges blanches ajoutées au besoin
+    if ratio_source > ratio_cible:
+        nouvelle_largeur, nouvelle_hauteur = largeur_cible, max(round(largeur_cible / ratio_source), 1)
+    else:
+        nouvelle_hauteur, nouvelle_largeur = hauteur_cible, max(round(hauteur_cible * ratio_source), 1)
+    image = image.resize((nouvelle_largeur, nouvelle_hauteur), Image.LANCZOS)
+    fond = Image.new("RGB", (largeur_cible, hauteur_cible), (255, 255, 255))
+    fond.paste(
+        image,
+        ((largeur_cible - nouvelle_largeur) // 2, (hauteur_cible - nouvelle_hauteur) // 2),
+        image if image.mode == "RGBA" else None,
+    )
+    return fond
+
+
+def _image_data_uri(image_field, taille=None, mode="cover"):
+    """Convertit un ImageField en data URI base64 pour l'incruster dans un PDF (plus fiable que
+    de laisser xhtml2pdf résoudre une URL MEDIA relative).
+
+    `taille` optionnel : (largeur_px, hauteur_px) du cadre d'affichage dans le PDF — l'image est
+    alors recadrée/redimensionnée en Pillow AVANT l'encodage (voir `_redimensionner_image`), pour
+    un rendu fidèle à ce cadre plutôt que déformé (voir ce texte pour le pourquoi). À fournir
+    chaque fois que le gabarit affiche cette image dans une balise <img> de taille fixe — mode
+    'cover' (par défaut) pour une photo qui doit remplir tout le cadre, 'contain' pour un logo qui
+    doit rester entier."""
     if not image_field:
         return None
     try:
@@ -355,6 +572,21 @@ def _image_data_uri(image_field):
             image_field.close()
         except Exception:
             pass
+
+    if taille:
+        try:
+            image = Image.open(BytesIO(data))
+            image.load()
+            if image.mode not in ("RGB", "RGBA"):
+                image = image.convert("RGBA" if "A" in image.mode else "RGB")
+            image = _redimensionner_image(image, taille[0], taille[1], mode)
+            buffer = BytesIO()
+            image.save(buffer, format="PNG")
+            return f"data:image/png;base64,{base64.b64encode(buffer.getvalue()).decode()}"
+        except Exception:
+            pass  # image illisible par Pillow (fichier corrompu, format exotique...) : on retombe
+            # sur l'original brut ci-dessous plutôt que de faire échouer tout le document.
+
     ext = (image_field.name.rsplit(".", 1)[-1] or "png").lower()
     mime = "jpeg" if ext in ("jpg", "jpeg") else ext
     return f"data:image/{mime};base64,{base64.b64encode(data).decode()}"
@@ -369,6 +601,22 @@ def _initials(name):
 
 def _ecole_nom(user):
     return user.ecole.nom if user.ecole_id else "École Manager"
+
+
+def _taille_police_ecole_badge(nom: str) -> float:
+    """Taille de police (en px) du nom de l'école sur la carte élève — réduite pour les noms
+    longs afin qu'ils tiennent toujours sur une seule ligne. Un retour à la ligne y est mal géré
+    par xhtml2pdf/reportlab dans ce gabarit : la ligne suivante ignore l'indentation de sa
+    cellule et chevauche le blason — mieux vaut donc réduire la police que risquer ce rendu
+    cassé (voir _badge_eleve_style.html/_badge_eleve_card.html)."""
+    longueur = len(nom or "")
+    if longueur <= 22:
+        return 11.5
+    if longueur <= 30:
+        return 9.5
+    if longueur <= 40:
+        return 8
+    return 6.8
 
 
 def _couleurs_ecole(ecole, modele=1):
@@ -393,6 +641,17 @@ def _annee_active(user):
 def _annee_active_libelle(user):
     annee = _annee_active(user)
     return annee.libelle if annee else ""
+
+
+def _classe_pour_annee(eleve, annee_scolaire):
+    """Classe de l'élève pour l'année scolaire concernée (celle du bulletin/certificat/reçu en
+    cours de génération), pas forcément sa classe ACTUELLE si elle a changé depuis — voir
+    `HistoriqueClasse`. Repli sur `eleve.classe` si aucune entrée n'existe pour cette année
+    (élèves déjà inscrits avant l'introduction de cet historique)."""
+    if not annee_scolaire:
+        return eleve.classe
+    historique = eleve.historique_classes.filter(annee_scolaire=annee_scolaire).select_related("classe").first()
+    return historique.classe if historique else eleve.classe
 
 
 def _age(date_naissance):
@@ -466,12 +725,13 @@ def _contexte_badge_eleve(badge):
         "age": _age(eleve.user.date_of_birth),
         "classe": eleve.classe.nom if eleve.classe else None,
         "ecole_nom": _ecole_nom(eleve.user),
+        "ecole_nom_taille": _taille_police_ecole_badge(_ecole_nom(eleve.user)),
         "ecole_adresse": ecole.adresse if ecole else "",
         "ecole_initiale": _initials(_ecole_nom(eleve.user)),
-        "logo_data_uri": _image_data_uri(ecole.logo) if ecole else None,
+        "logo_data_uri": _image_data_uri(ecole.logo, _mm_px(9, 9), mode="contain") if ecole else None,
         "annee_scolaire": annee.libelle if annee else "",
         "valid_upto": annee.date_fin.strftime("%d/%m/%Y") if annee else None,
-        "photo_data_uri": _image_data_uri(eleve.user.photo),
+        "photo_data_uri": _image_data_uri(eleve.user.photo, _mm_px(26, 32)),
         "qr_data_uri": _qr_data_uri(_badge_verify_url(badge.qr_token)),
         "barcode_data_uri": _barcode_data_uri(eleve.matricule),
         **_couleurs_ecole(ecole, ecole.modele_badge if ecole else 1),
@@ -506,6 +766,19 @@ class EleveBadgeViewSet(viewsets.ModelViewSet):
         pisa.CreatePDF(html, dest=buffer, encoding="utf-8")
         response = HttpResponse(buffer.getvalue(), content_type="application/pdf")
         response["Content-Disposition"] = f'attachment; filename="badge_{badge.eleve.matricule}.pdf"'
+        return response
+
+    @action(detail=True, methods=["get"], url_path="pdf-pvc")
+    def pdf_pvc(self, request, pk=None):
+        """Même badge, mais au format carte plastique PVC standard CR80 (85,6 × 54 mm) — page PDF
+        à la taille exacte de la carte, prête à imprimer directement sur une carte vierge avec une
+        imprimante à cartes (Evolis, Zebra...), sans découpe ni mise à l'échelle."""
+        badge = self.get_object()
+        html = render_to_string("people/badge_eleve_pvc_pdf.html", _contexte_badge_eleve(badge))
+        buffer = BytesIO()
+        pisa.CreatePDF(html, dest=buffer, encoding="utf-8")
+        response = HttpResponse(buffer.getvalue(), content_type="application/pdf")
+        response["Content-Disposition"] = f'attachment; filename="badge_pvc_{badge.eleve.matricule}.pdf"'
         return response
 
     @action(detail=False, methods=["get"], url_path="pdf-classe", permission_classes=[IsAdminOrSurveillance])
@@ -556,8 +829,9 @@ class EleveBadgeViewSet(viewsets.ModelViewSet):
         html = render_to_string("people/autorisation_recuperation_pdf.html", {
             "eleve": eleve,
             "parent": eleve.parent,
-            "photo_data_uri": _image_data_uri(eleve.user.photo),
+            "photo_data_uri": _image_data_uri(eleve.user.photo, _mm_px(18, 18)),
             "qr_data_uri": _qr_data_uri(_badge_verify_url(badge.qr_token)),
+            "ecole_nom": _ecole_nom(request.user),
         })
         buffer = BytesIO()
         pisa.CreatePDF(html, dest=buffer, encoding="utf-8")
@@ -596,7 +870,7 @@ class EnseignantBadgeViewSet(viewsets.ModelViewSet):
             "sous_titre2": enseignant.specialite or "Enseignant",
             "ecole_nom": _ecole_nom(enseignant.user),
             "annee_scolaire": _annee_active_libelle(enseignant.user),
-            "photo_data_uri": _image_data_uri(enseignant.user.photo),
+            "photo_data_uri": _image_data_uri(enseignant.user.photo, _mm_px(19, 23)),
             "qr_data_uri": _qr_data_uri(_badge_verify_url(badge.qr_token)),
         })
         buffer = BytesIO()
@@ -634,7 +908,7 @@ class BadgeVerifyView(APIView):
                 "role_label": "Enseignant",
                 "nom_complet": enseignant.user.get_full_name(),
                 "matricule": enseignant.matricule,
-                "detail": enseignant.specialite or "École Manager",
+                "detail": enseignant.specialite or _ecole_nom(enseignant.user),
                 "emis_le": enseignant_badge.emis_le,
             })
 
@@ -824,7 +1098,7 @@ class PaieEnseignantViewSet(viewsets.ModelViewSet):
             "ecole_nom": ecole.nom if ecole else "École Manager",
             "ecole_adresse": ecole.adresse if ecole else "",
             "ecole_telephone": ecole.telephone if ecole else "",
-            "ecole_logo_data_uri": _image_data_uri(ecole.logo) if ecole else None,
+            "ecole_logo_data_uri": _image_data_uri(ecole.logo, _mm_px(16, 16), mode="contain") if ecole else None,
             **_couleurs_ecole(ecole),
         }
         html = render_to_string("people/fiche_paie_pdf.html", context)

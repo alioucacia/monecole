@@ -1,7 +1,7 @@
 import { useEffect, useState, type ReactNode } from "react";
 import { Navigate, NavLink, Outlet, useLocation, useNavigate } from "react-router-dom";
 
-import { anneesApi, parametresEcoleApi, plateformeBrandingApi, unwrapList } from "../api/services";
+import { anneesApi, justificatifsApi, parametresEcoleApi, plateformeBrandingApi, supportApi, unwrapList } from "../api/services";
 import { useAuth } from "../context/AuthContext";
 import { useTheme } from "../context/ThemeContext";
 import type { AnneeScolaire, Ecole, Role } from "../types";
@@ -74,6 +74,8 @@ const NAV_CATEGORIES: NavCategory[] = [
     label: "Finance",
     items: [
       { to: "/paiements", label: "Paiements", icon: "💳", roles: ["admin", "student", "parent", "comptabilite"] },
+      { to: "/caisse", label: "Caisse", icon: "🗃️", roles: ["admin", "comptabilite"] },
+      { to: "/depenses", label: "Dépenses", icon: "🧮", roles: ["admin", "comptabilite"] },
     ],
   },
   {
@@ -90,6 +92,7 @@ const NAV_CATEGORIES: NavCategory[] = [
       { to: "/messagerie", label: "Messagerie", icon: "✉️", roles: ["admin", "teacher", "student", "parent", "comptabilite", "surveillance"], feature: "messagerie" },
       { to: "/visioconference", label: "Visioconférence", icon: "📹", roles: ["admin", "teacher", "student", "parent", "comptabilite", "surveillance"], feature: "visioconference" },
       { to: "/annonces", label: "Annonces", icon: "📢", roles: ["admin", "teacher", "student", "parent", "comptabilite", "surveillance"], feature: "annonces" },
+      { to: "/support", label: "Support technique", icon: "🆘", roles: ["superadmin", "admin", "teacher", "student", "parent", "comptabilite", "surveillance"] },
     ],
   },
   {
@@ -195,6 +198,69 @@ function useCategoriesOuvertes(categories: NavCategory[], pathname: string) {
   return { ouvertes, toggle };
 }
 
+const COLLAPSED_KEY = "sidebar_repliee";
+
+/** La sidebar entière peut être repliée en mode icônes (largeur réduite, libellés masqués).
+ * L'état choisi par l'utilisateur est mémorisé d'une session à l'autre, comme pour les
+ * catégories déroulantes ci-dessus. */
+function useSidebarRepliee() {
+  const [repliee, setRepliee] = useState<boolean>(() => {
+    try {
+      return localStorage.getItem(COLLAPSED_KEY) === "1";
+    } catch {
+      return false;
+    }
+  });
+
+  useEffect(() => {
+    try {
+      localStorage.setItem(COLLAPSED_KEY, repliee ? "1" : "0");
+    } catch {
+      // stockage indisponible (navigation privée...) — tant pis, pas bloquant
+    }
+  }, [repliee]);
+
+  return { repliee, toggle: () => setRepliee((r) => !r) };
+}
+
+/** Nombre de justificatifs d'absence en attente de validation — affiché en badge sur
+ * l'entrée « Justificatifs d'absence » de la sidebar, uniquement pour les rôles qui les
+ * traitent (admin, surveillance). Se rafraîchit toutes les 30 secondes. */
+function useJustificatifsEnAttente(actif: boolean) {
+  const [nombre, setNombre] = useState(0);
+
+  useEffect(() => {
+    if (!actif) return;
+    const charger = () =>
+      justificatifsApi.list({ statut: "en_attente", page_size: 1 }).then(({ data }) => {
+        if (!Array.isArray(data)) setNombre(data.count);
+      }).catch(() => {});
+    charger();
+    const id = setInterval(charger, 30000);
+    return () => clearInterval(id);
+  }, [actif]);
+
+  return nombre;
+}
+
+/** Nombre de tickets de support actifs (ouvert/en cours) pertinents pour l'utilisateur connecté
+ * — affiché en badge sur l'entrée « Support technique » de la sidebar. Contrairement aux
+ * justificatifs, concerne TOUS les rôles (chacun peut ouvrir un ticket), donc toujours actif
+ * tant qu'un utilisateur est connecté. Se rafraîchit toutes les 30 secondes. */
+function useSupportBadge(actif: boolean) {
+  const [nombre, setNombre] = useState(0);
+
+  useEffect(() => {
+    if (!actif) return;
+    const charger = () => supportApi.compteur().then(({ data }) => setNombre(data.actifs)).catch(() => {});
+    charger();
+    const id = setInterval(charger, 30000);
+    return () => clearInterval(id);
+  }, [actif]);
+
+  return nombre;
+}
+
 /** Liste des années scolaires de l'établissement, pour la sous-liste déroulante du topbar
  * (non applicable au Super Admin, qui n'est rattaché à aucun établissement). */
 function useAnneesScolaires(actif: boolean) {
@@ -240,13 +306,26 @@ const ABONNEMENT_TONE: Record<string, string> = {
   suspendu: "bg-rose-100 text-rose-700",
 };
 
+/** Jours restants avant la prochaine échéance de paiement, quand le mois en cours est déjà
+ * payé (le statut redevient "en_attente" — pas "en retard" — dès le 1er du mois suivant, avec
+ * une nouvelle échéance au même jour du mois — voir Ecole.jour_echeance côté backend). Calcul
+ * 100% côté client : ne dépend que de la date du jour et du jour d'échéance de l'école. */
+function joursAvantProchaineEcheance(jourEcheance: number): number {
+  const aujourdhui = new Date();
+  const jour = Math.min(jourEcheance, 28);
+  const debutAujourdhui = new Date(aujourdhui.getFullYear(), aujourdhui.getMonth(), aujourdhui.getDate());
+  const prochaine = new Date(aujourdhui.getFullYear(), aujourdhui.getMonth() + 1, jour);
+  return Math.round((prochaine.getTime() - debutAujourdhui.getTime()) / 86400000);
+}
+
 /** Compte à rebours de l'abonnement de l'établissement, affiché à son Administrateur. */
 function AbonnementBadge({ ecole }: { ecole: Ecole | null }) {
   if (!ecole) return null;
 
   let texte: string;
   if (ecole.statut_abonnement === "paye") {
-    texte = "Abonnement à jour ✓";
+    const j = joursAvantProchaineEcheance(ecole.jour_echeance);
+    texte = `Abonnement à jour ✓ — prochaine échéance dans ${j} jour${j > 1 ? "s" : ""}`;
   } else if (ecole.statut_abonnement === "en_attente" && ecole.jours_avant_echeance !== null) {
     const j = ecole.jours_avant_echeance;
     texte = j > 0 ? `Échéance dans ${j} jour${j > 1 ? "s" : ""}` : "Échéance aujourd'hui";
@@ -314,6 +393,21 @@ export function AppLayout() {
     }))
     .filter((cat) => cat.items.length > 0);
   const { ouvertes, toggle } = useCategoriesOuvertes(categories, pathname);
+  const { repliee, toggle: toggleSidebar } = useSidebarRepliee();
+  // Sur mobile, la sidebar est un tiroir hors-écran (repliée par défaut, ouverte via le bouton
+  // ☰ du topbar) plutôt que la colonne fixe utilisée sur desktop — distinct de `repliee`
+  // ci-dessus (le mode icônes, lui, ne concerne que le desktop). Se referme automatiquement à
+  // chaque navigation pour ne pas rester ouvert par-dessus la page suivante.
+  const [mobileOuvert, setMobileOuvert] = useState(false);
+  useEffect(() => setMobileOuvert(false), [pathname]);
+  const peutTraiterJustificatifs = !!user && (user.role === "admin" || user.role === "surveillance");
+  const justificatifsEnAttente = useJustificatifsEnAttente(
+    peutTraiterJustificatifs && !fonctionnalitesDesactivees.includes("justificatifs")
+  );
+  const ticketsActifs = useSupportBadge(!!user);
+  const badges: Record<string, number> = {};
+  if (justificatifsEnAttente > 0) badges["/justificatifs"] = justificatifsEnAttente;
+  if (ticketsActifs > 0) badges["/support"] = ticketsActifs;
   const { annees, anneeId, setAnneeId } = useAnneesScolaires(!!user && user.role !== "superadmin");
   const ecoleAbonnement = useAbonnementEcole(!!user && user.role === "admin");
   const [nomPlateforme, setNomPlateforme] = useState<string | null>(null);
@@ -339,57 +433,121 @@ export function AppLayout() {
           </button>
         </div>
       )}
-      <div className="flex flex-1 overflow-hidden">
-      <aside className="w-64 shrink-0 gradient-sidebar flex flex-col no-print">
-        <div className="h-16 flex items-center gap-2.5 px-5 shrink-0">
+      <div className="flex flex-1 overflow-hidden relative">
+      {mobileOuvert && (
+        <div
+          className="fixed inset-0 z-30 bg-ink-950/50 md:hidden no-print"
+          onClick={() => setMobileOuvert(false)}
+          aria-hidden="true"
+        />
+      )}
+      <aside
+        className={`fixed inset-y-0 left-0 z-40 w-64 md:static md:z-auto md:translate-x-0 ${
+          mobileOuvert ? "translate-x-0" : "-translate-x-full"
+        } ${repliee ? "md:w-20" : "md:w-64"} shrink-0 gradient-sidebar flex flex-col no-print transition-transform md:transition-[width] duration-300`}
+      >
+        <button
+          type="button"
+          onClick={toggleSidebar}
+          title={repliee ? "Déplier la sidebar" : "Replier la sidebar"}
+          aria-label={repliee ? "Déplier la sidebar" : "Replier la sidebar"}
+          className="absolute -right-3 top-6 hidden md:flex h-7 w-7 rounded-full bg-white shadow-md ring-1 ring-black/5 items-center justify-center text-ink-500 hover:text-brand-600 hover:shadow-lg active:scale-95 transition-all duration-200 z-10"
+        >
+          <svg viewBox="0 0 20 20" fill="none" className={`h-3.5 w-3.5 transition-transform duration-300 ${repliee ? "rotate-180" : ""}`}>
+            <path d="M12.5 5L7.5 10L12.5 15" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+          </svg>
+        </button>
+        <button
+          type="button"
+          onClick={() => setMobileOuvert(false)}
+          title="Fermer le menu"
+          aria-label="Fermer le menu"
+          className="absolute right-3 top-4 flex md:hidden h-8 w-8 rounded-full bg-white/10 items-center justify-center text-white text-lg hover:bg-white/20 transition-colors z-10"
+        >
+          ×
+        </button>
+
+        <div className={`h-16 flex items-center gap-2.5 shrink-0 ${repliee ? "justify-center px-2" : "px-5"}`}>
           <span className="text-2xl">🎒</span>
-          <div className="min-w-0">
-            <span className="font-extrabold text-white tracking-tight block leading-tight">{nomPlateforme || "École Manager"}</span>
-            {user.ecole_nom && <span className="text-[11px] text-white/70 truncate block">{user.ecole_nom}</span>}
-          </div>
+          {!repliee && (
+            <div className="min-w-0">
+              <span className="font-extrabold text-white tracking-tight block leading-tight">{nomPlateforme || "École Manager"}</span>
+              {user.ecole_nom && <span className="text-[11px] text-white/70 truncate block">{user.ecole_nom}</span>}
+            </div>
+          )}
         </div>
 
         <nav className="flex-1 overflow-y-auto py-2 px-3 space-y-1">
           {categories.map((cat) => {
             const estOuverte = ouvertes.has(cat.label);
+            const badgeCategorie = cat.items.reduce((total, item) => total + (badges[item.to] ?? 0), 0);
             return (
               <div key={cat.label}>
-                <button
-                  onClick={() => toggle(cat.label)}
-                  className="w-full flex items-center justify-between px-3 py-2 text-[10px] font-bold uppercase tracking-wider text-white/50 hover:text-white/80 transition-colors"
-                >
-                  {cat.label}
-                  <span className={`text-xs transition-transform duration-200 ${estOuverte ? "rotate-180" : ""}`}>▾</span>
-                </button>
-                {estOuverte && (
+                {!repliee && (
+                  <button
+                    onClick={() => toggle(cat.label)}
+                    className="w-full flex items-center justify-between px-3 py-2 text-[10px] font-bold uppercase tracking-wider text-white/50 hover:text-white/80 transition-colors"
+                  >
+                    <span className="flex items-center gap-1.5">
+                      {cat.label}
+                      {!estOuverte && badgeCategorie > 0 && <span className="h-1.5 w-1.5 rounded-full bg-rose-500" />}
+                    </span>
+                    <span className={`text-xs transition-transform duration-200 ${estOuverte ? "rotate-180" : ""}`}>▾</span>
+                  </button>
+                )}
+                {(repliee || estOuverte) && (
                   <div className="space-y-0.5 mb-2 animate-fade-in-up">
-                    {cat.items.map((item) => (
-                      <NavLink
-                        key={item.to}
-                        to={item.to}
-                        end={item.to === "/"}
-                        className={({ isActive }) =>
-                          `flex items-center gap-3 px-3 py-2.5 rounded-full text-sm font-semibold transition-all ${
-                            isActive
-                              ? "bg-white text-brand-800 shadow-lg"
-                              : "text-white/85 hover:bg-white/10 hover:text-white"
-                          }`
-                        }
-                      >
-                        {({ isActive }) => (
-                          <>
-                            <span
-                              className={`h-7 w-7 shrink-0 rounded-lg flex items-center justify-center text-sm ${
-                                isActive ? "bg-brand-100" : "bg-white/10"
-                              }`}
-                            >
-                              {item.icon}
-                            </span>
-                            <span className="truncate">{item.label}</span>
-                          </>
-                        )}
-                      </NavLink>
-                    ))}
+                    {cat.items.map((item) => {
+                      const badge = badges[item.to] ?? 0;
+                      return (
+                        <NavLink
+                          key={item.to}
+                          to={item.to}
+                          end={item.to === "/"}
+                          title={repliee ? item.label : undefined}
+                          className={({ isActive }) =>
+                            `flex items-center gap-3 py-2.5 rounded-full text-sm font-semibold transition-all ${
+                              repliee ? "justify-center px-0" : "px-3"
+                            } ${
+                              isActive
+                                ? "bg-white text-brand-800 shadow-lg"
+                                : "text-white/85 hover:bg-white/10 hover:text-white"
+                            }`
+                          }
+                        >
+                          {({ isActive }) => (
+                            <>
+                              <span
+                                className={`relative h-7 w-7 shrink-0 rounded-lg flex items-center justify-center text-sm ${
+                                  isActive ? "bg-brand-100" : "bg-white/10"
+                                }`}
+                              >
+                                {item.icon}
+                                {repliee && badge > 0 && (
+                                  <span className="absolute -top-1 -right-1 h-4 min-w-[16px] px-1 rounded-full bg-rose-500 text-white text-[9px] font-bold flex items-center justify-center leading-none">
+                                    {badge > 9 ? "9+" : badge}
+                                  </span>
+                                )}
+                              </span>
+                              {!repliee && (
+                                <>
+                                  <span className="truncate flex-1">{item.label}</span>
+                                  {badge > 0 && (
+                                    <span
+                                      className={`h-5 min-w-[20px] px-1.5 rounded-full text-[11px] font-bold flex items-center justify-center ${
+                                        isActive ? "bg-rose-500 text-white" : "bg-rose-500/90 text-white"
+                                      }`}
+                                    >
+                                      {badge > 99 ? "99+" : badge}
+                                    </span>
+                                  )}
+                                </>
+                              )}
+                            </>
+                          )}
+                        </NavLink>
+                      );
+                    })}
                   </div>
                 )}
               </div>
@@ -398,24 +556,38 @@ export function AppLayout() {
         </nav>
 
         <div className="shrink-0 px-3 pb-3 pt-2 border-t border-white/10 space-y-2">
-          <div className="text-center py-1">
-            <p className="text-white/90 text-sm font-bold tabular-nums">{now.toLocaleTimeString("fr-FR")}</p>
-            <p className="text-white/50 text-[11px]">{now.toLocaleDateString("fr-FR", { day: "2-digit", month: "2-digit", year: "numeric" })}</p>
-          </div>
+          {!repliee && (
+            <div className="text-center py-1">
+              <p className="text-white/90 text-sm font-bold tabular-nums">{now.toLocaleTimeString("fr-FR")}</p>
+              <p className="text-white/50 text-[11px]">{now.toLocaleDateString("fr-FR", { day: "2-digit", month: "2-digit", year: "numeric" })}</p>
+            </div>
+          )}
 
           <button
             onClick={logout}
+            title={repliee ? "Déconnexion" : undefined}
             className="w-full flex items-center justify-center gap-2 bg-rose-500 hover:bg-rose-600 text-white font-bold text-sm rounded-full py-2.5 shadow-lg shadow-rose-900/20 transition-colors"
           >
-            <span>↩</span> Déconnexion
+            <span>↩</span> {!repliee && "Déconnexion"}
           </button>
         </div>
       </aside>
 
       <div className="flex-1 flex flex-col overflow-hidden">
-        <header className="h-16 bg-white/80 backdrop-blur-sm border-b border-slate-100 flex items-center justify-between px-6 no-print">
-          <div className="flex items-center gap-2">
-            <p className="text-sm text-slate-400 font-medium">Bonjour 👋</p>
+        <header className="h-16 bg-white/80 backdrop-blur-sm border-b border-slate-100 flex items-center justify-between px-3 sm:px-6 no-print">
+          <div className="flex items-center gap-2 min-w-0">
+            <button
+              type="button"
+              onClick={() => setMobileOuvert(true)}
+              title="Ouvrir le menu"
+              aria-label="Ouvrir le menu"
+              className="md:hidden h-9 w-9 shrink-0 flex items-center justify-center rounded-full text-slate-500 hover:bg-slate-100 hover:text-brand-700 transition mr-1"
+            >
+              <svg viewBox="0 0 20 20" fill="none" className="h-5 w-5">
+                <path d="M3 5.5H17M3 10H17M3 14.5H17" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" />
+              </svg>
+            </button>
+            <p className="text-sm text-slate-400 font-medium hidden sm:block shrink-0">Bonjour 👋</p>
             {annees.length > 0 && (
               <select
                 value={anneeId ?? ""}
@@ -429,22 +601,22 @@ export function AppLayout() {
               </select>
             )}
           </div>
-          <div className="flex items-center gap-2">
-            {user.role === "admin" && <AbonnementBadge ecole={ecoleAbonnement} />}
-            <ThemeToggle />
-            <NavLink to="/profil" className="flex items-center gap-2.5 pl-1 pr-3 py-1 rounded-full group hover:bg-slate-100 transition-colors">
-              <div className="h-9 w-9 rounded-full bg-gradient-to-br from-brand-500 to-accent-500 text-white flex items-center justify-center font-bold text-sm shadow-soft group-hover:shadow-glow transition-shadow">
+          <div className="flex items-center gap-1 sm:gap-2 shrink-0">
+            {user.role === "admin" && <span className="hidden lg:block"><AbonnementBadge ecole={ecoleAbonnement} /></span>}
+            <span className="hidden sm:block"><ThemeToggle /></span>
+            <NavLink to="/profil" className="flex items-center gap-2.5 pl-1 pr-1 sm:pr-3 py-1 rounded-full group hover:bg-slate-100 transition-colors">
+              <div className="h-9 w-9 shrink-0 rounded-full bg-gradient-to-br from-brand-500 to-accent-500 text-white flex items-center justify-center font-bold text-sm shadow-soft group-hover:shadow-glow transition-shadow">
                 {initials(displayName)}
               </div>
-              <span className="font-bold text-ink-900 leading-tight group-hover:text-brand-700 transition-colors text-sm">{displayName}</span>
+              <span className="hidden sm:block font-bold text-ink-900 leading-tight group-hover:text-brand-700 transition-colors text-sm">{displayName}</span>
             </NavLink>
             <TopbarActions />
-            <span className={`inline-flex items-center px-3 py-1.5 rounded-full text-xs font-bold ${TOPBAR_ROLE_BADGE[user.role]}`}>
+            <span className={`hidden md:inline-flex items-center px-3 py-1.5 rounded-full text-xs font-bold ${TOPBAR_ROLE_BADGE[user.role]}`}>
               {user.role_display}
             </span>
           </div>
         </header>
-        <main className="flex-1 overflow-y-auto p-6">
+        <main className="flex-1 overflow-y-auto p-3 sm:p-6">
           <Outlet />
         </main>
       </div>

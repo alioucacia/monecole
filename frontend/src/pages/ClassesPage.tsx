@@ -18,6 +18,17 @@ const ORDRE_CYCLES: Cycle[] = ["prescolaire", "primaire", "college", "lycee", ""
 
 const emptyForm = { nom: "", niveau: "", cycle: "", annee_scolaire: "", professeur_principal: "", capacite: 30 };
 
+/** Couleur du badge d'effectif selon le taux de remplissage — vert tant qu'il reste de la
+ * marge, ambre à l'approche du seuil (≥ 90% de la capacité, places bientôt épuisées),
+ * rose une fois la classe pleine (ou en sureffectif). */
+function effectifColor(effectif: number, capacite: number): "green" | "amber" | "rose" {
+  if (!capacite) return "green";
+  const taux = effectif / capacite;
+  if (taux >= 1) return "rose";
+  if (taux >= 0.9) return "amber";
+  return "green";
+}
+
 export default function ClassesPage() {
   const { user } = useAuth();
   const toast = useToast();
@@ -150,7 +161,7 @@ export default function ClassesPage() {
                     <td className="px-4 py-3">{classe.niveau}</td>
                     <td className="px-4 py-3">{classe.annee_scolaire_libelle}</td>
                     <td className="px-4 py-3">{classe.professeur_principal_nom || "—"}</td>
-                    <td className="px-4 py-3"><Badge color="brand">{classe.effectif}/{classe.capacite}</Badge></td>
+                    <td className="px-4 py-3"><Badge color={effectifColor(classe.effectif, classe.capacite)}>{classe.effectif}/{classe.capacite}</Badge></td>
                     <td className="px-4 py-3">
                       <div className="flex items-center gap-3">
                         <button onClick={() => setDetailClasse(classe)} className="text-brand-600 hover:underline text-sm">Détails</button>

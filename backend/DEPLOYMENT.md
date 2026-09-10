@@ -45,6 +45,58 @@ Le service `nginx` écoute sur le port 80 et répartit entre les réplicas `back
 `nginx/nginx.conf` — répartition approximative par re-résolution DNS Docker, pas un vrai load
 balancer ; suffisant pour mesurer un gain en local/staging, pas pour la production réelle).
 
+## Recréer le compte Super Admin après une purge des données
+
+Si toutes les données sont effacées (`flush`, restauration d'une base vide, incident...), plus
+personne ne peut se connecter pour administrer la plateforme — `ensure_superadmin` recrée ce
+premier compte :
+
+```bash
+python manage.py ensure_superadmin
+# ou avec un identifiant/e-mail choisis :
+python manage.py ensure_superadmin --username admin --email admin@monecole.com
+# pour réinitialiser le mot de passe d'un Super Admin déjà existant :
+python manage.py ensure_superadmin --force
+```
+
+Sans `--password`, un mot de passe aléatoire fort est généré et **affiché une seule fois** dans la
+sortie de la commande (à noter immédiatement) — le changement de mot de passe est ensuite demandé
+à la première connexion. La commande ne fait rien (sans `--force`) si un Super Admin existe déjà,
+pour ne jamais écraser un compte par erreur.
+
+## Tâches planifiées (cron)
+
+Aucun ordonnanceur (Celery beat, django-crontab...) n'est utilisé dans ce projet — volontairement,
+pour ne pas ajouter d'infrastructure supplémentaire (file de tâches, worker dédié) pour deux
+commandes quotidiennes. Deux management commands sont **conçues pour tourner une fois par jour**
+mais ne se déclenchent jamais toutes seules : c'est à l'ordonnanceur du système d'exploitation
+(cron sur Linux, Planificateur de tâches sur Windows) de les invoquer.
+
+- `backup_daily` — sauvegarde la base (dump JSON compressé), journalise le résultat dans
+  `core.SauvegardeLog`, purge les sauvegardes de plus de 30 jours.
+- `notifier_impayes` — envoie les rappels (email + SMS) aux parents dont un frais est en retard,
+  toutes écoles confondues (limité à une relance par famille tous les 7 jours, voir
+  `payments/notifications.py`).
+
+Exemple de configuration cron (`/etc/cron.d/ecole-manager`, sur l'hôte qui exécute
+`docker compose`) :
+
+```cron
+0 6 * * * root cd /chemin/vers/le/projet && docker compose -f docker-compose.prod.yml --env-file .env.prod run --rm backend python manage.py backup_daily >> /var/log/ecole-manager/backup.log 2>&1
+0 7 * * * root cd /chemin/vers/le/projet && docker compose -f docker-compose.prod.yml --env-file .env.prod run --rm backend python manage.py notifier_impayes >> /var/log/ecole-manager/notifier.log 2>&1
+```
+
+Sans conteneurs (backend lancé directement dans un virtualenv) :
+
+```cron
+0 6 * * * www-data cd /chemin/vers/le/projet/backend && /chemin/vers/le/venv/bin/python manage.py backup_daily >> /var/log/ecole-manager/backup.log 2>&1
+0 7 * * * www-data cd /chemin/vers/le/projet/backend && /chemin/vers/le/venv/bin/python manage.py notifier_impayes >> /var/log/ecole-manager/notifier.log 2>&1
+```
+
+Penser à créer `/var/log/ecole-manager/` (ou adapter le chemin) avant la première exécution, et à
+vérifier que l'utilisateur qui exécute cron a le droit de lancer `docker compose`/d'écrire dans ce
+dossier de logs.
+
 ## Dimensionner Gunicorn (`WEB_CONCURRENCY` / `WEB_THREADS`)
 
 Règle de base : `workers = 2 × cœurs CPU + 1`. Avec `--worker-class gthread` et plusieurs

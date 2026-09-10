@@ -1,9 +1,9 @@
 import { useEffect, useState } from "react";
-import { Link, useNavigate, useParams } from "react-router-dom";
+import { Link, useNavigate, useParams, useSearchParams } from "react-router-dom";
 
 import {
   affectationsTransportApi, anneesApi, bulletinApi, elevesApi, empruntsApi, fraisApi,
-  justificatifsApi, notesApi, presencesApi, unwrapList,
+  justificatifsApi, notesApi, periodesApi, presencesApi, unwrapList,
 } from "../api/services";
 import { extractErrorMessage } from "../api/client";
 import { PdfPreviewModal } from "../components/PdfPreviewModal";
@@ -11,7 +11,7 @@ import { Badge, Button, Card, EmptyState, PageHeader, Select, Spinner, StatCard,
 import { useAuth } from "../context/AuthContext";
 import { useToast } from "../context/ToastContext";
 import type {
-  AffectationTransport, Bulletin, CategoriePaiement, EleveProfile, Emprunt, Frais, JustificatifAbsence, Note, Presence, SuiviMensuelMois,
+  AffectationTransport, AnneeScolaire, Bulletin, CategoriePaiement, EleveProfile, Emprunt, Frais, JustificatifAbsence, Note, Periode, Presence, SuiviMensuelMois,
 } from "../types";
 
 const CATEGORIE_LABELS: Record<CategoriePaiement, string> = {
@@ -46,6 +46,8 @@ const EMPRUNT_LABELS: Record<string, { label: string; color: "green" | "amber" |
   en_retard: { label: "En retard", color: "rose" },
 };
 
+const MOTIF_JUSTIFICATIF_LABELS: Record<string, string> = { maladie: "Maladie", autre: "Autre motif" };
+
 const JUSTIFICATIF_LABELS: Record<string, { label: string; color: "green" | "amber" | "rose" }> = {
   approuve: { label: "Approuvé", color: "green" },
   en_attente: { label: "En attente", color: "amber" },
@@ -56,7 +58,20 @@ function initials(first: string, last: string) {
   return `${first[0] || "?"}${last[0] || ""}`.toUpperCase();
 }
 
-type TabKey = "apercu" | "notes" | "presences" | "paiements" | "transport" | "bibliotheque" | "justificatifs";
+type TabKey = "apercu" | "historique" | "notes" | "presences" | "paiements" | "transport" | "bibliotheque" | "justificatifs";
+const TAB_KEYS: TabKey[] = ["apercu", "historique", "notes", "presences", "paiements", "transport", "bibliotheque", "justificatifs"];
+
+const MODE_PAIEMENT_LABELS: Record<string, string> = {
+  especes: "Espèces", cheque: "Chèque", virement: "Virement", mobile_money: "Mobile Money",
+};
+
+interface EvenementHistorique {
+  date: string;
+  icone: string;
+  titre: string;
+  detail?: string;
+  badge?: { label: string; color: "green" | "amber" | "rose" | "slate" | "brand" | "teal" };
+}
 
 export default function StudentDetailPage() {
   const toast = useToast();
@@ -67,23 +82,38 @@ export default function StudentDetailPage() {
   const isAdmin = user?.role === "admin";
   const peutVoirPaiements = user?.role === "admin" || user?.role === "comptabilite";
 
+  const [searchParams] = useSearchParams();
   const [eleve, setEleve] = useState<EleveProfile | null>(null);
   const [loading, setLoading] = useState(true);
   const [notFound, setNotFound] = useState(false);
-  const [tab, setTab] = useState<TabKey>("apercu");
+  // `?tab=paiements` permet d'arriver directement sur l'onglet Paiements depuis un lien externe
+  // (ex: la recherche par matricule pour la comptabilité) sans repasser par Aperçu d'abord.
+  const tabInitial = searchParams.get("tab");
+  const [tab, setTab] = useState<TabKey>(
+    TAB_KEYS.includes(tabInitial as TabKey) ? (tabInitial as TabKey) : "apercu"
+  );
 
   const [notes, setNotes] = useState<Note[]>([]);
   const [presences, setPresences] = useState<Presence[]>([]);
   const [presenceStats, setPresenceStats] = useState<Record<string, any> | null>(null);
   const [frais, setFrais] = useState<Frais[]>([]);
   const [suiviMensuel, setSuiviMensuel] = useState<SuiviMensuelMois[]>([]);
+  const [suiviMensuelLoading, setSuiviMensuelLoading] = useState(false);
+  const [suiviMensuelError, setSuiviMensuelError] = useState("");
+  const [suiviMensuelCharge, setSuiviMensuelCharge] = useState(false);
   const [affectations, setAffectations] = useState<AffectationTransport[]>([]);
   const [emprunts, setEmprunts] = useState<Emprunt[]>([]);
   const [justificatifs, setJustificatifs] = useState<JustificatifAbsence[]>([]);
   const [bulletin, setBulletin] = useState<Bulletin | null>(null);
   const [anneeActiveId, setAnneeActiveId] = useState<number | null>(null);
+  const [annees, setAnnees] = useState<AnneeScolaire[]>([]);
+  const [periodes, setPeriodes] = useState<Periode[]>([]);
+  // Filtres de l'onglet Notes : année scolaire + trimestre choisis (par défaut, l'année active).
+  const [anneeNotesFilter, setAnneeNotesFilter] = useState<number | "">("");
+  const [periodeNotesFilter, setPeriodeNotesFilter] = useState<number | "">("");
 
   const [recuLoading, setRecuLoading] = useState(false);
+  const [certificatLoading, setCertificatLoading] = useState(false);
   const [bulletinPreviewOpen, setBulletinPreviewOpen] = useState(false);
   const [proformaPreviewOpen, setProformaPreviewOpen] = useState(false);
   const [categorieSaving, setCategorieSaving] = useState(false);
@@ -109,13 +139,26 @@ export default function StudentDetailPage() {
     if (peutVoirPaiements) {
       fraisApi.list({ eleve: eleve.id, page_size: 200 }).then(({ data }) => setFrais(unwrapList(data))).catch(() => {});
     }
+    periodesApi.list().then(({ data }) => setPeriodes(unwrapList(data))).catch(() => {});
     anneesApi.list().then(({ data }) => {
-      const active = unwrapList(data).find((a) => a.active);
+      const liste = unwrapList(data);
+      setAnnees(liste);
+      const active = liste.find((a) => a.active);
       if (!active) return;
       setAnneeActiveId(active.id);
+      setAnneeNotesFilter((prev) => (prev === "" ? active.id : prev));
       bulletinApi.get(eleve.id, { annee_scolaire: active.id }).then(({ data }) => setBulletin(data)).catch(() => {});
       if (peutVoirPaiements) {
-        fraisApi.suiviMensuel(eleve.id, active.id).then(({ data }) => setSuiviMensuel(data.mois)).catch(() => {});
+        setSuiviMensuelLoading(true);
+        setSuiviMensuelError("");
+        fraisApi.suiviMensuel(eleve.id, active.id)
+          .then(({ data }) => setSuiviMensuel(data.mois))
+          // Erreur silencieuse jusqu'ici (`.catch(() => {})`) : la carte disparaissait sans
+          // aucune indication, ce qui pouvait donner l'impression que les mois impayés
+          // n'existaient pas alors qu'il s'agissait d'une erreur de chargement (ex: aucune année
+          // scolaire active, accès refusé...). Affichée maintenant sous la carte (voir plus bas).
+          .catch((err) => setSuiviMensuelError(extractErrorMessage(err)))
+          .finally(() => { setSuiviMensuelLoading(false); setSuiviMensuelCharge(true); });
       }
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -130,6 +173,18 @@ export default function StudentDetailPage() {
       toast.error(extractErrorMessage(err));
     } finally {
       setRecuLoading(false);
+    }
+  };
+
+  const handleCertificat = async () => {
+    if (!eleve) return;
+    setCertificatLoading(true);
+    try {
+      await elevesApi.certificatScolarite(eleve.id, `certificat_scolarite_${eleve.matricule}.pdf`);
+    } catch (err) {
+      toast.error(extractErrorMessage(err));
+    } finally {
+      setCertificatLoading(false);
     }
   };
 
@@ -180,8 +235,70 @@ export default function StudentDetailPage() {
   // garde-fou, la case restait cliquable mais semblait « ne rien faire » — confusion signalée.
   const fideliteSansEffet = eleve.categorie_paiement === "fondation_gratuit" || eleve.categorie_paiement === "inscription_seulement";
 
+  // Onglet Notes : périodes de l'année scolaire choisie, et notes filtrées en conséquence
+  // (par année, puis par trimestre si un trimestre précis est sélectionné).
+  const periodeById = new Map(periodes.map((p) => [p.id, p]));
+  const periodesDeLAnnee = periodes.filter((p) => !anneeNotesFilter || p.annee_scolaire === anneeNotesFilter);
+  const notesFiltrees = notes.filter((n) => {
+    if (periodeNotesFilter) return n.periode === periodeNotesFilter;
+    if (anneeNotesFilter) return periodeById.get(n.periode)?.annee_scolaire === anneeNotesFilter;
+    return true;
+  });
+
+  // Onglet Historique : parcours de l'élève depuis son inscription, reconstitué à partir des
+  // évènements déjà datés dont on dispose (inscription, paiements, justificatifs soumis,
+  // emprunts, affectation transport, sortie) — plutôt que les notes/présences, trop nombreuses
+  // pour une vue « grandes étapes ». Trié du plus ancien au plus récent pour se lire comme un
+  // vrai parcours.
+  const historique: EvenementHistorique[] = [];
+  if (eleve.date_inscription) {
+    historique.push({
+      date: eleve.date_inscription,
+      icone: "🎓",
+      titre: STATUT_INSCRIPTION_LABELS[eleve.statut_inscription] || "Inscription à l'établissement",
+      detail: eleve.classe_nom ? `Classe : ${eleve.classe_nom}` : undefined,
+    });
+  }
+  frais.forEach((f) => {
+    f.paiements.forEach((p) => {
+      historique.push({
+        date: p.date_paiement,
+        icone: "💳",
+        titre: `Paiement — ${f.type_frais_nom}`,
+        detail: `${money(p.montant)} · ${MODE_PAIEMENT_LABELS[p.mode_paiement] || p.mode_paiement}${p.reference ? ` · Réf. ${p.reference}` : ""}`,
+      });
+    });
+  });
+  justificatifs.forEach((j) => {
+    historique.push({
+      date: j.cree_le,
+      icone: "📋",
+      titre: `Justificatif d'absence soumis (${MOTIF_JUSTIFICATIF_LABELS[j.motif] || j.motif})`,
+      detail: `Absence du ${new Date(j.date_absence).toLocaleDateString("fr-FR")}`,
+      badge: JUSTIFICATIF_LABELS[j.statut] ? { label: JUSTIFICATIF_LABELS[j.statut].label, color: JUSTIFICATIF_LABELS[j.statut].color } : undefined,
+    });
+  });
+  emprunts.forEach((e) => {
+    historique.push({ date: e.date_emprunt, icone: "📖", titre: `Emprunt — ${e.livre_titre}` });
+    if (e.date_retour_effective) {
+      historique.push({ date: e.date_retour_effective, icone: "📗", titre: `Retour de livre — ${e.livre_titre}` });
+    }
+  });
+  affectations.forEach((a) => {
+    historique.push({
+      date: a.date_debut, icone: "🚌",
+      titre: `Affecté(e) au transport — ${a.trajet_nom}`,
+      detail: a.point_montee ? `Point de montée : ${a.point_montee}` : undefined,
+    });
+  });
+  if (eleve.date_sortie) {
+    historique.push({ date: eleve.date_sortie, icone: "🚪", titre: "Sortie de l'établissement", detail: eleve.motif_sortie || undefined });
+  }
+  historique.sort((a, b) => a.date.localeCompare(b.date));
+
   const TABS: { key: TabKey; label: string }[] = [
     { key: "apercu", label: "Aperçu" },
+    { key: "historique", label: `Historique (${historique.length})` },
     { key: "notes", label: `Notes (${notes.length})` },
     { key: "presences", label: `Présences (${presences.length})` },
     ...(peutVoirPaiements ? [{ key: "paiements" as TabKey, label: `Paiements (${frais.length})` }] : []),
@@ -213,6 +330,9 @@ export default function StudentDetailPage() {
               )}
               <Button variant="secondary" onClick={handleRecu} disabled={recuLoading}>
                 {recuLoading ? "…" : "🧾 Reçu d'inscription"}
+              </Button>
+              <Button variant="secondary" onClick={handleCertificat} disabled={certificatLoading}>
+                {certificatLoading ? "…" : "🎓 Certificat de scolarité"}
               </Button>
               {bulletin && (
                 <Button onClick={handleBulletinPdf}>👁️ Aperçu du bulletin</Button>
@@ -295,21 +415,76 @@ export default function StudentDetailPage() {
         </div>
       )}
 
-      {tab === "notes" && (
-        notes.length === 0 ? <EmptyState title="Aucune note enregistrée" /> : (
-          <Table headers={["Matière", "Période", "Type", "Note", "Coeff.", "Date"]}>
-            {notes.map((n) => (
-              <tr key={n.id}>
-                <td className="px-4 py-3 font-medium text-slate-700">{n.matiere_nom}</td>
-                <td className="px-4 py-3 text-slate-500">{n.periode_nom}</td>
-                <td className="px-4 py-3 text-slate-500 capitalize">{n.type_evaluation}</td>
-                <td className="px-4 py-3 font-semibold">{n.valeur}/20</td>
-                <td className="px-4 py-3 text-slate-500">{n.coefficient}</td>
-                <td className="px-4 py-3 text-slate-500 text-xs">{new Date(n.date).toLocaleDateString("fr-FR")}</td>
-              </tr>
-            ))}
-          </Table>
+      {tab === "historique" && (
+        historique.length === 0 ? (
+          <EmptyState title="Aucun évènement enregistré" description="Le parcours de l'élève apparaîtra ici au fil du temps." />
+        ) : (
+          <div className="relative pl-6 before:absolute before:left-[7px] before:top-2 before:bottom-2 before:w-px before:bg-slate-200">
+            <div className="space-y-5">
+              {historique.map((ev, i) => (
+                <div key={i} className="relative">
+                  <span className="absolute -left-6 top-1 h-3.5 w-3.5 rounded-full bg-brand-500 ring-4 ring-brand-100" />
+                  <p className="text-xs font-semibold text-slate-400 mb-1">
+                    {new Date(ev.date).toLocaleDateString("fr-FR", { day: "2-digit", month: "long", year: "numeric" })}
+                  </p>
+                  <div className="bg-white rounded-xl border border-slate-100 shadow-soft px-4 py-3">
+                    <div className="flex items-center justify-between gap-3">
+                      <p className="text-sm font-semibold text-slate-700">
+                        <span className="mr-1.5">{ev.icone}</span>{ev.titre}
+                      </p>
+                      {ev.badge && <Badge color={ev.badge.color}>{ev.badge.label}</Badge>}
+                    </div>
+                    {ev.detail && <p className="text-xs text-slate-500 mt-1">{ev.detail}</p>}
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
         )
+      )}
+
+      {tab === "notes" && (
+        <div>
+          <div className="flex flex-wrap gap-3 mb-4">
+            <Select
+              label="Année scolaire"
+              value={anneeNotesFilter}
+              onChange={(e) => {
+                setAnneeNotesFilter(e.target.value ? Number(e.target.value) : "");
+                setPeriodeNotesFilter("");
+              }}
+              className="max-w-xs"
+            >
+              <option value="">Toutes les années</option>
+              {annees.map((a) => <option key={a.id} value={a.id}>{a.libelle}</option>)}
+            </Select>
+            <Select
+              label="Trimestre"
+              value={periodeNotesFilter}
+              onChange={(e) => setPeriodeNotesFilter(e.target.value ? Number(e.target.value) : "")}
+              className="max-w-xs"
+            >
+              <option value="">Tous les trimestres</option>
+              {periodesDeLAnnee.map((p) => <option key={p.id} value={p.id}>{p.nom}</option>)}
+            </Select>
+          </div>
+          {notesFiltrees.length === 0 ? (
+            <EmptyState title="Aucune note enregistrée" description="Aucune note pour cette période." />
+          ) : (
+            <Table headers={["Matière", "Période", "Type", "Note", "Coeff.", "Date"]}>
+              {notesFiltrees.map((n) => (
+                <tr key={n.id}>
+                  <td className="px-4 py-3 font-medium text-slate-700">{n.matiere_nom}</td>
+                  <td className="px-4 py-3 text-slate-500">{n.periode_nom}</td>
+                  <td className="px-4 py-3 text-slate-500 capitalize">{n.type_evaluation}</td>
+                  <td className="px-4 py-3 font-semibold">{n.valeur}/20</td>
+                  <td className="px-4 py-3 text-slate-500">{n.coefficient}</td>
+                  <td className="px-4 py-3 text-slate-500 text-xs">{new Date(n.date).toLocaleDateString("fr-FR")}</td>
+                </tr>
+              ))}
+            </Table>
+          )}
+        </div>
       )}
 
       {tab === "presences" && (
@@ -406,27 +581,57 @@ export default function StudentDetailPage() {
             </Table>
           )}
 
-          {suiviMensuel.length > 0 && (
+          {suiviMensuelCharge && (
             <Card className="mt-4">
-              <h3 className="font-bold text-ink-900 mb-3">Mois payés / non payés (scolarité)</h3>
-              <div className="flex flex-wrap gap-2">
-                {suiviMensuel.map((m) => (
-                  <div
-                    key={m.mois}
-                    title={`${money(m.montant_paye)} sur ${money(m.montant_du)}`}
-                    className={
-                      "px-3 py-1.5 rounded-lg text-xs font-medium " +
-                      (m.statut === "paye"
-                        ? "bg-emerald-100 text-emerald-700"
-                        : m.statut === "partiel"
-                          ? "bg-amber-100 text-amber-700"
-                          : "bg-rose-100 text-rose-700")
-                    }
+              <div className="flex items-center justify-between mb-3">
+                <h3 className="font-bold text-ink-900">Mois payés / non payés (scolarité)</h3>
+                {anneeActiveId && suiviMensuel.length > 0 && (
+                  <button
+                    onClick={() => fraisApi.suiviMensuelPdf(eleve.id, `suivi_mensuel_${eleve.matricule}.pdf`, anneeActiveId)}
+                    className="text-xs font-semibold text-brand-700 hover:underline"
                   >
-                    {new Date(`${m.mois}-01`).toLocaleDateString("fr-FR", { month: "short", year: "2-digit" })}
-                  </div>
-                ))}
+                    📄 Rapport de suivi (PDF)
+                  </button>
+                )}
               </div>
+              {suiviMensuelLoading ? (
+                <div className="flex justify-center py-6"><Spinner /></div>
+              ) : suiviMensuelError ? (
+                <p className="text-sm text-rose-600 bg-rose-50 border border-rose-100 rounded-xl px-3.5 py-2.5">{suiviMensuelError}</p>
+              ) : suiviMensuel.length === 0 ? (
+                <p className="text-sm text-slate-400">
+                  Aucun frais mensuel (scolarité) configuré pour cet élève sur l'année scolaire active — rien à suivre mois par mois.
+                </p>
+              ) : (
+                <>
+                  {/* Grille fixe (plusieurs mois par ligne) plutôt qu'une frise chronologique
+                      unique qui s'étire horizontalement — tous les mois restent visibles d'un
+                      coup, sans avoir à faire défiler la page latéralement. */}
+                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                    {suiviMensuel.map((m) => (
+                      <div
+                        key={m.mois}
+                        title={`${money(m.montant_paye)} sur ${money(m.montant_du)}`}
+                        className={
+                          "px-3 py-2 rounded-lg border-2 text-xs font-medium text-center " +
+                          (m.statut === "paye"
+                            ? "bg-emerald-100 text-emerald-700 border-emerald-300"
+                            : m.statut === "partiel"
+                              ? "bg-amber-100 text-amber-700 border-amber-300"
+                              : "bg-rose-100 text-rose-700 border-rose-300")
+                        }
+                      >
+                        {new Date(`${m.mois}-01`).toLocaleDateString("fr-FR", { month: "long", year: "numeric" })}
+                      </div>
+                    ))}
+                  </div>
+                  <div className="flex flex-wrap gap-4 mt-3 text-xs text-slate-500">
+                    <span className="flex items-center gap-1.5"><span className="h-2.5 w-2.5 rounded-full bg-emerald-400" /> Payé</span>
+                    <span className="flex items-center gap-1.5"><span className="h-2.5 w-2.5 rounded-full bg-amber-400" /> Partiellement payé</span>
+                    <span className="flex items-center gap-1.5"><span className="h-2.5 w-2.5 rounded-full bg-rose-400" /> Non payé</span>
+                  </div>
+                </>
+              )}
             </Card>
           )}
 

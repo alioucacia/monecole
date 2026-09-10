@@ -16,7 +16,7 @@
 </head>
 <body>
     <div class="header">
-        <h1>École Manager</h1>
+        <h1>{{ ecole_nom }}</h1>
         <p>Liste des élèves{% if classe_nom %} — {{ classe_nom }}{% endif %} ({{ total }} élève{{ total|pluralize }})</p>
     </div>
 

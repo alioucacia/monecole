@@ -92,13 +92,22 @@ export default function SuiviMensuelPage() {
             Année scolaire <span className="font-semibold text-ink-900">{suivi.annee_scolaire}</span> — {suivi.eleves.length} élève(s).
           </p>
           <div className="overflow-x-auto">
-            <Table headers={["Élève", "Matricule", "Catégorie", ...tousLesMois.map(moisLabel)]}>
+            <Table headers={["Élève", "Matricule", "Catégorie", "Mois impayés", ...tousLesMois.map(moisLabel)]}>
               {suivi.eleves.map((e) => {
                 const parMois = new Map(e.mois.map((m) => [m.mois, m]));
+                const nbImpayes = e.mois.filter((m) => m.statut === "non_paye").length;
+                const nbPartiels = e.mois.filter((m) => m.statut === "partiel").length;
                 return (
                   <tr key={e.eleve_id}>
                     <td className="px-4 py-2.5 font-medium text-slate-700 whitespace-nowrap">
                       <Link to={`/eleves/${e.eleve_id}`} className="hover:underline">{e.eleve_nom}</Link>
+                      <button
+                        onClick={() => fraisApi.suiviMensuelPdf(e.eleve_id, `suivi_mensuel_${e.matricule}.pdf`)}
+                        title="Rapport de suivi (PDF)"
+                        className="ml-1.5 text-slate-300 hover:text-brand-600 transition"
+                      >
+                        📄
+                      </button>
                     </td>
                     <td className="px-4 py-2.5 text-xs font-mono text-slate-400 whitespace-nowrap">{e.matricule}</td>
                     <td className="px-4 py-2.5 text-xs text-slate-500 whitespace-nowrap">
@@ -106,6 +115,16 @@ export default function SuiviMensuelPage() {
                         <Badge color="amber">{e.categorie_paiement_display}</Badge>
                       ) : (
                         <span className="text-slate-300">Standard</span>
+                      )}
+                    </td>
+                    <td className="px-4 py-2.5 whitespace-nowrap">
+                      {nbImpayes === 0 && nbPartiels === 0 ? (
+                        <span className="text-emerald-600 text-xs">✓ à jour</span>
+                      ) : (
+                        <div className="flex gap-1.5">
+                          {nbImpayes > 0 && <Badge color="rose">{nbImpayes} impayé{nbImpayes > 1 ? "s" : ""}</Badge>}
+                          {nbPartiels > 0 && <Badge color="amber">{nbPartiels} partiel{nbPartiels > 1 ? "s" : ""}</Badge>}
+                        </div>
                       )}
                     </td>
                     {tousLesMois.map((mois) => {

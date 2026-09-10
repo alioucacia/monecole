@@ -3,7 +3,15 @@ from decimal import Decimal
 from django.db.models import Sum
 from rest_framework import serializers
 
-from .models import Frais, Paiement, TarifClasse, TypeFrais
+from core.validators import EXTENSIONS_DOCUMENT, TAILLE_MAX_DOCUMENT, valider_taille_fichier
+
+from .models import CategorieDepense, Depense, Frais, Paiement, TarifClasse, TypeFrais
+
+
+class CategorieDepenseSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = CategorieDepense
+        fields = ["id", "nom"]
 
 
 class TypeFraisSerializer(serializers.ModelSerializer):
@@ -52,6 +60,31 @@ class PaiementSerializer(serializers.ModelSerializer):
                 "mois": f"Le mois {mois.strftime('%m/%Y')} est déjà intégralement payé pour ce frais."
             })
         return attrs
+
+
+class DepenseSerializer(serializers.ModelSerializer):
+    categorie_nom = serializers.CharField(source="categorie.nom", read_only=True)
+    mode_paiement_display = serializers.CharField(source="get_mode_paiement_display", read_only=True)
+    enregistre_par_nom = serializers.CharField(source="enregistre_par.get_full_name", read_only=True, default=None)
+
+    class Meta:
+        model = Depense
+        fields = [
+            "id", "date", "categorie", "categorie_nom", "motif", "montant", "mode_paiement",
+            "mode_paiement_display", "reference", "responsable", "enregistre_par", "enregistre_par_nom",
+            "justificatif", "commentaire",
+        ]
+        read_only_fields = ["enregistre_par"]
+        extra_kwargs = {"justificatif": {"required": False}}
+
+    def validate_justificatif(self, fichier):
+        return valider_taille_fichier(fichier, TAILLE_MAX_DOCUMENT, EXTENSIONS_DOCUMENT)
+
+    def validate_categorie(self, value):
+        request = self.context.get("request")
+        if request and value.ecole_id != request.user.ecole_id:
+            raise serializers.ValidationError("Cette catégorie n'appartient pas à votre établissement.")
+        return value
 
 
 class FraisSerializer(serializers.ModelSerializer):

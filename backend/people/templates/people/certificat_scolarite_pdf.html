@@ -1,0 +1,174 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8" />
+<style>
+    @page { size: A4; margin: 1.4cm; }
+    body { font-family: Helvetica, Arial, sans-serif; color: #1e1b2e; font-size: 11px; }
+
+    table.masthead { width: 100%; margin-bottom: 4px; }
+    .masthead td { vertical-align: middle; text-align: center; }
+    .republique { font-size: 15px; font-weight: bold; color: #1e1b2e; margin: 0; }
+    .devise { font-size: 10px; font-weight: bold; margin: 1mm 0 0 0; }
+    .devise .rouge { color: #d21034; }
+    .devise .jaune { color: #ce9e17; }
+    .devise .verte { color: #1a7a3c; }
+    .trait { border-top: 1px dashed #9ca3af; width: 40mm; margin: 1.5mm auto; }
+
+    table.drapeau { width: 14mm; border-collapse: collapse; }
+    table.drapeau td { height: 9mm; padding: 0; }
+
+    {% if modele == 2 %}
+    /* Modèle 2 — Moderne : bandeau deux tons. */
+    table.ecole-header { width: 100%; margin: 6px 0 14px 0; }
+    .ecole-header td { padding: 8px 12px; }
+    .ecole-header .bloc-nom { background-color: {{ couleur_principale }}; }
+    .ecole-header .nom { font-size: 15px; font-weight: bold; color: #ffffff; text-align: left; margin: 0; text-transform: uppercase; }
+    .ecole-header .tagline { font-size: 9px; color: #e6e9f2; text-align: left; margin: 1mm 0 0 0; }
+    .ecole-header .bloc-titre { background-color: {{ couleur_secondaire }}; text-align: right; width: 46mm; }
+    .ecole-header .titre-m2 { font-size: 11px; font-weight: bold; color: #ffffff; text-transform: uppercase; margin: 0; }
+    .titre { display: none; }
+    {% elif modele == 3 %}
+    /* Modèle 3 — Élégant : filet fin double, titre centré discret. */
+    table.ecole-header { width: 100%; border-top: 1px solid {{ couleur_principale }}; border-bottom: 1px solid {{ couleur_principale }}; padding: 8px 0; margin: 6px 0 4px 0; }
+    .ecole-header .nom { font-size: 16px; font-weight: bold; color: #1e1b2e; text-align: center; margin: 0; text-transform: uppercase; letter-spacing: 1px; }
+    .ecole-header .tagline { font-size: 9px; color: {{ couleur_secondaire }}; text-align: center; margin: 1mm 0 0 0; font-style: italic; }
+    .titre { text-align: center; font-size: 12px; font-weight: bold; margin: 8px 0 16px 0; text-transform: uppercase; letter-spacing: 1.5px; color: {{ couleur_principale }}; padding: 4px 0; border-top: 0.75px solid {{ couleur_secondaire }}; border-bottom: 0.75px solid {{ couleur_secondaire }}; }
+    {% elif modele == 4 %}
+    /* Modèle 4 — Compact : bandeau dense fusionné avec le titre. */
+    table.ecole-header { width: 100%; background-color: {{ couleur_principale }}; margin: 6px 0 12px 0; }
+    .ecole-header td { padding: 7px 12px; }
+    .ecole-header .nom { font-size: 13px; font-weight: bold; color: #ffffff; text-align: left; margin: 0; text-transform: uppercase; }
+    .ecole-header .tagline { font-size: 8.5px; color: #e6e9f2; text-align: left; margin: 0.5mm 0 0 0; }
+    .titre { display: none; }
+    {% else %}
+    /* Modèle 1 — Classique. */
+    table.ecole-header { width: 100%; border-bottom: 3px solid {{ couleur_principale }}; padding-bottom: 8px; margin: 6px 0 14px 0; }
+    .ecole-header .nom { font-size: 17px; font-weight: bold; color: {{ couleur_principale }}; text-align: center; margin: 0; text-transform: uppercase; }
+    .ecole-header .tagline { font-size: 9.5px; color: #6b7280; text-align: center; margin: 1mm 0 0 0; }
+    .titre { text-align: center; font-size: 15px; font-weight: bold; text-decoration: underline; margin-bottom: 16px; text-transform: uppercase; }
+    {% endif %}
+
+    /* Même technique de cellules d'espacement que recu_inscription_pdf.html/badge_eleve_pdf.html
+       pour le cadre (jamais de padding sur une <td>, jamais de padding CSS sur un <div>
+       enveloppant une <table> — voir les pièges déjà documentés dans ces deux fichiers). */
+    table.section { width: 180mm; border: 1px solid #e2e8f0; border-collapse: collapse; margin-bottom: 12px; }
+    .section-td { padding: 0; }
+    .section-pad-top { height: 5mm; }
+    .section-pad-bottom { height: 5mm; }
+    .section-pad-side { width: 8mm; }
+
+    .ref-code { font-size: 8.5px; color: #94a3b8; text-align: right; margin: 0 0 6px 0; padding-right: 3mm; }
+
+    table.identite { width: 100%; margin-bottom: 10px; }
+    .identite td { vertical-align: top; padding: 1.5px 0; font-size: 10.5px; text-align: center; }
+    .label { color: #374151; }
+    .valeur { font-weight: bold; color: #1e1b2e; }
+    .valeur-highlight { font-weight: bold; color: {{ couleur_secondaire }}; }
+
+    .certif-titre { text-align: center; font-size: 13px; font-weight: bold; text-transform: uppercase; letter-spacing: 1px; color: {{ couleur_principale }}; margin: 4px 0 14px 0; }
+    .certif-texte { font-size: 11.5px; line-height: 2; color: #1e1b2e; text-align: center; margin: 0 0 14px 0; }
+    .certif-texte strong { color: {{ couleur_secondaire }}; }
+
+    table.signatures { width: 100%; margin-top: 40px; }
+    .signatures td { text-align: center; font-size: 10px; color: #374151; font-weight: bold; }
+    .signatures .ligne { border-top: 1px solid #9ca3af; margin: 20px 30mm 0 30mm; padding-top: 4px; }
+    .date-lieu { text-align: right; font-style: italic; font-size: 10px; color: #4b5563; margin: 10px 0 0 0; padding-right: 3mm; }
+
+    .footer { margin-top: 30px; width: 100%; text-align: center; font-size: 8.5px; color: #94a3b8; padding-top: 8px; border-top: 1px dashed #cbd5e1; }
+</style>
+</head>
+<body>
+
+    <table class="masthead">
+        <tr>
+            <td style="width: 16mm; text-align:left;">
+                <table class="drapeau"><tr>
+                    <td style="background-color:#d21034;"></td>
+                    <td style="background-color:#ce9e17;"></td>
+                    <td style="background-color:#1a7a3c;"></td>
+                </tr></table>
+            </td>
+            <td>
+                <p class="republique">RÉPUBLIQUE DE GUINÉE</p>
+                <p class="devise"><span class="rouge">Travail</span> - <span class="jaune">Justice</span> - <span class="verte">Solidarité</span></p>
+                <div class="trait"></div>
+            </td>
+            <td style="width: 16mm;">&nbsp;</td>
+        </tr>
+    </table>
+
+    {% if modele == 2 %}
+    <table class="ecole-header">
+        <tr>
+            <td class="bloc-nom">
+                <p class="nom">{{ ecole_nom }}</p>
+                <p class="tagline">Année scolaire {{ annee_scolaire|default:"—" }}</p>
+            </td>
+            <td class="bloc-titre"><p class="titre-m2">Certificat de scolarité</p></td>
+        </tr>
+    </table>
+    {% elif modele == 4 %}
+    <table class="ecole-header">
+        <tr><td>
+            <p class="nom">{{ ecole_nom }} — Certificat de scolarité</p>
+            <p class="tagline">Année scolaire {{ annee_scolaire|default:"—" }}</p>
+        </td></tr>
+    </table>
+    {% else %}
+    <table class="ecole-header">
+        <tr><td>
+            <p class="nom">{{ ecole_nom }}</p>
+            <p class="tagline">Certificat de scolarité — Année scolaire {{ annee_scolaire|default:"—" }}</p>
+        </td></tr>
+    </table>
+    {% endif %}
+
+    {% if modele != 2 and modele != 4 %}<p class="titre">Certificat de scolarité</p>{% endif %}
+    <p class="ref-code">Réf. {{ eleve.matricule }}-{{ annee_scolaire|default:"AN" }}</p>
+
+    <table class="section" cellspacing="0" cellpadding="0">
+        <tr><td class="section-td section-pad-top" colspan="3">&nbsp;</td></tr>
+        <tr>
+            <td class="section-td section-pad-side">&nbsp;</td>
+            <td class="section-td">
+                {% if modele == 2 or modele == 4 %}<p class="certif-titre">Certificat de scolarité</p>{% endif %}
+
+                <table class="identite">
+                    <tr>
+                        <td width="50%"><span class="label">Matricule : </span><span class="valeur-highlight">{{ eleve.matricule }}</span></td>
+                        <td width="50%"><span class="label">Classe : </span><span class="valeur">{{ classe_eleve.nom|default:"Non assignée" }}</span></td>
+                    </tr>
+                </table>
+
+                <p class="certif-texte">
+                    Je soussigné(e), Chef d'établissement de <strong>{{ ecole_nom }}</strong>, certifie que
+                    l'élève <strong>{{ eleve.user.first_name|upper }} {{ eleve.user.last_name|upper }}</strong>,
+                    {% if eleve.user.date_of_birth %}né(e) le <strong>{{ eleve.user.date_of_birth|date:"d/m/Y" }}</strong>{% if eleve.lieu_naissance %} à <strong>{{ eleve.lieu_naissance }}</strong>{% endif %},{% endif %}
+                    est régulièrement inscrit(e) dans notre établissement, en classe de
+                    <strong>{{ classe_eleve.nom|default:"—" }}</strong>, au titre de l'année scolaire
+                    <strong>{{ annee_scolaire|default:"—" }}</strong>.
+                </p>
+                <p class="certif-texte">
+                    En foi de quoi, le présent certificat lui est délivré pour servir et valoir ce que de droit.
+                </p>
+            </td>
+            <td class="section-td section-pad-side">&nbsp;</td>
+        </tr>
+        <tr><td class="section-td section-pad-bottom" colspan="3">&nbsp;</td></tr>
+    </table>
+
+    <p class="date-lieu">Fait à Conakry, le {{ date_edition|date:"d/m/Y" }}</p>
+
+    <table class="signatures">
+        <tr>
+            <td width="100%">
+                <div class="ligne">LE CHEF D'ÉTABLISSEMENT</div>
+                <p style="margin-top:3mm;">Cachet &amp; signature</p>
+            </td>
+        </tr>
+    </table>
+
+    <p class="footer">Document officiel — {{ ecole_nom }}</p>
+</body>
+</html>

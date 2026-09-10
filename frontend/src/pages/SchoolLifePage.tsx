@@ -21,10 +21,10 @@ function initials(name: string) {
 }
 
 function BadgeCard({
-  photo, nom, detail, onShowQr, onDownload, onExtra, extraLabel,
+  photo, nom, detail, onShowQr, onDownload, onDownloadPvc, onExtra, extraLabel,
 }: {
   photo: string | null; nom: string; detail: string; onShowQr: () => void; onDownload: () => void;
-  onExtra?: () => void; extraLabel?: string;
+  onDownloadPvc?: () => void; onExtra?: () => void; extraLabel?: string;
 }) {
   return (
     <div className="flex items-center gap-3 border-b border-slate-100 py-3 last:border-0">
@@ -42,6 +42,11 @@ function BadgeCard({
       <div className="flex gap-2 shrink-0">
         <button className="text-xs font-semibold text-brand-700 hover:underline" onClick={onShowQr}>QR</button>
         <button className="text-xs font-semibold text-brand-700 hover:underline" onClick={onDownload}>Badge PDF</button>
+        {onDownloadPvc && (
+          <button className="text-xs font-semibold text-brand-700 hover:underline" onClick={onDownloadPvc} title="Format carte PVC CR80 (85,6×54mm), taille exacte">
+            💳 Format PVC
+          </button>
+        )}
         {onExtra && <button className="text-xs font-semibold text-amber-700 hover:underline" onClick={onExtra}>{extraLabel}</button>}
       </div>
     </div>
@@ -335,6 +340,7 @@ export default function SchoolLifePage() {
                 detail={`Élève · émis le ${new Date(badge.emis_le).toLocaleDateString("fr-FR")}`}
                 onShowQr={() => showQr("eleve", badge.id)}
                 onDownload={() => downloadBadge("eleve", badge.id, badge.eleve_nom)}
+                onDownloadPvc={() => badgesApi.pdfPvc(badge.id, `badge_pvc_${badge.eleve_nom.replace(/\s+/g, "_")}.pdf`)}
                 extraLabel="🎒 Autorisation"
                 onExtra={() =>
                   badgesApi

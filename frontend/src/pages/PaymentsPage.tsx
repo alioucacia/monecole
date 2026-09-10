@@ -16,17 +16,70 @@ const STATUT_LABELS: Record<string, { label: string; color: "green" | "amber" | 
   impaye: { label: "Impayé", color: "rose" },
 };
 
+const MODE_PAIEMENT_LABELS: Record<string, string> = {
+  especes: "Espèces",
+  cheque: "Chèque",
+  virement: "Virement",
+  mobile_money: "Mobile Money",
+};
+
 function money(value: number | string) {
   return `${Number(value).toLocaleString("fr-FR")} GNF`;
 }
 
-const emptyFraisForm = { eleve: "", type_frais: "", annee_scolaire: "", montant: "", date_echeance: "" };
+const emptyFraisForm = { eleve: "", type_frais: "", annee_scolaire: "", montant: "", date_echeance: "", mois_echeance: "" };
+
+const MOIS_NOMS = [
+  "Janvier", "Février", "Mars", "Avril", "Mai", "Juin",
+  "Juillet", "Août", "Septembre", "Octobre", "Novembre", "Décembre",
+];
+
+/** Calcule la date d'échéance (1er du mois choisi) à partir du mois ("01".."12") et de l'année
+ * scolaire sélectionnée — une année scolaire chevauche deux années calendaires (ex: sept. 2025 à
+ * juin 2026), donc le mois seul ne suffit pas à déterminer l'année : on la déduit de celle de
+ * l'année scolaire (avant le mois de rentrée → année de fin, sinon → année de début). */
+function echeanceDuMois(annee: AnneeScolaire, mois: string): string {
+  const moisDebut = Number(annee.date_debut.slice(5, 7));
+  const anneeDebut = Number(annee.date_debut.slice(0, 4));
+  const anneeCalendaire = Number(mois) >= moisDebut ? anneeDebut : anneeDebut + 1;
+  return `${anneeCalendaire}-${mois}-01`;
+}
 const emptyPaiementForm = { montant: "", mode_paiement: "especes", reference: "", mois: "" };
 const emptyTypeForm = { nom: "", montant_standard: "", est_mensuel: false };
 
 /** "2026-09" (valeur d'un <input type="month">) → "2026-09-01" attendu par l'API. */
 function moisInputVersDate(moisInput: string) {
   return moisInput ? `${moisInput}-01` : "";
+}
+
+/** Liste des mois ("2025-09", "2025-10"...) entre le début et la fin d'une année scolaire, pour
+ * peupler la liste déroulante de choix du mois payé — au lieu de laisser un <input type="month">
+ * libre où l'on pouvait taper n'importe quel mois, y compris hors année scolaire. */
+function moisDeLAnnee(annee: AnneeScolaire): string[] {
+  const mois: string[] = [];
+  let courant = new Date(annee.date_debut);
+  courant = new Date(courant.getFullYear(), courant.getMonth(), 1);
+  const fin = new Date(annee.date_fin);
+  while (courant <= fin) {
+    mois.push(`${courant.getFullYear()}-${String(courant.getMonth() + 1).padStart(2, "0")}`);
+    courant = new Date(courant.getFullYear(), courant.getMonth() + 1, 1);
+  }
+  return mois;
+}
+
+function moisLabelLong(mois: string) {
+  const [annee, m] = mois.split("-");
+  return new Date(Number(annee), Number(m) - 1, 1).toLocaleDateString("fr-FR", { month: "long", year: "numeric" });
+}
+
+/** Statut d'un mois donné pour un frais mensuel : déjà intégralement payé (ne peut plus recevoir
+ * de paiement — voir PaiementSerializer.validate côté backend), partiellement payé, ou libre. */
+function statutMoisPourFrais(frais: Frais, mois: string): "paye" | "partiel" | "libre" {
+  const paye = frais.paiements
+    .filter((p) => p.mois && p.mois.startsWith(mois))
+    .reduce((sum, p) => sum + Number(p.montant), 0);
+  if (paye <= 0) return "libre";
+  return paye >= Number(frais.montant_du) ? "paye" : "partiel";
 }
 
 export default function PaymentsPage() {
@@ -55,11 +108,16 @@ export default function PaymentsPage() {
   const [paiementError, setPaiementError] = useState("");
   const [paiementSaving, setPaiementSaving] = useState(false);
 
+  const [historiqueTarget, setHistoriqueTarget] = useState<Frais | null>(null);
+  const [paiementDeletingId, setPaiementDeletingId] = useState<number | null>(null);
+
   const [typesModalOpen, setTypesModalOpen] = useState(false);
   const [typeEditTarget, setTypeEditTarget] = useState<TypeFrais | null>(null);
   const [typeForm, setTypeForm] = useState(emptyTypeForm);
   const [typeError, setTypeError] = useState("");
   const [typeSaving, setTypeSaving] = useState(false);
+
+  const [fraisDeletingId, setFraisDeletingId] = useState<number | null>(null);
 
   const [exporting, setExporting] = useState(false);
   const [exportingFiches, setExportingFiches] = useState(false);
@@ -185,13 +243,26 @@ export default function PaymentsPage() {
     }
   };
 
+  const handleDeleteFrais = async (frais: Frais) => {
+    if (!confirm(`Supprimer le frais « ${frais.type_frais_nom} » de ${frais.eleve_nom} ? Cette action est irréversible.`)) return;
+    setFraisDeletingId(frais.id);
+    try {
+      await fraisApi.remove(frais.id);
+      reload();
+      loadSummary();
+      toast.success("Frais supprimé.");
+    } catch (err) {
+      toast.error(extractErrorMessage(err));
+    } finally {
+      setFraisDeletingId(null);
+    }
+  };
+
   const openPaiementModal = (frais: Frais) => {
     setPaiementTarget(frais);
     setPaiementForm({ ...emptyPaiementForm, montant: frais.solde });
     setPaiementError("");
   };
-
-  const moisDejaCouverts = (frais: Frais) => new Set(frais.paiements.filter((p) => p.mois).map((p) => p.mois));
 
   const handlePaiementSubmit = async (e: FormEvent) => {
     e.preventDefault();
@@ -211,6 +282,24 @@ export default function PaymentsPage() {
       setPaiementError(extractErrorMessage(err));
     } finally {
       setPaiementSaving(false);
+    }
+  };
+
+  const handleDeletePaiement = async (paiement: Frais["paiements"][number]) => {
+    if (!confirm(`Supprimer ce paiement de ${money(paiement.montant)} ? Cette action est irréversible.`)) return;
+    setPaiementDeletingId(paiement.id);
+    try {
+      await paiementsApi.remove(paiement.id);
+      // Mise à jour optimiste de la modale ouverte (montant_paye/solde n'y sont pas recalculés
+      // localement — reload()/loadSummary() rafraîchissent la liste et les totaux en arrière-plan).
+      setHistoriqueTarget((prev) => prev && { ...prev, paiements: prev.paiements.filter((p) => p.id !== paiement.id) });
+      reload();
+      loadSummary();
+      toast.success("Paiement supprimé.");
+    } catch (err) {
+      toast.error(extractErrorMessage(err));
+    } finally {
+      setPaiementDeletingId(null);
     }
   };
 
@@ -277,6 +366,9 @@ export default function PaymentsPage() {
             </Link>
             <Link to="/paiements/suivi-mensuel">
               <Button variant="secondary">📅 Suivi mensuel</Button>
+            </Link>
+            <Link to="/paiements/recherche-matricule">
+              <Button variant="secondary">🔍 Recherche par matricule</Button>
             </Link>
             <Link to="/paiements/tarifs-classe">
               <Button variant="secondary">💰 Tarifs par classe</Button>
@@ -357,6 +449,9 @@ export default function PaymentsPage() {
                     {peutGerer && Number(f.solde) > 0 && (
                       <button onClick={() => openPaiementModal(f)} className="text-brand-600 hover:underline text-sm">Encaisser</button>
                     )}
+                    {peutGerer && f.paiements.length > 0 && (
+                      <button onClick={() => setHistoriqueTarget(f)} className="text-brand-600 hover:underline text-sm">📜 Historique</button>
+                    )}
                     {Number(f.montant_paye) > 0 && (
                       <button
                         onClick={() => handleDownloadFiche(f)}
@@ -373,6 +468,15 @@ export default function PaymentsPage() {
                     >
                       {proformaPendingId === f.id ? "…" : "📄 Proforma"}
                     </button>
+                    {peutGerer && f.statut === "impaye" && (
+                      <button
+                        onClick={() => handleDeleteFrais(f)}
+                        disabled={fraisDeletingId === f.id}
+                        className="text-rose-600 hover:underline text-sm disabled:opacity-50"
+                      >
+                        {fraisDeletingId === f.id ? "…" : "Supprimer"}
+                      </button>
+                    )}
                   </div>
                 </td>
               </tr>
@@ -398,12 +502,34 @@ export default function PaymentsPage() {
             <option value="">— Sélectionner —</option>
             {types.map((t) => <option key={t.id} value={t.id}>{t.nom}</option>)}
           </Select>
-          <Select label="Année scolaire" required value={fraisForm.annee_scolaire} onChange={(e) => setFraisForm({ ...fraisForm, annee_scolaire: e.target.value })}>
+          <Select label="Année scolaire" required value={fraisForm.annee_scolaire} onChange={(e) => {
+            const annee = annees.find((a) => a.id === Number(e.target.value));
+            setFraisForm({
+              ...fraisForm, annee_scolaire: e.target.value,
+              date_echeance: annee && fraisForm.mois_echeance ? echeanceDuMois(annee, fraisForm.mois_echeance) : fraisForm.date_echeance,
+            });
+          }}>
             <option value="">— Sélectionner —</option>
             {annees.map((a) => <option key={a.id} value={a.id}>{a.libelle}</option>)}
           </Select>
           <Input label="Montant (GNF)" type="number" min={0} required value={fraisForm.montant} onChange={(e) => setFraisForm({ ...fraisForm, montant: e.target.value })} />
-          <Input label="Date d'échéance" type="date" required value={fraisForm.date_echeance} onChange={(e) => setFraisForm({ ...fraisForm, date_echeance: e.target.value })} />
+          <Select label="Mois d'échéance" value={fraisForm.mois_echeance} onChange={(e) => {
+            const annee = annees.find((a) => a.id === Number(fraisForm.annee_scolaire));
+            setFraisForm({
+              ...fraisForm, mois_echeance: e.target.value,
+              date_echeance: annee && e.target.value ? echeanceDuMois(annee, e.target.value) : fraisForm.date_echeance,
+            });
+          }}>
+            <option value="">— Choisir un mois (optionnel) —</option>
+            {MOIS_NOMS.map((nom, i) => <option key={nom} value={String(i + 1).padStart(2, "0")}>{nom}</option>)}
+          </Select>
+          <Input
+            label="Date d'échéance"
+            type="date"
+            required
+            value={fraisForm.date_echeance}
+            onChange={(e) => setFraisForm({ ...fraisForm, date_echeance: e.target.value, mois_echeance: "" })}
+          />
 
           {fraisError && <p className="text-sm text-rose-600 bg-rose-50 border border-rose-100 rounded-xl px-3.5 py-2.5">{fraisError}</p>}
 
@@ -427,18 +553,29 @@ export default function PaymentsPage() {
             </Select>
             {paiementTarget.type_frais_est_mensuel && (
               <div>
-                <Input
-                  label="Mois de scolarité couvert (optionnel)"
-                  type="month"
+                <Select
+                  label="Mois de scolarité payé (optionnel)"
                   value={paiementForm.mois}
                   onChange={(e) => setPaiementForm({ ...paiementForm, mois: e.target.value })}
-                />
+                >
+                  <option value="">— Aucun mois précis —</option>
+                  {(() => {
+                    const annee = annees.find((a) => a.id === paiementTarget.annee_scolaire);
+                    if (!annee) return null;
+                    return moisDeLAnnee(annee).map((mois) => {
+                      const statut = statutMoisPourFrais(paiementTarget, mois);
+                      return (
+                        <option key={mois} value={mois} disabled={statut === "paye"}>
+                          {moisLabelLong(mois)}
+                          {statut === "paye" ? " — déjà payé" : statut === "partiel" ? " — partiellement payé" : ""}
+                        </option>
+                      );
+                    });
+                  })()}
+                </Select>
                 <p className="text-xs text-slate-400 mt-1">
-                  Ce frais est mensuel — précisez le mois payé pour alimenter le{" "}
+                  Ce frais est mensuel — choisissez le mois payé pour alimenter le{" "}
                   <Link to="/paiements/suivi-mensuel" className="text-brand-600 hover:underline">suivi mensuel</Link>.
-                  {moisDejaCouverts(paiementTarget).size > 0 && (
-                    <> Déjà couverts : {[...moisDejaCouverts(paiementTarget)].sort().join(", ")}.</>
-                  )}
                 </p>
               </div>
             )}
@@ -451,6 +588,40 @@ export default function PaymentsPage() {
               <Button type="submit" disabled={paiementSaving}>{paiementSaving ? "Enregistrement…" : "Confirmer"}</Button>
             </div>
           </form>
+        )}
+      </Modal>
+
+      <Modal open={!!historiqueTarget} onClose={() => setHistoriqueTarget(null)} title={`Historique des paiements — ${historiqueTarget?.eleve_nom ?? ""}`}>
+        {historiqueTarget && (
+          historiqueTarget.paiements.length === 0 ? (
+            <EmptyState title="Aucun paiement sur ce frais" />
+          ) : (
+            <Table headers={["Date", "Montant", "Mode", "Mois", "Référence", "Enregistré par", ...(user?.role === "admin" ? [""] : [])]}>
+              {[...historiqueTarget.paiements]
+                .sort((a, b) => b.date_paiement.localeCompare(a.date_paiement))
+                .map((p) => (
+                  <tr key={p.id}>
+                    <td className="px-4 py-2.5 text-slate-500">{new Date(p.date_paiement).toLocaleDateString("fr-FR")}</td>
+                    <td className="px-4 py-2.5 font-medium">{money(p.montant)}</td>
+                    <td className="px-4 py-2.5">{MODE_PAIEMENT_LABELS[p.mode_paiement] ?? p.mode_paiement}</td>
+                    <td className="px-4 py-2.5">{p.mois ? new Date(p.mois).toLocaleDateString("fr-FR", { month: "short", year: "numeric" }) : "—"}</td>
+                    <td className="px-4 py-2.5 text-slate-500">{p.reference || "—"}</td>
+                    <td className="px-4 py-2.5 text-slate-500">{p.enregistre_par_nom || "—"}</td>
+                    {user?.role === "admin" && (
+                      <td className="px-4 py-2.5">
+                        <button
+                          onClick={() => handleDeletePaiement(p)}
+                          disabled={paiementDeletingId === p.id}
+                          className="text-rose-600 hover:underline text-sm disabled:opacity-50"
+                        >
+                          {paiementDeletingId === p.id ? "…" : "Supprimer"}
+                        </button>
+                      </td>
+                    )}
+                  </tr>
+                ))}
+            </Table>
+          )
         )}
       </Modal>
 

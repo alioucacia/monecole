@@ -7,6 +7,7 @@ from rest_framework import generics, status, viewsets
 from rest_framework.decorators import action
 from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.response import Response
+from rest_framework.throttling import ScopedRateThrottle
 from rest_framework.views import APIView
 from rest_framework_simplejwt.tokens import RefreshToken
 from rest_framework_simplejwt.views import TokenObtainPairView, TokenRefreshView
@@ -30,6 +31,11 @@ from .serializers import (
 
 class LoginView(TokenObtainPairView):
     serializer_class = CustomTokenObtainPairSerializer
+    # Limite dédiée (voir DEFAULT_THROTTLE_RATES["login"]) — sans ça, seule la limite "anon"
+    # générique s'appliquait (partagée avec toutes les routes anonymes), ce qui laissait un
+    # budget bien trop large pour du brute-force ciblé sur un seul compte.
+    throttle_classes = [ScopedRateThrottle]
+    throttle_scope = "login"
 
 
 class CustomTokenRefreshView(TokenRefreshView):

@@ -97,6 +97,8 @@ export interface Ecole {
   modele_bulletin_display: string;
   modele_fiche_inscription: number;
   modele_fiche_inscription_display: string;
+  modele_certificat: number;
+  modele_certificat_display: string;
 }
 
 /** Les 4 modèles de mise en page disponibles pour chaque document personnalisable (voir
@@ -311,6 +313,10 @@ export interface Classe {
   professeur_principal_nom: string | null;
   capacite: number;
   effectif: number;
+  /** capacite - effectif, jamais négatif — 0 signifie complet (voir ClasseOptions/CycleSelect
+   * pour l'affichage, et EleveProfileWriteSerializer.validate_classe côté backend qui bloque
+   * l'inscription dans ce cas). */
+  places_disponibles: number;
 }
 
 export interface Enseignement {
@@ -625,6 +631,67 @@ export interface Paiement {
   enregistre_par_nom: string | null;
 }
 
+/** Catégorie de dépense propre à chaque école, librement gérée par son administrateur — voir
+ * categoriesDepenseApi (CRUD). Un jeu de départ est créé automatiquement pour chaque école. */
+export interface CategorieDepense {
+  id: number;
+  nom: string;
+}
+
+export interface Depense {
+  id: number;
+  date: string;
+  categorie: number;
+  categorie_nom: string;
+  motif: string;
+  montant: string;
+  mode_paiement: "especes" | "cheque" | "virement" | "mobile_money";
+  mode_paiement_display: string;
+  reference: string;
+  responsable: string;
+  enregistre_par: number | null;
+  enregistre_par_nom: string | null;
+  justificatif: string | null;
+  commentaire: string;
+}
+
+/** Une ligne (rentrée ou sortie) du tableau de bord Caisse — voir CaisseRapport. */
+export interface CaisseRentree {
+  id: number;
+  date: string;
+  eleve_nom: string;
+  type_frais_nom: string;
+  montant: string;
+  mode_paiement: string;
+  mode_paiement_display: string;
+  reference: string;
+  enregistre_par_nom: string | null;
+}
+
+export interface CaisseSortie {
+  id: number;
+  date: string;
+  categorie: number;
+  categorie_nom: string;
+  motif: string;
+  montant: string;
+  mode_paiement: string;
+  mode_paiement_display: string;
+  reference: string;
+  responsable: string;
+  enregistre_par_nom: string | null;
+}
+
+export interface CaisseRapport {
+  date_debut: string;
+  date_fin: string;
+  total_rentrees: string;
+  total_sorties: string;
+  solde: string;
+  rentrees: CaisseRentree[];
+  sorties: CaisseSortie[];
+}
+
 export interface SuiviMensuelMois {
   mois: string;
   montant_du: string;
@@ -826,6 +893,40 @@ export interface Message {
   fichier_url: string | null;
   date_envoi: string;
   lu: boolean;
+}
+
+export type StatutTicket = "ouvert" | "en_cours" | "resolu" | "ferme";
+export type PrioriteTicket = "basse" | "normale" | "haute" | "urgente";
+
+export interface Ticket {
+  id: number;
+  ecole: number | null;
+  ecole_nom: string | null;
+  auteur: number;
+  auteur_nom: string;
+  auteur_role: string;
+  sujet: string;
+  statut: StatutTicket;
+  statut_display: string;
+  priorite: PrioriteTicket;
+  priorite_display: string;
+  cree_le: string;
+  maj_le: string;
+  assigne_a: number | null;
+  assigne_a_nom: string | null;
+  nombre_messages: number;
+}
+
+export interface MessageTicket {
+  id: number;
+  ticket: number;
+  auteur: number;
+  auteur_nom: string;
+  auteur_role: string;
+  contenu: string;
+  fichier_nom: string | null;
+  fichier_url: string | null;
+  cree_le: string;
 }
 
 export interface Participant {

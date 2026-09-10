@@ -40,6 +40,13 @@ class User(AbstractUser):
         help_text="Force le changement de mot de passe à la prochaine connexion — "
                    "activé à la création du compte ou après une réinitialisation par un administrateur.",
     )
+    # Session unique (actuellement appliqué au seul rôle admin — voir CustomTokenObtainPairSerializer
+    # et PlateformeJWTAuthentication) : régénéré à chaque connexion et embarqué comme revendication
+    # dans le jeton JWT. Un jeton dont la revendication ne correspond plus à cette valeur (parce
+    # qu'une connexion plus récente a eu lieu ailleurs, régénérant ce champ) est rejeté — un admin
+    # ne peut donc jamais avoir deux sessions valides en même temps, la plus récente invalide
+    # automatiquement toute session précédente.
+    session_id = models.CharField(max_length=64, blank=True, editable=False)
 
     class Meta:
         ordering = ["last_name", "first_name"]

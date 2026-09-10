@@ -6,11 +6,20 @@ from pathlib import Path
 
 import dj_database_url
 from decouple import Csv, config
+from django.core.exceptions import ImproperlyConfigured
 
 BASE_DIR = Path(__file__).resolve().parent.parent
 
-SECRET_KEY = config("SECRET_KEY", default="dev-secret-key-change-in-production")
 DEBUG = config("DEBUG", default=True, cast=bool)
+# Valeur par défaut « pratique » réservée au développement (DEBUG=True) — en production, exiger
+# la variable d'environnement plutôt que de retomber silencieusement sur une clé connue/publique
+# (visible dans ce fichier) échouerait à protéger sessions/tokens signés avec Django.
+SECRET_KEY = config("SECRET_KEY", default="dev-secret-key-change-in-production" if DEBUG else None)
+if not SECRET_KEY:
+    raise ImproperlyConfigured(
+        "SECRET_KEY doit être défini (variable d'environnement) dès que DEBUG=False — "
+        "voir .env.prod / DEPLOYMENT.md."
+    )
 ALLOWED_HOSTS = config("DJANGO_ALLOWED_HOSTS", default="*", cast=Csv())
 
 INSTALLED_APPS = [
@@ -40,6 +49,7 @@ INSTALLED_APPS = [
     "visio",
     "tenants",
     "core",
+    "support",
 ]
 
 MIDDLEWARE = [
@@ -112,6 +122,13 @@ STATIC_ROOT = BASE_DIR / "staticfiles"
 MEDIA_URL = "media/"
 MEDIA_ROOT = BASE_DIR / "media"
 
+# Garde-fou général sur la taille des requêtes/fichiers uploadés — Django n'en impose aucun par
+# défaut pour les fichiers d'un formulaire multipart (seul le corps hors-fichiers est limité par
+# défaut, à 2.5 Mo). Ceci est un filet de sécurité au-delà des validations dédiées par champ (voir
+# core.validators, ex: 15 Mo pour une pièce jointe) — protège un endpoint qui n'en aurait pas.
+DATA_UPLOAD_MAX_MEMORY_SIZE = 20 * 1024 * 1024  # 20 Mo
+FILE_UPLOAD_MAX_MEMORY_SIZE = 20 * 1024 * 1024  # 20 Mo
+
 # STORAGES["staticfiles"] active la compression + le manifeste cache-busting de whitenoise
 # (voir Dockerfile : `collectstatic` tourne à la construction de l'image). "default" (fichiers
 # uploadés — logos, photos) reste le stockage disque standard de Django ; le déporter vers un
@@ -171,6 +188,10 @@ REST_FRAMEWORK = {
     "DEFAULT_THROTTLE_RATES": {
         "anon": config("THROTTLE_RATE_ANON", default="100/minute"),
         "user": config("THROTTLE_RATE_USER", default="1000/minute"),
+        # Limite dédiée à la connexion (voir accounts.views.LoginView) — la limite "anon"
+        # ci-dessus est générique et partagée avec toutes les routes anonymes, ce qui laisse
+        # en pratique un budget bien trop large pour du brute-force ciblé sur un seul compte.
+        "login": config("THROTTLE_RATE_LOGIN", default="10/minute"),
     },
 }
 
@@ -236,3 +257,7 @@ TWILIO_ACCOUNT_SID = config("TWILIO_ACCOUNT_SID", default="")
 TWILIO_AUTH_TOKEN = config("TWILIO_AUTH_TOKEN", default="")
 TWILIO_FROM_NUMBER = config("TWILIO_FROM_NUMBER", default="")
 TWILIO_INDICATIF_DEFAUT = config("TWILIO_INDICATIF_DEFAUT", default="+224")
+# WhatsApp (même compte Twilio que le SMS ci-dessus) — laisser vide pour des messages simulés ;
+# renseigner un numéro WhatsApp-activé (sandbox Twilio en test, numéro validé par Meta en
+# production) pour un envoi réel. Voir people/sms.py::send_whatsapp.
+TWILIO_WHATSAPP_FROM_NUMBER = config("TWILIO_WHATSAPP_FROM_NUMBER", default="")

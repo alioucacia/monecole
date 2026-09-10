@@ -49,3 +49,62 @@ export function useOnlineStatus() {
   }, []);
   return online;
 }
+
+/** Chrome/Edge déclenchent cet évènement (non standardisé dans lib.dom.d.ts) quand l'app est
+ * installable — capturé au chargement du script (avant même le montage de React, comme
+ * `initPwa` ci-dessus) pour ne jamais rater l'évènement s'il arrive tôt. */
+interface BeforeInstallPromptEvent extends Event {
+  prompt(): Promise<void>;
+  userChoice: Promise<{ outcome: "accepted" | "dismissed" }>;
+}
+
+let installPromptEvent: BeforeInstallPromptEvent | null = null;
+let installAvailable = false;
+const installListeners = new Set<() => void>();
+
+function notifyInstallListeners() {
+  installListeners.forEach((fn) => fn());
+}
+
+if (typeof window !== "undefined") {
+  window.addEventListener("beforeinstallprompt", (e) => {
+    e.preventDefault(); // supprime la mini-barre native du navigateur : on affiche notre propre popup
+    installPromptEvent = e as BeforeInstallPromptEvent;
+    installAvailable = true;
+    notifyInstallListeners();
+  });
+  window.addEventListener("appinstalled", () => {
+    installPromptEvent = null;
+    installAvailable = false;
+    notifyInstallListeners();
+  });
+}
+
+/** Signale quand l'app peut être proposée à l'installation, et expose `promptInstall()` pour
+ * déclencher le popup natif du navigateur (voir InstallPromptModal, qui l'entoure d'une
+ * explication). `available` redevient `false` après une installation réussie (évènement
+ * `appinstalled` ci-dessus) ou après un premier appel à `promptInstall` (le navigateur n'autorise
+ * qu'une seule utilisation de l'évènement capturé). */
+export function useInstallPrompt() {
+  const [available, setAvailable] = useState(installAvailable);
+  useEffect(() => {
+    const listener = () => setAvailable(installAvailable);
+    installListeners.add(listener);
+    return () => {
+      installListeners.delete(listener);
+    };
+  }, []);
+
+  const promptInstall = async (): Promise<"accepted" | "dismissed" | "unavailable"> => {
+    if (!installPromptEvent) return "unavailable";
+    const evt = installPromptEvent;
+    installPromptEvent = null;
+    installAvailable = false;
+    notifyInstallListeners();
+    await evt.prompt();
+    const { outcome } = await evt.userChoice;
+    return outcome;
+  };
+
+  return { available, promptInstall };
+}

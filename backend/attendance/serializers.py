@@ -1,5 +1,7 @@
 from rest_framework import serializers
 
+from core.validators import EXTENSIONS_DOCUMENT, TAILLE_MAX_DOCUMENT, valider_taille_fichier
+
 from .models import JustificatifAbsence, Presence
 
 
@@ -45,6 +47,9 @@ class JustificatifAbsenceSerializer(serializers.ModelSerializer):
             "commentaire_traitement", "cree_le",
         ]
         read_only_fields = ["statut", "soumis_par", "traite_par", "commentaire_traitement", "cree_le"]
+
+    def validate_piece_jointe(self, value):
+        return valider_taille_fichier(value, TAILLE_MAX_DOCUMENT, EXTENSIONS_DOCUMENT)
 
 
 class TraiterJustificatifSerializer(serializers.Serializer):

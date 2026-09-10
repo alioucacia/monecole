@@ -1,7 +1,10 @@
-from decimal import Decimal
+from datetime import date
+from decimal import ROUND_HALF_UP, Decimal
 
 from django.conf import settings
 from django.db import models
+from django.db.models.signals import post_save
+from django.dispatch import receiver
 
 from academics.models import AnneeScolaire, Classe
 from people.models import EleveProfile
@@ -51,6 +54,12 @@ class Frais(models.Model):
     annee_scolaire = models.ForeignKey(AnneeScolaire, on_delete=models.CASCADE, related_name="frais")
     montant = models.DecimalField(max_digits=10, decimal_places=2)
     date_echeance = models.DateField()
+    # Figé au premier paiement encaissé sur ce frais (voir PaiementViewSet.perform_create), à la
+    # valeur de `eleve.facteur_mensualite` à cet instant — reste `None` tant qu'aucun paiement n'a
+    # été fait (le frais suit alors la réduction courante, toujours modifiable). Une fois figé, un
+    # changement ultérieur de catégorie de paiement de l'élève n'affecte plus ce frais : la
+    # réduction ne s'applique jamais à une somme déjà versée (voir `montant_du` ci-dessous).
+    facteur_applique = models.DecimalField(max_digits=4, decimal_places=3, null=True, blank=True)
 
     class Meta:
         ordering = ["-date_echeance"]
@@ -64,27 +73,31 @@ class Frais(models.Model):
     def montant_du(self) -> Decimal:
         """Montant réellement dû, compte tenu d'une éventuelle réduction — `self.montant` reste
         toujours le tarif standard (utile pour reproduire un frais identique l'année suivante,
-        ou juste voir le tarif de référence), la réduction n'y est jamais figée (voir
-        `EleveProfile.facteur_mensualite` : recalculée à la volée pour rester à jour même si la
-        catégorie de paiement de l'élève change après coup). Seuls les frais mensuels (scolarité)
-        sont concernés — les autres types (cantine, transport, inscription...) restent dus
-        intégralement quelle que soit la catégorie de l'élève.
+        ou juste voir le tarif de référence). Seuls les frais mensuels (scolarité) sont concernés
+        — les autres types (cantine, transport, inscription...) restent dus intégralement quelle
+        que soit la catégorie de l'élève.
 
-        AVANT ce correctif, `solde`/`statut` ci-dessous se basaient directement sur `self.montant`
-        (le tarif plein) : un élève « Fondation 50% » ou avec la réduction fidélité de 5% se
-        voyait donc réclamer/afficher le montant intégral partout où ce frais est utilisé (liste
-        des frais, encaissement d'un paiement, fiche de paiement PDF) — seul le rapport séparé
-        « suivi mensuel » (`_calculer_suivi_mensuel`) appliquait déjà correctement la réduction.
+        AVANT un premier correctif, `solde`/`statut` ci-dessous se basaient directement sur
+        `self.montant` (le tarif plein) : un élève « Fondation 50% » ou avec la réduction fidélité
+        de 5% se voyait donc réclamer/afficher le montant intégral partout où ce frais est utilisé
+        (liste des frais, encaissement d'un paiement, fiche de paiement PDF).
 
-        Le montant dû ne redescend jamais en dessous de ce qui a déjà été payé (`max(...,
-        self.montant_paye)`) : la réduction ne s'applique donc plus à une somme déjà versée. Sans
-        ce plancher, changer la catégorie de paiement de l'élève APRÈS des paiements déjà encaissés
-        recalculerait rétroactivement le montant dû — un frais déjà soldé au tarif plein
-        repasserait « impayé/partiel » si la réduction est retirée après coup, ou au contraire
-        deviendrait « payé en trop » si une réduction est accordée après coup."""
+        Tant qu'aucun paiement n'a été encaissé sur ce frais, la réduction appliquée est celle
+        actuelle de l'élève (`facteur_applique` vaut `None`, recalculée à la volée à chaque appel).
+        Dès le PREMIER paiement, `facteur_applique` est figé (voir `PaiementViewSet.perform_create`)
+        à la réduction en vigueur à cet instant — un changement de catégorie de paiement ultérieur
+        n'affecte alors plus ce frais : la réduction ne s'applique jamais à une somme déjà versée.
+        Sans ce gel, changer la catégorie de l'élève après des paiements déjà encaissés recalculait
+        rétroactivement le montant dû — un mois déjà soldé au tarif réduit repassait « impayé/
+        partiel » dès que la réduction était retirée après coup (ou l'inverse en l'accordant)."""
         if not self.type_frais.est_mensuel:
             return self.montant
-        return max(self.montant * self.eleve.facteur_mensualite, self.montant_paye)
+        facteur = self.facteur_applique if self.facteur_applique is not None else self.eleve.facteur_mensualite
+        # `facteur` a 3 décimales (voir facteur_applique/EleveProfile.facteur_mensualite) : sans
+        # arrondi, le produit hérite de ces 3 décimales et dépasse les 2 autorisées par
+        # Paiement.montant, ce qui rejette avec une erreur de validation tout paiement dont le
+        # montant est repris tel quel depuis ce calcul (ex: "payer le solde exact du mois").
+        return (self.montant * facteur).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
 
     @property
     def montant_paye(self):
@@ -132,3 +145,74 @@ class Paiement(models.Model):
 
     def __str__(self):
         return f"{self.frais.eleve} - {self.montant} ({self.date_paiement})"
+
+
+# Catégories créées automatiquement pour chaque école (voir le signal plus bas) — un point de
+# départ raisonnable, que l'administrateur peut ensuite renommer, compléter ou supprimer depuis
+# CategorieDepenseViewSet (rien de figé côté code, contrairement à l'ancien Depense.Categorie
+# à choix fixes que ce modèle remplace).
+CATEGORIES_DEPENSE_PAR_DEFAUT = [
+    "Fournitures scolaires", "Entretien / Réparations", "Salaires (hors enseignants)",
+    "Eau / Électricité / Internet", "Transport", "Restauration / Cantine", "Événement scolaire", "Autre",
+]
+
+
+class CategorieDepense(models.Model):
+    """Catégorie de dépense, propre à chaque école et librement gérée par son administrateur
+    (contrairement aux choix fixes qu'elle remplace) — voir CATEGORIES_DEPENSE_PAR_DEFAUT pour
+    le jeu de départ créé automatiquement à la création de l'école."""
+
+    ecole = models.ForeignKey("tenants.Ecole", on_delete=models.CASCADE, related_name="categories_depense")
+    nom = models.CharField(max_length=100)
+
+    class Meta:
+        unique_together = ["ecole", "nom"]
+        ordering = ["nom"]
+        verbose_name = "Catégorie de dépense"
+        verbose_name_plural = "Catégories de dépense"
+
+    def __str__(self):
+        return self.nom
+
+
+@receiver(post_save, sender="tenants.Ecole")
+def creer_categories_depense_par_defaut(sender, instance, created, **kwargs):
+    if created:
+        CategorieDepense.objects.bulk_create(
+            [CategorieDepense(ecole=instance, nom=nom) for nom in CATEGORIES_DEPENSE_PAR_DEFAUT],
+            ignore_conflicts=True,
+        )
+
+
+class Depense(models.Model):
+    """Une sortie de caisse de l'établissement (hors salaires enseignants, gérés séparément dans
+    `people.PaieEnseignant`) : fournitures, entretien, factures... — le pendant de `Paiement`
+    (une rentrée) pour le tableau de bord Caisse (voir `CaisseView`)."""
+
+    ecole = models.ForeignKey("tenants.Ecole", on_delete=models.CASCADE, related_name="depenses")
+    date = models.DateField(default=date.today, help_text="Date effective de la dépense (modifiable — saisie possible a posteriori)")
+    categorie = models.ForeignKey(
+        CategorieDepense, on_delete=models.PROTECT, related_name="depenses",
+        help_text="Catégories gérées par l'établissement — voir CategorieDepenseViewSet",
+    )
+    motif = models.CharField(max_length=255)
+    montant = models.DecimalField(max_digits=10, decimal_places=2)
+    mode_paiement = models.CharField(max_length=20, choices=Paiement.ModePaiement.choices, default=Paiement.ModePaiement.ESPECES)
+    reference = models.CharField(max_length=100, blank=True)
+    # Texte libre plutôt qu'une FK vers un compte utilisateur : la personne qui a autorisé/émis la
+    # dépense (ex: le Directeur) n'a pas forcément de compte dans l'application.
+    responsable = models.CharField(max_length=150, help_text="Personne responsable ayant autorisé/émis cette dépense")
+    enregistre_par = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, related_name="depenses_enregistrees",
+        help_text="Utilisateur ayant saisi la dépense dans l'application (traçabilité, distinct du responsable ci-dessus)",
+    )
+    justificatif = models.FileField(upload_to="depenses/", blank=True, null=True)
+    commentaire = models.CharField(max_length=255, blank=True)
+
+    class Meta:
+        ordering = ["-date", "-id"]
+        verbose_name = "Dépense"
+        verbose_name_plural = "Dépenses"
+
+    def __str__(self):
+        return f"{self.motif} — {self.montant} ({self.date})"

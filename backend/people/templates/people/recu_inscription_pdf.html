@@ -146,6 +146,7 @@
                             <div class="avatar">{{ eleve.user.first_name|first|upper }}{{ eleve.user.last_name|first|upper }}</div>
                             {% endif %}
                         </td>
+                        <td style="width: 5mm;">&nbsp;</td>
                         <td>
                             <table class="contenu">
                                 <tr><td class="label" width="35%">Matricule :</td><td class="valeur-highlight">{{ eleve.matricule }}</td></tr>
@@ -205,7 +206,7 @@
                             <table class="contenu">
                                 <tr><td class="label" width="30%">Date :</td><td class="valeur">{{ eleve.date_inscription|date:"d/m/Y" }}</td></tr>
                                 <tr><td class="label">Année scolaire :</td><td class="valeur">{{ annee_scolaire|default:"—" }}</td></tr>
-                                <tr><td class="label">Classe :</td><td class="valeur">{{ eleve.classe.nom|default:"Non assignée" }}</td></tr>
+                                <tr><td class="label">Classe :</td><td class="valeur">{{ classe_eleve.nom|default:"Non assignée" }}</td></tr>
                             </table>
                         </td>
                         <td width="50%">

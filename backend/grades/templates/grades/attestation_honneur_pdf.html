@@ -38,7 +38,7 @@
             <table class="inner">
                 <tr><td>
                     <div class="medaille">{% if l.rang == 1 %}🥇{% elif l.rang == 2 %}🥈{% elif l.rang == 3 %}🥉{% else %}🏅{% endif %}</div>
-                    <div class="kicker">École Manager · {{ periode.annee_scolaire }}</div>
+                    <div class="kicker">{{ ecole_nom }} · {{ periode.annee_scolaire }}</div>
                     <div class="titre">Attestation d'Excellence</div>
                     <div class="sous-titre">Décernée en reconnaissance d'un travail scolaire remarquable</div>
 
@@ -60,7 +60,7 @@
                             <td width="50%">Le Directeur de l'établissement</td>
                         </tr>
                     </table>
-                    <div class="footer">Fait le {{ date_edition|date:"d/m/Y" }} — École Manager</div>
+                    <div class="footer">Fait le {{ date_edition|date:"d/m/Y" }} — {{ ecole_nom }}</div>
                 </td></tr>
             </table>
         </td>

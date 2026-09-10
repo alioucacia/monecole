@@ -1,10 +1,10 @@
 import { api } from "./client";
 import type {
-  AffectationTransport, AgentCantineInfo, Annonce, AnneeScolaire, Bulletin, CategoriePaiement, Classe, Creneau, Ecole, EcoleStatsDetail,
+  AffectationTransport, AgentCantineInfo, Annonce, AnneeScolaire, Bulletin, CaisseRapport, CategorieDepense, CategoriePaiement, Classe, Creneau, Depense, Ecole, EcoleStatsDetail,
   EcoleStatsGlobales, EcoleUtilisateur, EleveProfile,
   Emprunt, Enseignement, EnseignantProfile, Fonctionnalite, Formule, Frais, InscriptionCantine, JournalActiviteEntry, JournalUtilisateurEntry, Livre, Matiere, Message, ModeleMessage, Note, Paginated,
   AlerteParent, AnalysePerformance, ChauffeurInfo, EleveBadge, EnseignantBadge, GroupeRevision, JustificatifAbsence, MessageIA, PaiementEcole, Paiement, PaieEnseignant, ParametresPlateforme, Periode, PlanAbonnement, PlateformeBranding,
-  PointageEnseignant, Presence, RechercheGlobaleResult, Reunion, Participant, Resultats, SauvegardeLog, SuiviMensuelClasse, SuiviMensuelEleve, SupervisionData, TarifClasse, TicketBus, TicketCantine, Trajet, TypeFrais, User,
+  PointageEnseignant, Presence, RechercheGlobaleResult, Reunion, Participant, Resultats, SauvegardeLog, SuiviMensuelClasse, SuiviMensuelEleve, SupervisionData, TarifClasse, Ticket, TicketBus, TicketCantine, MessageTicket, Trajet, TypeFrais, User,
 } from "../types";
 
 // ---- Plateforme (Super Admin) ----
@@ -245,10 +245,22 @@ export const elevesApi = {
     api.post<EleveProfile>(`/people/eleves/${id}/marquer-non-reinscrit/`, { motif: motif || "" }),
   reactiver: (id: number) => api.post<EleveProfile>(`/people/eleves/${id}/reactiver/`),
   recuInscription: (id: number, filename: string) => downloadFile(`/people/eleves/${id}/recu-inscription/`, {}, filename),
+  certificatScolarite: (id: number, filename: string) => downloadFile(`/people/eleves/${id}/certificat-scolarite/`, {}, filename),
   /** Catégorie de prise en charge de la mensualité (Fondation 50%/gratuit/inscription seulement)
    * et réduction fidélité — accessible à la comptabilité sans droit d'édition du reste de la fiche. */
   setCategoriePaiement: (id: number, data: { categorie_paiement: CategoriePaiement; reduction_fidelite_mensualite: boolean }) =>
     api.patch<EleveProfile>(`/people/eleves/${id}/categorie-paiement/`, data),
+  /** Modèle Excel (.xlsx) à remplir pour l'import en masse — voir importExcel. */
+  importExcelModele: (filename: string) => downloadFile("/people/eleves/import-excel-modele/", {}, filename),
+  /** Import en masse d'élèves depuis un fichier Excel (.xlsx) — chaque ligne est traitée
+   * indépendamment, la réponse liste les lignes créées et celles en échec avec leur motif. */
+  importExcel: (fichier: File) => {
+    const form = new FormData();
+    form.append("fichier", fichier);
+    return api.post<{ crees: number; total_lignes: number; erreurs: { ligne: number; message: string }[] }>(
+      "/people/eleves/import-excel/", form, { headers: { "Content-Type": "multipart/form-data" } }
+    );
+  },
 };
 
 export const enseignantsApi = {
@@ -263,6 +275,9 @@ export const badgesApi = {
   create: (eleve: number) => api.post<EleveBadge>("/people/badges/", { eleve }),
   qr: (id: number) => api.get<Blob>(`/people/badges/${id}/qr/`, { responseType: "blob" }),
   pdf: (id: number, filename: string) => downloadFile(`/people/badges/${id}/pdf/`, {}, filename),
+  /** Même badge, mais au format carte plastique PVC standard CR80 (85,6×54mm) — page à la
+   * taille exacte de la carte, prête à imprimer directement sur une imprimante à cartes. */
+  pdfPvc: (id: number, filename: string) => downloadFile(`/people/badges/${id}/pdf-pvc/`, {}, filename),
   /** Émet (si besoin) puis télécharge en un seul PDF (une carte par page) les badges de
    * tous les élèves actifs d'une classe. */
   pdfClasse: (classeId: number, filename: string) =>
@@ -350,6 +365,8 @@ export const bulletinApi = {
     api.post<{ detail: string }>("/grades/bulletin/send-email/", { eleve, ...selection }),
   sendSms: (eleve: number, selection: PeriodeSelection) =>
     api.post<{ detail: string }>("/grades/bulletin/send-sms/", { eleve, ...selection }),
+  sendWhatsApp: (eleve: number, selection: PeriodeSelection) =>
+    api.post<{ detail: string }>("/grades/bulletin/send-whatsapp/", { eleve, ...selection }),
 };
 
 export const resultatsApi = {
@@ -415,6 +432,9 @@ export const tarifsClasseApi = {
 export const fraisApi = {
   list: (params?: Record<string, unknown>) => api.get<Paginated<Frais> | Frais[]>("/payments/frais/", { params }),
   create: (data: Partial<Frais>) => api.post<Frais>("/payments/frais/", data),
+  // Réservé aux frais encore impayés côté backend (voir FraisViewSet.perform_destroy) : un frais
+  // déjà payé, même partiellement, ne peut pas être supprimé (perte de l'historique de paiements).
+  remove: (id: number) => api.delete(`/payments/frais/${id}/`),
   genererPourClasse: (data: { classe: number; annee_scolaire: number; date_echeance: string; types_frais?: number[] }) =>
     api.post<{ crees: number; classe: string; eleves: number }>("/payments/frais/generer-pour-classe/", data),
   summary: (params?: Record<string, unknown>) => api.get<Record<string, unknown>>("/payments/frais/summary/", { params }),
@@ -440,11 +460,42 @@ export const fraisApi = {
       "/payments/frais/impayes-par-classe/", { params }
     ),
   notifierImpayes: () => api.post<{ notifies: number }>("/payments/frais/notifier-impayes/"),
+  /** Rapport de suivi des paiements de scolarité (PDF), mois par mois — un élève à la fois. */
+  suiviMensuelPdf: (eleveId: number, filename: string, anneeScolaireId?: number) =>
+    downloadFile("/payments/frais/suivi-mensuel-pdf/", { eleve: eleveId, annee_scolaire: anneeScolaireId }, filename),
 };
 
 export const paiementsApi = {
   create: (data: { frais: number; montant: string; mode_paiement: string; reference?: string; mois?: string | null }) =>
     api.post<Paiement>("/payments/paiements/", data),
+  // Réservé à l'administrateur côté backend (voir PaiementViewSet.get_permissions) : un paiement
+  // supprimé par erreur fausserait l'historique et le suivi mensuel de l'élève.
+  remove: (id: number) => api.delete(`/payments/paiements/${id}/`),
+};
+
+export const depensesApi = {
+  list: (params?: Record<string, unknown>) => api.get<Paginated<Depense> | Depense[]>("/payments/depenses/", { params }),
+  create: (data: Partial<Depense>) => api.post<Depense>("/payments/depenses/", toFormData(data), multipartHeaders),
+  update: (id: number, data: Partial<Depense>) => api.patch<Depense>(`/payments/depenses/${id}/`, toFormData(data), multipartHeaders),
+  remove: (id: number) => api.delete(`/payments/depenses/${id}/`),
+  summary: (params?: Record<string, unknown>) => api.get<{ total: string; nombre: number }>("/payments/depenses/summary/", { params }),
+  exportCsv: (params?: Record<string, unknown>) => downloadFile("/payments/depenses/export/", params || {}, "depenses.csv"),
+};
+
+/** Catégories de dépense de l'établissement — librement gérées par son administrateur. */
+export const categoriesDepenseApi = {
+  list: () => api.get<Paginated<CategorieDepense> | CategorieDepense[]>("/payments/categories-depense/", { params: { page_size: 200 } }),
+  create: (nom: string) => api.post<CategorieDepense>("/payments/categories-depense/", { nom }),
+  update: (id: number, nom: string) => api.patch<CategorieDepense>(`/payments/categories-depense/${id}/`, { nom }),
+  remove: (id: number) => api.delete(`/payments/categories-depense/${id}/`),
+};
+
+/** Tableau de bord Caisse : rentrées (paiements élèves) + sorties (dépenses) sur une période —
+ * sans dates, la période par défaut côté backend est « aujourd'hui » (rapport journalier). */
+export const caisseApi = {
+  get: (params?: { date_debut?: string; date_fin?: string }) => api.get<CaisseRapport>("/payments/caisse/", { params }),
+  pdf: (params: { date_debut?: string; date_fin?: string } | undefined, filename: string) =>
+    downloadFile("/payments/caisse/pdf/", params || {}, filename),
 };
 
 // ---- Visioconférence (Jitsi Meet embarqué — voir visio/models.py) ----
@@ -574,6 +625,22 @@ export const messagesApi = {
   marquerLu: (id: number) => api.post<Message>(`/messaging/messages/${id}/marquer-lu/`),
   nonLus: () => api.get<{ non_lus: number }>("/messaging/messages/non-lus/"),
   contacts: () => api.get<User[]>("/messaging/contacts/"),
+};
+
+export const supportApi = {
+  list: (params?: Record<string, unknown>) => api.get<Paginated<Ticket> | Ticket[]>("/support/tickets/", { params }),
+  create: (data: { sujet: string; priorite: string; message: string }) => api.post<Ticket>("/support/tickets/", data),
+  changerStatut: (id: number, data: { statut: string; assigne_a?: number | null }) =>
+    api.post<Ticket>(`/support/tickets/${id}/changer-statut/`, data),
+  compteur: () => api.get<{ actifs: number }>("/support/tickets/compteur/"),
+  messages: (ticketId: number) => api.get<Paginated<MessageTicket> | MessageTicket[]>("/support/messages/", { params: { ticket: ticketId, page_size: 200 } }),
+  envoyerMessage: (ticketId: number, contenu: string) => api.post<MessageTicket>("/support/messages/", { ticket: ticketId, contenu }),
+  envoyerPieceJointe: (ticketId: number, fichier: File) => {
+    const form = new FormData();
+    form.append("ticket", String(ticketId));
+    form.append("fichier", fichier);
+    return api.post<MessageTicket>("/support/messages/", form, { headers: { "Content-Type": "multipart/form-data" } });
+  },
 };
 
 /** Les endpoints paginés DRF renvoient soit un tableau, soit { results: [...] } selon la config — cet utilitaire uniformise. */

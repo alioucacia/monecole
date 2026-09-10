@@ -21,8 +21,8 @@ from academics.models import AnneeScolaire, Classe
 from accounts.permissions import IsAdminOrTeacherOrReadOnly
 from attendance.models import Presence
 from people.models import EleveProfile
-from people.sms import send_sms
-from people.views import _image_data_uri
+from people.sms import send_sms, send_whatsapp
+from people.views import _classe_pour_annee, _image_data_uri, _mm_px
 
 from .models import Note, Periode
 from .serializers import NoteSerializer, PeriodeSerializer
@@ -362,28 +362,40 @@ def _build_bulletin(eleve, periodes, periode_label):
         else:
             decision = "redouble"
 
+    modele_bulletin = eleve.user.ecole.modele_bulletin if eleve.user.ecole_id else 1
+    # Cadre photo du modèle « Officiel » (5, carré 18×18mm) distinct des 4 autres (portrait
+    # 19×23mm) — voir bulletin_pdf.html (`.m5-photo` vs `.photo img`). La photo doit être
+    # recadrée pour le bon format, sinon xhtml2pdf l'étire pour remplir le cadre (il ignore
+    # silencieusement `object-fit`) et la déforme.
+    taille_photo_bulletin = _mm_px(18, 18) if modele_bulletin == 5 else _mm_px(19, 23)
+    # La classe de CETTE période (pas forcément celle d'aujourd'hui si l'élève a changé de
+    # classe depuis) — un bulletin d'une année passée doit afficher la classe de l'époque.
+    classe_periode = _classe_pour_annee(eleve, periodes[0].annee_scolaire) if periodes else eleve.classe
+
     return {
         "eleve": {
             "id": eleve.id,
             "nom_complet": eleve.user.get_full_name(),
             "matricule": eleve.matricule,
-            "classe": eleve.classe.nom if eleve.classe else None,
+            "classe": classe_periode.nom if classe_periode else None,
             "sexe": eleve.user.sexe,
             "date_naissance": eleve.user.date_of_birth,
         },
         "professeur_principal_nom": (
-            eleve.classe.professeur_principal.get_full_name()
-            if eleve.classe_id and eleve.classe.professeur_principal_id else None
+            classe_periode.professeur_principal.get_full_name()
+            if classe_periode and classe_periode.professeur_principal_id else None
         ),
         "ecole_nom": eleve.user.ecole.nom if eleve.user.ecole_id else "École Manager",
         "ecole_adresse": eleve.user.ecole.adresse if eleve.user.ecole_id else "",
         "ecole_telephone": eleve.user.ecole.telephone if eleve.user.ecole_id else "",
-        "ecole_logo_data_uri": _image_data_uri(eleve.user.ecole.logo) if eleve.user.ecole_id else None,
+        "ecole_logo_data_uri": (
+            _image_data_uri(eleve.user.ecole.logo, _mm_px(17, 17), mode="contain") if eleve.user.ecole_id else None
+        ),
         # Personnalisation par le Super Admin (EcoleDetailPage) — voir Ecole.couleur_principale
         # et Ecole.modele_bulletin (1-5, voir Ecole.ModeleDocument).
         "couleur_principale": eleve.user.ecole.couleur_principale if eleve.user.ecole_id else "#14304f",
         "couleur_secondaire": eleve.user.ecole.couleur_secondaire if eleve.user.ecole_id else "#b8860b",
-        "modele": eleve.user.ecole.modele_bulletin if eleve.user.ecole_id else 1,
+        "modele": modele_bulletin,
         # Codes IRE/DPE/DSEE (renseignés par l'admin de l'école) et barème de notation —
         # utilisés par le modèle « Officiel » du bulletin (voir bulletin_pdf.html).
         "ire": eleve.user.ecole.ire if eleve.user.ecole_id else "",
@@ -398,7 +410,7 @@ def _build_bulletin(eleve, periodes, periode_label):
             eleve.user.ecole.entete_devise if eleve.user.ecole_id else "Travail - Justice - Solidarité"
         ),
         "bareme_notation": bareme_notation,
-        "photo_data_uri": _image_data_uri(eleve.user.photo),
+        "photo_data_uri": _image_data_uri(eleve.user.photo, taille_photo_bulletin),
         "absences": _absences_summary(eleve, periodes),
         "periode": periode_label,
         "periodes_colonnes": [p.nom for p in periodes],
@@ -593,6 +605,41 @@ class BulletinSendSmsView(APIView):
         return Response({"detail": f"Lien du bulletin envoyé par SMS au {telephone}."})
 
 
+class BulletinSendWhatsAppView(APIView):
+    """Envoie au parent, par WhatsApp, un lien public (14 jours) de téléchargement du bulletin
+    — même lien signé que le SMS (voir `_make_bulletin_token`/`BulletinPublicPdfView`), sur le
+    canal WhatsApp de Twilio (voir `people.sms.send_whatsapp`)."""
+
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request):
+        eleve_id = request.data.get("eleve")
+        if not eleve_id:
+            raise ValidationError("Le paramètre 'eleve' est requis.")
+        eleve = get_object_or_404(EleveProfile.objects.select_related("user", "parent"), pk=eleve_id)
+        _check_bulletin_permission(request.user, eleve)
+
+        periode_id = request.data.get("periode")
+        annee_id = request.data.get("annee_scolaire")
+        periodes, label = _resolve_periodes_by_ids(periode_id, annee_id, ecole_id=request.user.ecole_id)  # valide la sélection avant l'envoi
+
+        telephone = eleve.parent.phone if eleve.parent else ""
+        if not telephone:
+            raise ValidationError("Aucun numéro de téléphone n'est disponible pour le parent de cet élève.")
+
+        token = _make_bulletin_token(eleve.id, periode_id, annee_id)
+        lien = f"{settings.BACKEND_PUBLIC_URL}/api/grades/bulletin/pdf/public/{token}/"
+        message = (
+            f"École Manager : le bulletin de {eleve.user.get_full_name()} ({label['nom']}) est disponible ici : "
+            f"{lien} (lien valable 14 jours)."
+        )
+        envoye = send_whatsapp(telephone, message)
+        if not envoye:
+            raise ValidationError("L'envoi du message WhatsApp a échoué — vérifiez le numéro ou réessayez plus tard.")
+
+        return Response({"detail": f"Lien du bulletin envoyé par WhatsApp au {telephone}."})
+
+
 class BulletinPublicPdfView(APIView):
     """Téléchargement du bulletin via un lien signé (sans authentification) — utilisé par le SMS."""
 
@@ -672,6 +719,7 @@ class ResultatsPdfView(APIView):
             "effectif": len(resultats),
             "moyenne_classe": moyenne_classe,
             "taux_reussite": taux_reussite,
+            "ecole_nom": request.user.ecole.nom if request.user.ecole_id else "École Manager",
         })
         buffer = BytesIO()
         pisa.CreatePDF(html, dest=buffer, encoding="utf-8")
@@ -716,6 +764,7 @@ class AttestationHonneurPdfView(APIView):
             "laureats": laureats,
             "effectif": len(resultats),
             "date_edition": timezone.localdate(),
+            "ecole_nom": request.user.ecole.nom if request.user.ecole_id else "École Manager",
         })
         buffer = BytesIO()
         pisa.CreatePDF(html, dest=buffer, encoding="utf-8")

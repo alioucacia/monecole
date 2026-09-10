@@ -8,9 +8,9 @@
                     </div>
                 </div>
             </td>
-            <td style="width: 60mm;">
+            <td style="width: 60mm; text-align: center;">
                 <div class="pad">
-                    <p class="ecole">{{ ecole_nom }}</p>
+                    <p class="ecole" style="font-size: {{ ecole_nom_taille }}px;">{{ ecole_nom }}</p>
                     {% if ecole_adresse %}<p class="adresse">{{ ecole_adresse }}</p>{% endif %}
                 </div>
             </td>

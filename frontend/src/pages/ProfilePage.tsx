@@ -1,10 +1,11 @@
-import { useRef, useState, type ChangeEvent, type FormEvent } from "react";
+import { useEffect, useRef, useState, type ChangeEvent, type FormEvent } from "react";
 
-import { authApi } from "../api/services";
+import { authApi, elevesApi, unwrapList } from "../api/services";
 import { extractErrorMessage } from "../api/client";
-import { Button, Card, Input, PageHeader } from "../components/ui";
+import { Button, Card, Input, PageHeader, Select } from "../components/ui";
 import { useAuth } from "../context/AuthContext";
 import { useToast } from "../context/ToastContext";
+import type { EleveProfile } from "../types";
 
 function initials(name: string) {
   const parts = name.trim().split(/\s+/).filter(Boolean);
@@ -27,7 +28,43 @@ export default function ProfilePage() {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [uploadingPhoto, setUploadingPhoto] = useState(false);
 
+  // Certificat de scolarité : self-service pour l'élève (son propre dossier) et le parent (un
+  // sélecteur si plusieurs enfants) — l'admin le génère plutôt depuis la fiche élève.
+  const [enfants, setEnfants] = useState<EleveProfile[]>([]);
+  const [eleveChoisiId, setEleveChoisiId] = useState("");
+  const [certificatLoading, setCertificatLoading] = useState(false);
+
+  useEffect(() => {
+    if (user?.role === "student") {
+      elevesApi.list({ page_size: 1 }).then(({ data }) => {
+        const own = unwrapList(data)[0];
+        if (own) setEleveChoisiId(String(own.id));
+      });
+    }
+    if (user?.role === "parent") {
+      elevesApi.list({ page_size: 50 }).then(({ data }) => {
+        const liste = unwrapList(data);
+        setEnfants(liste);
+        if (liste[0]) setEleveChoisiId(String(liste[0].id));
+      });
+    }
+  }, [user]);
+
   if (!user) return null;
+
+  const peutTelechargerCertificat = user.role === "student" || user.role === "parent";
+
+  const handleCertificat = async () => {
+    if (!eleveChoisiId) return;
+    setCertificatLoading(true);
+    try {
+      await elevesApi.certificatScolarite(Number(eleveChoisiId), "certificat_scolarite.pdf");
+    } catch (err) {
+      toast.error(extractErrorMessage(err));
+    } finally {
+      setCertificatLoading(false);
+    }
+  };
 
   const handlePhotoChange = async (e: ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -119,6 +156,27 @@ export default function ProfilePage() {
           </div>
         </form>
       </Card>
+
+      {peutTelechargerCertificat && (
+        <Card className="mb-6">
+          <h3 className="font-bold text-ink-900 mb-1">Certificat de scolarité</h3>
+          <p className="text-sm text-slate-500 mb-4">
+            {user.role === "student"
+              ? "Téléchargez votre certificat de scolarité pour l'année scolaire en cours."
+              : "Téléchargez le certificat de scolarité de votre enfant pour l'année scolaire en cours."}
+          </p>
+          <div className="flex flex-wrap items-end gap-3">
+            {user.role === "parent" && enfants.length > 1 && (
+              <Select label="Enfant" value={eleveChoisiId} onChange={(e) => setEleveChoisiId(e.target.value)} className="max-w-xs">
+                {enfants.map((el) => <option key={el.id} value={el.id}>{el.user.first_name} {el.user.last_name}</option>)}
+              </Select>
+            )}
+            <Button variant="secondary" onClick={handleCertificat} disabled={!eleveChoisiId || certificatLoading}>
+              {certificatLoading ? "…" : user.role === "student" ? "🎓 Télécharger mon certificat" : "🎓 Télécharger le certificat"}
+            </Button>
+          </div>
+        </Card>
+      )}
 
       <Card>
         <h3 className="font-bold text-ink-900 mb-4">Changer de mot de passe</h3>

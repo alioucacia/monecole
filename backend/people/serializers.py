@@ -3,11 +3,13 @@ from rest_framework import serializers
 
 from accounts.models import User
 from accounts.serializers import UserSerializer
+from core.validators import EXTENSIONS_IMAGE, TAILLE_MAX_IMAGE, valider_taille_fichier
 from tenants.quotas import verifier_quota_plan
 
 from .models import (
     AlerteParent, EleveBadge, EleveProfile, EnseignantBadge, EnseignantProfile,
-    GroupeRevision, MessageIA, PaieEnseignant, PointageEnseignant, generer_matricule_eleve,
+    GroupeRevision, MessageIA, PaieEnseignant, PointageEnseignant,
+    enregistrer_historique_classe, generer_matricule_eleve, generer_matricule_enseignant,
 )
 
 
@@ -104,6 +106,9 @@ class EleveProfileWriteSerializer(serializers.ModelSerializer):
             )
         return value
 
+    def validate_photo(self, value):
+        return valider_taille_fichier(value, TAILLE_MAX_IMAGE, EXTENSIONS_IMAGE)
+
     def validate(self, attrs):
         if attrs.get("parent_creer"):
             manquants = {
@@ -177,6 +182,7 @@ class EleveProfileWriteSerializer(serializers.ModelSerializer):
         user.doit_changer_mot_de_passe = True
         user.save()
         eleve = EleveProfile.objects.create(user=user, **validated_data)
+        enregistrer_historique_classe(eleve, eleve.classe)
 
         # Envoi automatique des identifiants par e-mail/SMS — à l'élève, et au parent rattaché
         # (nouveau compte tout juste créé ci-dessus, ou parent déjà existant simplement lié via
@@ -201,7 +207,11 @@ class EleveProfileWriteSerializer(serializers.ModelSerializer):
             for k, v in user_data.items():
                 setattr(instance.user, k, v)
             instance.user.save()
-        return super().update(instance, validated_data)
+        classe_modifiee = "classe" in validated_data
+        eleve = super().update(instance, validated_data)
+        if classe_modifiee:
+            enregistrer_historique_classe(eleve, eleve.classe)
+        return eleve
 
     def to_representation(self, instance):
         return EleveProfileSerializer(instance, context=self.context).data
@@ -246,6 +256,12 @@ class EnseignantProfileWriteSerializer(serializers.ModelSerializer):
             "id", "matricule", "specialite", "date_embauche", "diplome",
             "first_name", "last_name", "email", "address", "phone", "photo", "sexe", "password",
         ]
+        # Généré automatiquement à la création (voir `generer_matricule_enseignant` : 2 lettres
+        # du prénom + 2 lettres du nom + n° d'embauche), mais reste modifiable ensuite.
+        extra_kwargs = {"matricule": {"required": False, "allow_blank": True}}
+
+    def validate_photo(self, value):
+        return valider_taille_fichier(value, TAILLE_MAX_IMAGE, EXTENSIONS_IMAGE)
 
     @transaction.atomic
     def create(self, validated_data):
@@ -258,7 +274,10 @@ class EnseignantProfileWriteSerializer(serializers.ModelSerializer):
         user_fields = ["first_name", "last_name", "email", "address", "phone", "photo", "sexe"]
         password = validated_data.pop("password", "changeme123")
         user_data = {f: validated_data.pop(f, "") for f in user_fields}
-        matricule = validated_data["matricule"]
+        matricule = validated_data.pop("matricule", "") or generer_matricule_enseignant(
+            user_data.get("first_name", ""), user_data.get("last_name", ""), ecole,
+        )
+        validated_data["matricule"] = matricule
         user = User(
             username=matricule,
             role=User.Role.TEACHER,

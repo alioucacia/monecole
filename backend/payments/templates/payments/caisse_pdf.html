@@ -1,0 +1,124 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8" />
+<style>
+    @page { size: A4; margin: 1.6cm; }
+    body { font-family: Helvetica, Arial, sans-serif; color: #1e1b2e; font-size: 10.5px; }
+
+    table.header { width: 100%; border-bottom: 3px solid {{ couleur_principale }}; padding-bottom: 10px; margin-bottom: 4px; }
+    .header .logo { width: 16mm; height: 16mm; object-fit: contain; margin-bottom: 3px; }
+    .header .nom { color: {{ couleur_principale }}; font-size: 16px; font-weight: bold; margin: 0; text-transform: uppercase; }
+    .header .coord { color: #6b7280; font-size: 9px; margin: 2px 0 0 0; }
+    .header .num { text-align: right; font-size: 9px; color: #6b7280; }
+    .header .num .valeur { font-size: 11px; font-weight: bold; color: {{ couleur_principale }}; }
+
+    .bandeau { margin: 12px 0 14px 0; padding: 8px 14px; background-color: {{ couleur_secondaire }};
+        color: #ffffff; font-size: 13px; font-weight: bold; text-align: center; text-transform: uppercase; letter-spacing: 0.5px; }
+
+    table.stats { width: 100%; margin-bottom: 16px; }
+    table.stats td { width: 33.33%; padding: 0 4px; }
+    .stats .box { border: 1.5px solid #e2e8f0; border-radius: 8px; text-align: center; padding: 10px; }
+    .stats .box.rentrees { border-color: #a7f3d0; background-color: #f0fdf4; }
+    .stats .box.sorties { border-color: #fecaca; background-color: #fef2f2; }
+    .stats .box.solde { border-color: {{ couleur_principale }}; background-color: #f8fafc; }
+    .stats .value { font-size: 16px; font-weight: bold; }
+    .stats .rentrees .value { color: #059669; }
+    .stats .sorties .value { color: #dc2626; }
+    .stats .solde .value { color: {{ couleur_principale }}; }
+    .stats .label { font-size: 8.5px; color: #6b7280; text-transform: uppercase; margin-top: 2px; }
+
+    .section-titre { color: {{ couleur_principale }}; font-weight: bold; font-size: 11px; margin: 14px 0 4px 0; text-transform: uppercase; letter-spacing: 0.3px; }
+
+    table.lignes { width: 100%; border-collapse: collapse; margin-top: 2px; }
+    table.lignes th { background-color: {{ couleur_principale }}; color: #ffffff; padding: 6px; text-align: left; font-size: 8.5px; text-transform: uppercase; }
+    table.lignes th.right, table.lignes td.right { text-align: right; }
+    table.lignes td { padding: 6px; font-size: 10px; border-bottom: 1px solid #e2e8f0; }
+    table.lignes tr.alt td { background-color: #f8fafc; }
+    table.lignes tr.total td { border-top: 1.5px solid {{ couleur_principale }}; border-bottom: none; font-weight: bold; padding-top: 8px; }
+
+    .footer { margin-top: 20px; width: 100%; text-align: center; font-size: 9px; color: #94a3b8; padding-top: 10px; border-top: 1px dashed #cbd5e1; }
+</style>
+</head>
+<body>
+    <table class="header">
+        <tr>
+            <td>
+                {% if ecole_logo_data_uri %}<img class="logo" src="{{ ecole_logo_data_uri }}" /><br/>{% endif %}
+                <p class="nom">{{ ecole_nom }}</p>
+                {% if ecole_adresse or ecole_telephone %}
+                <p class="coord">{{ ecole_adresse|default:"" }}{% if ecole_adresse and ecole_telephone %} · {% endif %}{{ ecole_telephone|default:"" }}</p>
+                {% endif %}
+            </td>
+            <td width="150" class="num">
+                <div>Généré le</div>
+                <div class="valeur">{% now "d/m/Y à H:i" %}</div>
+            </td>
+        </tr>
+    </table>
+
+    <div class="bandeau">
+        {% if date_debut == date_fin %}Rapport de caisse du {{ date_debut|date:"d/m/Y" }}{% else %}Rapport de caisse du {{ date_debut|date:"d/m/Y" }} au {{ date_fin|date:"d/m/Y" }}{% endif %}
+    </div>
+
+    <table class="stats">
+        <tr>
+            <td><div class="box rentrees"><div class="value">{{ total_rentrees|floatformat:0 }} GNF</div><div class="label">Rentrées</div></div></td>
+            <td><div class="box sorties"><div class="value">{{ total_sorties|floatformat:0 }} GNF</div><div class="label">Sorties</div></div></td>
+            <td><div class="box solde"><div class="value">{{ solde|floatformat:0 }} GNF</div><div class="label">Solde</div></div></td>
+        </tr>
+    </table>
+
+    <p class="section-titre">Rentrées — Paiements des élèves</p>
+    <table class="lignes">
+        <thead>
+            <tr>
+                <th>Date</th><th>Élève</th><th>Type de frais</th><th>Mode</th><th class="right">Montant</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for r in rentrees %}
+            <tr {% if forloop.counter|divisibleby:2 %}class="alt"{% endif %}>
+                <td>{{ r.date|date:"d/m/Y" }}</td>
+                <td>{{ r.eleve_nom }}</td>
+                <td>{{ r.type_frais_nom }}</td>
+                <td>{{ r.mode_paiement_display }}</td>
+                <td class="right">{{ r.montant|floatformat:2 }} GNF</td>
+            </tr>
+            {% empty %}
+            <tr><td colspan="5">Aucune rentrée sur cette période.</td></tr>
+            {% endfor %}
+            {% if rentrees %}
+            <tr class="total"><td colspan="4">Total rentrées</td><td class="right">{{ total_rentrees|floatformat:2 }} GNF</td></tr>
+            {% endif %}
+        </tbody>
+    </table>
+
+    <p class="section-titre">Sorties — Dépenses</p>
+    <table class="lignes">
+        <thead>
+            <tr>
+                <th>Date</th><th>Catégorie</th><th>Motif</th><th>Responsable</th><th class="right">Montant</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for s in sorties %}
+            <tr {% if forloop.counter|divisibleby:2 %}class="alt"{% endif %}>
+                <td>{{ s.date|date:"d/m/Y" }}</td>
+                <td>{{ s.categorie_nom }}</td>
+                <td>{{ s.motif }}</td>
+                <td>{{ s.responsable }}</td>
+                <td class="right">{{ s.montant|floatformat:2 }} GNF</td>
+            </tr>
+            {% empty %}
+            <tr><td colspan="5">Aucune sortie sur cette période.</td></tr>
+            {% endfor %}
+            {% if sorties %}
+            <tr class="total"><td colspan="4">Total sorties</td><td class="right">{{ total_sorties|floatformat:2 }} GNF</td></tr>
+            {% endif %}
+        </tbody>
+    </table>
+
+    <p class="footer">Document généré le {% now "d/m/Y à H:i" %}{% if genere_par %} par {{ genere_par }}{% endif %} — {{ ecole_nom }}</p>
+</body>
+</html>

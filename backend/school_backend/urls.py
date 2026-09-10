@@ -19,6 +19,7 @@ urlpatterns = [
     path("api/visio/", include("visio.urls")),
     path("api/tenants/", include("tenants.urls")),
     path("api/dashboard/", include("core.urls")),
+    path("api/support/", include("support.urls")),
 ]
 
 if settings.DEBUG:

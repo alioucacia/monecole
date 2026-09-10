@@ -75,17 +75,20 @@ api.interceptors.response.use(
   async (error: AxiosError) => {
     const originalRequest = error.config as (InternalAxiosRequestConfig & { _retry?: boolean }) | undefined;
 
-    // Maintenance plateforme / établissement suspendu : le backend renvoie un 401 avec un
-    // `code` dédié (voir accounts.authentication.PlateformeJWTAuthentication) — inutile (et
-    // trompeur) d'essayer de rafraîchir le token dans ce cas : le refresh échouera lui aussi
-    // (voir CustomTokenRefreshView), donc autant déconnecter tout de suite en affichant le
-    // vrai message du serveur plutôt qu'un "session expirée" générique après un aller-retour
-    // réseau pour rien. La requête de login elle-même est exclue : LoginPage affiche déjà
-    // l'erreur inline via `extractErrorMessage`, pas besoin d'un toast en plus ni de déconnexion
-    // (il n'y a pas encore de session à cette étape).
+    // Maintenance plateforme / établissement suspendu / session admin remplacée ailleurs : le
+    // backend renvoie un 401 avec un `code` dédié (voir
+    // accounts.authentication.PlateformeJWTAuthentication) — inutile (et trompeur) d'essayer de
+    // rafraîchir le token dans ce cas : le refresh échouera lui aussi (voir
+    // CustomTokenRefreshView pour maintenance/ecole_inactive ; pour session_expiree, un nouveau
+    // token dérivé du refresh porterait de toute façon l'ancien session_id et échouerait au
+    // prochain appel), donc autant déconnecter tout de suite en affichant le vrai message du
+    // serveur plutôt qu'un "session expirée" générique après un aller-retour réseau pour rien.
+    // La requête de login elle-même est exclue : LoginPage affiche déjà l'erreur inline via
+    // `extractErrorMessage`, pas besoin d'un toast en plus ni de déconnexion (il n'y a pas
+    // encore de session à cette étape).
     const errorCode = (error.response?.data as { code?: string } | undefined)?.code;
     const isLoginRequest = originalRequest?.url?.includes("/auth/login");
-    if (error.response?.status === 401 && !isLoginRequest && (errorCode === "maintenance" || errorCode === "ecole_inactive")) {
+    if (error.response?.status === 401 && !isLoginRequest && (errorCode === "maintenance" || errorCode === "ecole_inactive" || errorCode === "session_expiree")) {
       const detail = (error.response?.data as { detail?: string } | undefined)?.detail;
       tokenStorage.clear();
       emitToast("warning", detail || "L'accès à la plateforme est actuellement bloqué.");

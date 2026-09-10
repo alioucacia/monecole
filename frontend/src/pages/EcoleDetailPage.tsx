@@ -6,19 +6,7 @@ import { extractErrorMessage } from "../api/client";
 import { useAuth } from "../context/AuthContext";
 import { useToast } from "../context/ToastContext";
 import { Badge, Button, Card, EmptyState, PageHeader, Spinner, StatCard, Table } from "../components/ui";
-import { ModeleDocumentField } from "../components/ModeleDocumentPicker";
 import type { Ecole, EcoleStatsDetail, EcoleUtilisateur, Fonctionnalite, PaiementEcole } from "../types";
-
-const DOCUMENTS_PERSONNALISABLES: {
-  champ: "modele_recu" | "modele_badge" | "modele_bulletin" | "modele_fiche_inscription";
-  label: string;
-  // Le modèle 5 « Officiel (IRE/DPE) » n'a un rendu dédié que pour le bulletin.
-  values?: number[];
-}[] = [
-  { champ: "modele_badge", label: "Badge élève" },
-  { champ: "modele_bulletin", label: "Bulletin de notes", values: [1, 2, 3, 4, 5] },
-  { champ: "modele_fiche_inscription", label: "Fiche d'inscription" },
-];
 
 const STATUT_LABELS: Record<string, { label: string; color: "green" | "amber" | "rose" | "slate" }> = {
   paye: { label: "À jour", color: "green" },
@@ -65,10 +53,6 @@ export default function EcoleDetailPage() {
   const [desactivees, setDesactivees] = useState<Set<string>>(new Set());
   const [savingCouleurs, setSavingCouleurs] = useState(false);
   const [savingFonctionnalites, setSavingFonctionnalites] = useState(false);
-  const [modeles, setModeles] = useState({
-    modele_recu: 1, modele_badge: 1, modele_bulletin: 1, modele_fiche_inscription: 1,
-  });
-  const [savingModeles, setSavingModeles] = useState(false);
 
   useEffect(() => {
     if (!ecoleId) return;
@@ -88,12 +72,6 @@ export default function EcoleDetailPage() {
       setCouleurPrincipale(ecoleRes.data.couleur_principale || "#14304f");
       setCouleurSecondaire(ecoleRes.data.couleur_secondaire || "#b8860b");
       setDesactivees(new Set(ecoleRes.data.fonctionnalites_desactivees || []));
-      setModeles({
-        modele_recu: ecoleRes.data.modele_recu || 1,
-        modele_badge: ecoleRes.data.modele_badge || 1,
-        modele_bulletin: ecoleRes.data.modele_bulletin || 1,
-        modele_fiche_inscription: ecoleRes.data.modele_fiche_inscription || 1,
-      });
     }).finally(() => setLoading(false));
   }, [ecoleId]);
 
@@ -110,20 +88,6 @@ export default function EcoleDetailPage() {
       toast.error(extractErrorMessage(err));
     } finally {
       setSavingCouleurs(false);
-    }
-  };
-
-  const handleSaveModeles = async () => {
-    if (!ecole) return;
-    setSavingModeles(true);
-    try {
-      const { data } = await ecolesApi.update(ecole.id, modeles);
-      setEcole(data);
-      toast.success("Modèles de documents mis à jour.");
-    } catch (err) {
-      toast.error(extractErrorMessage(err));
-    } finally {
-      setSavingModeles(false);
     }
   };
 
@@ -394,29 +358,6 @@ export default function EcoleDetailPage() {
 
               <Button onClick={handleSaveCouleurs} disabled={savingCouleurs}>
                 {savingCouleurs ? "Enregistrement…" : "Enregistrer les couleurs"}
-              </Button>
-            </div>
-          </Card>
-
-          <Card className="lg:col-span-2">
-            <h3 className="font-bold text-ink-900 mb-1">Modèles de documents</h3>
-            <p className="text-sm text-slate-500 mb-4">
-              Choisissez, indépendamment pour chacun, le modèle de mise en page utilisé lors de la génération de ce document pour cette école — l'aperçu reprend les couleurs choisies ci-dessus.
-            </p>
-            <div className="space-y-5">
-              {DOCUMENTS_PERSONNALISABLES.map((d) => (
-                <ModeleDocumentField
-                  key={d.champ}
-                  label={d.label}
-                  value={modeles[d.champ]}
-                  onChange={(v) => setModeles((prev) => ({ ...prev, [d.champ]: v }))}
-                  couleurPrincipale={couleurPrincipale}
-                  couleurSecondaire={couleurSecondaire}
-                  values={d.values}
-                />
-              ))}
-              <Button onClick={handleSaveModeles} disabled={savingModeles} className="mt-1">
-                {savingModeles ? "Enregistrement…" : "Enregistrer les modèles"}
               </Button>
             </div>
           </Card>

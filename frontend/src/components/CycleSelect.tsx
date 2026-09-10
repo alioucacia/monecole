@@ -36,7 +36,21 @@ export function CycleSelect({
  * filtrer une liste : pas besoin d'un second menu "Cycle" séparé, la classe reste simplement
  * rangée sous son cycle pour rester repérable même quand l'école en a beaucoup. Les classes
  * sans cycle assigné sont listées à part, en dernier. */
-export function ClasseOptions({ classes, label = (c) => c.nom }: { classes: Classe[]; label?: (c: Classe) => string }) {
+export function ClasseOptions({
+  classes, label = (c) => c.nom, avecPlacesDisponibles = false,
+}: {
+  classes: Classe[];
+  label?: (c: Classe) => string;
+  /** N'affiche/désactive les classes complètes que dans un contexte d'AFFECTATION d'un élève à
+   * une classe (ex: inscription) — pas pour un simple filtre ou un ciblage (annonce, badge...),
+   * où une classe pleine reste un choix parfaitement valide. */
+  avecPlacesDisponibles?: boolean;
+}) {
+  const texte = (c: Classe) => {
+    const base = label(c);
+    if (!avecPlacesDisponibles) return base;
+    return c.places_disponibles <= 0 ? `${base} — Complet` : `${base} (${c.places_disponibles} place${c.places_disponibles > 1 ? "s" : ""})`;
+  };
   return (
     <>
       {ORDRE_CYCLES.map((cycle) => {
@@ -44,11 +58,15 @@ export function ClasseOptions({ classes, label = (c) => c.nom }: { classes: Clas
         if (classesCycle.length === 0) return null;
         return (
           <optgroup key={cycle} label={CYCLE_LABELS[cycle as Exclude<Cycle, "">]}>
-            {classesCycle.map((c) => <option key={c.id} value={c.id}>{label(c)}</option>)}
+            {classesCycle.map((c) => (
+              <option key={c.id} value={c.id} disabled={avecPlacesDisponibles && c.places_disponibles <= 0}>{texte(c)}</option>
+            ))}
           </optgroup>
         );
       })}
-      {classes.filter((c) => !c.cycle).map((c) => <option key={c.id} value={c.id}>{label(c)}</option>)}
+      {classes.filter((c) => !c.cycle).map((c) => (
+        <option key={c.id} value={c.id} disabled={avecPlacesDisponibles && c.places_disponibles <= 0}>{texte(c)}</option>
+      ))}
     </>
   );
 }

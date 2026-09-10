@@ -1,6 +1,7 @@
 import { Route, Routes } from "react-router-dom";
 
 import { AppLayout, ProtectedRoute } from "./components/Layout";
+import { InstallPromptModal } from "./components/InstallPromptModal";
 import { PwaBanners } from "./components/PwaBanners";
 import AnnoncesPlateformePage from "./pages/AnnoncesPlateformePage";
 import AnnouncementsPage from "./pages/AnnouncementsPage";
@@ -9,12 +10,14 @@ import AgentCantinePage from "./pages/AgentCantinePage";
 import AssistantIAPage from "./pages/AssistantIAPage";
 import AttendancePage from "./pages/AttendancePage";
 import BulletinPage from "./pages/BulletinPage";
+import CaissePage from "./pages/CaissePage";
 import CantinePage from "./pages/CantinePage";
 import ChangerMotDePassePage from "./pages/ChangerMotDePassePage";
 import ChauffeurPage from "./pages/ChauffeurPage";
 import ClassesPage from "./pages/ClassesPage";
 import ComptesEcolePage from "./pages/ComptesEcolePage";
 import DashboardPage from "./pages/DashboardPage";
+import DepensesPage from "./pages/DepensesPage";
 import EcoleDetailPage from "./pages/EcoleDetailPage";
 import EcolesPage from "./pages/EcolesPage";
 import ForgotPasswordPage from "./pages/ForgotPasswordPage";
@@ -35,6 +38,7 @@ import PersonnelAdminPage from "./pages/PersonnelAdminPage";
 import PlansAbonnementPage from "./pages/PlansAbonnementPage";
 import ProfilePage from "./pages/ProfilePage";
 import RechercheGlobalePage from "./pages/RechercheGlobalePage";
+import RechercheMatriculePage from "./pages/RechercheMatriculePage";
 import ReinscriptionPage from "./pages/ReinscriptionPage";
 import ResetPasswordPage from "./pages/ResetPasswordPage";
 import ResultsPage from "./pages/ResultsPage";
@@ -48,6 +52,7 @@ import StudentsPage from "./pages/StudentsPage";
 import SubjectsPage from "./pages/SubjectsPage";
 import SuiviMensuelPage from "./pages/SuiviMensuelPage";
 import SupervisionPage from "./pages/SupervisionPage";
+import SupportPage from "./pages/SupportPage";
 import TarifsClassePage from "./pages/TarifsClassePage";
 import TeachersPage from "./pages/TeachersPage";
 import TransactionsPage from "./pages/TransactionsPage";
@@ -58,6 +63,7 @@ export default function App() {
   return (
     <>
     <PwaBanners />
+    <InstallPromptModal />
     <Routes>
       <Route path="/login" element={<LoginPage />} />
       <Route path="/mot-de-passe-oublie" element={<ForgotPasswordPage />} />
@@ -320,10 +326,34 @@ export default function App() {
           }
         />
         <Route
+          path="/paiements/recherche-matricule"
+          element={
+            <ProtectedRoute roles={["admin", "comptabilite"]}>
+              <RechercheMatriculePage />
+            </ProtectedRoute>
+          }
+        />
+        <Route
           path="/paiements/tarifs-classe"
           element={
             <ProtectedRoute roles={["admin", "comptabilite"]}>
               <TarifsClassePage />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/caisse"
+          element={
+            <ProtectedRoute roles={["admin", "comptabilite"]}>
+              <CaissePage />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/depenses"
+          element={
+            <ProtectedRoute roles={["admin", "comptabilite"]}>
+              <DepensesPage />
             </ProtectedRoute>
           }
         />
@@ -372,6 +402,14 @@ export default function App() {
           element={
             <ProtectedRoute feature="annonces">
               <AnnouncementsPage />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/support"
+          element={
+            <ProtectedRoute>
+              <SupportPage />
             </ProtectedRoute>
           }
         />

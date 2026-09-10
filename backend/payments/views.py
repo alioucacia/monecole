@@ -10,14 +10,16 @@ from django.template.loader import render_to_string
 from rest_framework import viewsets
 from rest_framework.decorators import action
 from rest_framework.exceptions import ValidationError
+from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
+from rest_framework.views import APIView
 from xhtml2pdf import pisa
 
-from accounts.permissions import IsAdminOrComptabilite, IsAdminOrComptabiliteOrReadOnly
-from people.views import _image_data_uri
+from accounts.permissions import IsAdmin, IsAdminOrComptabilite, IsAdminOrComptabiliteOrReadOnly
+from people.views import _image_data_uri, _mm_px
 
-from .models import Frais, Paiement, TarifClasse, TypeFrais
-from .serializers import FraisSerializer, PaiementSerializer, TarifClasseSerializer, TypeFraisSerializer
+from .models import CategorieDepense, Depense, Frais, Paiement, TarifClasse, TypeFrais
+from .serializers import CategorieDepenseSerializer, DepenseSerializer, FraisSerializer, PaiementSerializer, TarifClasseSerializer, TypeFraisSerializer
 
 
 def _mois_entre(date_debut, date_fin):
@@ -35,18 +37,25 @@ def _calculer_suivi_mensuel(eleve, annee_scolaire):
     élève sur une année scolaire — se base sur `Paiement.mois` (le mois qu'un paiement couvre),
     à ne pas confondre avec `Paiement.date_paiement` (la date à laquelle il a été encaissé).
 
-    Le montant dû tient compte de la catégorie de paiement de l'élève et d'une éventuelle
-    réduction fidélité (`EleveProfile.facteur_mensualite`) — un élève « Fondation 50% » ne doit
-    ainsi que la moitié du tarif standard, un élève exonéré ou inscription-seulement rien du tout
-    (aucun mois n'est alors suivi, faute d'obligation à respecter)."""
+    Le montant dû mensuel (`montant_mensuel_du`, somme des `Frais.montant_du` mensuels) tient
+    compte de la catégorie de paiement de l'élève et d'une éventuelle réduction fidélité — un
+    élève « Fondation 50% » ne doit ainsi que la moitié du tarif standard, un élève exonéré ou
+    inscription-seulement rien du tout (aucun mois n'est alors suivi, faute d'obligation à
+    respecter). Comme `Frais.montant_du` fige la réduction dès le premier paiement encaissé sur
+    le frais (`facteur_applique`), ce montant ne change plus rétroactivement pour un frais déjà
+    entamé — un mois déjà soldé au tarif en vigueur au moment du paiement reste soldé même si la
+    catégorie de l'élève change ensuite."""
     frais_mensuels = list(Frais.objects.filter(
         eleve=eleve, annee_scolaire=annee_scolaire, type_frais__est_mensuel=True
     ))
     if not frais_mensuels:
         return []
 
-    montant_mensuel_du = sum((f.montant for f in frais_mensuels), Decimal("0")) * eleve.facteur_mensualite
+    montant_mensuel_du = sum((f.montant_du for f in frais_mensuels), Decimal("0"))
     if montant_mensuel_du <= 0:
+        # Élève exonéré (Fondation gratuite, inscription/réinscription seulement) : aucune
+        # obligation mensuelle, donc aucun mois suivi — voir generer_pour_classe() qui, pour la
+        # même raison, ne crée même pas de Frais mensuel pour ces élèves.
         return []
     paiements = (
         Paiement.objects.filter(frais__in=frais_mensuels, mois__isnull=False)
@@ -100,7 +109,7 @@ def _render_fiches_pdf(fiches: list[dict], titre: str, ecole=None) -> bytes:
     html = render_to_string("payments/fiche_paiement_pdf.html", {
         "fiches": fiches, "titre": titre,
         "ecole_nom": ecole.nom if ecole else "École Manager",
-        "ecole_logo_data_uri": _image_data_uri(ecole.logo) if ecole else None,
+        "ecole_logo_data_uri": _image_data_uri(ecole.logo, _mm_px(11, 11), mode="contain") if ecole else None,
         "couleur_principale": ecole.couleur_principale if ecole else "#14304f",
         "couleur_secondaire": ecole.couleur_secondaire if ecole else "#b8860b",
         "modele": ecole.modele_recu if ecole else 1,
@@ -179,6 +188,174 @@ class TarifClasseViewSet(viewsets.ModelViewSet):
         return Response(TarifClasseSerializer(tarif).data)
 
 
+class CategorieDepenseViewSet(viewsets.ModelViewSet):
+    """Catégories de dépense de l'établissement — librement gérées par son administrateur
+    (renommer, ajouter, supprimer), contrairement aux choix fixes qu'elles remplacent. Un jeu de
+    départ (CATEGORIES_DEPENSE_PAR_DEFAUT) est créé automatiquement à la création de l'école."""
+
+    queryset = CategorieDepense.objects.all()
+    serializer_class = CategorieDepenseSerializer
+    permission_classes = [IsAdminOrComptabilite]
+
+    def get_queryset(self):
+        return super().get_queryset().filter(ecole_id=self.request.user.ecole_id)
+
+    def perform_create(self, serializer):
+        serializer.save(ecole=self.request.user.ecole)
+
+    def perform_destroy(self, instance):
+        # PROTECT sur Depense.categorie : une catégorie déjà utilisée ne doit pas pouvoir
+        # disparaître en laissant des dépenses orphelines/sans catégorie.
+        try:
+            instance.delete()
+        except ProtectedError:
+            raise ValidationError(
+                f"Impossible de supprimer « {instance.nom} » : des dépenses y sont déjà rattachées. "
+                "Vous pouvez la renommer à la place."
+            )
+
+
+class DepenseViewSet(viewsets.ModelViewSet):
+    """Sorties de caisse de l'établissement (hors salaires enseignants) — le pendant de
+    `FraisViewSet`/`PaiementViewSet` côté dépenses, alimente le tableau de bord Caisse
+    (voir `CaisseView`) et le rapport journalier (simple filtre de date sur cette même vue)."""
+
+    queryset = Depense.objects.select_related("enregistre_par", "categorie")
+    serializer_class = DepenseSerializer
+    permission_classes = [IsAdminOrComptabilite]
+    filterset_fields = {
+        "date": ["exact", "gte", "lte"],
+        "categorie": ["exact"],
+        "mode_paiement": ["exact"],
+    }
+
+    def get_queryset(self):
+        return super().get_queryset().filter(ecole_id=self.request.user.ecole_id)
+
+    def perform_create(self, serializer):
+        serializer.save(ecole=self.request.user.ecole, enregistre_par=self.request.user)
+
+    @action(detail=False, methods=["get"], url_path="summary")
+    def summary(self, request):
+        qs = self.filter_queryset(self.get_queryset())
+        total = qs.aggregate(total=Sum("montant"))["total"] or Decimal("0")
+        return Response({"total": total, "nombre": qs.count()})
+
+    @action(detail=False, methods=["get"], url_path="export")
+    def export(self, request):
+        """Export CSV des dépenses (respecte les filtres de la liste, ex: ?date__gte=…)."""
+        queryset = self.filter_queryset(self.get_queryset())
+        response = HttpResponse(content_type="text/csv; charset=utf-8-sig")
+        response["Content-Disposition"] = 'attachment; filename="depenses.csv"'
+        writer = csv.writer(response, delimiter=";")
+        writer.writerow(["Date", "Catégorie", "Motif", "Montant", "Mode de paiement", "Référence", "Responsable", "Enregistré par"])
+        for depense in queryset:
+            writer.writerow([
+                depense.date, depense.categorie.nom, depense.motif, depense.montant,
+                depense.get_mode_paiement_display(), depense.reference, depense.responsable,
+                depense.enregistre_par.get_full_name() if depense.enregistre_par else "",
+            ])
+        return response
+
+
+class CaisseView(APIView):
+    """Tableau de bord Caisse : combine les rentrées (paiements élèves) et les sorties (dépenses)
+    de l'école sur une période — par défaut aujourd'hui, ce qui couvre directement le rapport
+    journalier. `?date_debut=&date_fin=` (YYYY-MM-DD) pour une période personnalisée."""
+
+    permission_classes = [IsAuthenticated, IsAdminOrComptabilite]
+
+    def _periode(self, request):
+        aujourdhui = date.today()
+        date_debut = request.query_params.get("date_debut")
+        date_fin = request.query_params.get("date_fin")
+        try:
+            debut = date.fromisoformat(date_debut) if date_debut else aujourdhui
+            fin = date.fromisoformat(date_fin) if date_fin else aujourdhui
+        except ValueError:
+            raise ValidationError("Format de date invalide — attendu AAAA-MM-JJ.")
+        if debut > fin:
+            raise ValidationError("La date de début doit précéder la date de fin.")
+        return debut, fin
+
+    def _donnees(self, request):
+        """Retourne déjà les rentrées/sorties sous forme de dicts sérialisés (pas les objets
+        modèle bruts) : cette même forme sert à la fois à la réponse JSON (`CaisseView.get`) et
+        au contexte du template PDF (`CaissePdfView.get`), pour que les deux ne puissent jamais
+        diverger — un objet `Paiement`/`Depense` brut n'a pas d'attribut `eleve_nom`/
+        `mode_paiement_display` et rendrait ces colonnes silencieusement vides dans le PDF."""
+        ecole_id = request.user.ecole_id
+        debut, fin = self._periode(request)
+        paiements = (
+            Paiement.objects.filter(
+                frais__eleve__user__ecole_id=ecole_id, date_paiement__gte=debut, date_paiement__lte=fin,
+            ).select_related("frais__eleve__user", "frais__type_frais", "enregistre_par").order_by("date_paiement")
+        )
+        depenses = (
+            Depense.objects.filter(ecole_id=ecole_id, date__gte=debut, date__lte=fin)
+            .select_related("enregistre_par", "categorie").order_by("date")
+        )
+        rentrees = [
+            {
+                "id": p.id, "date": p.date_paiement, "eleve_nom": p.frais.eleve.user.get_full_name(),
+                "type_frais_nom": p.frais.type_frais.nom, "montant": p.montant,
+                "mode_paiement": p.mode_paiement, "mode_paiement_display": p.get_mode_paiement_display(),
+                "reference": p.reference,
+                "enregistre_par_nom": p.enregistre_par.get_full_name() if p.enregistre_par else None,
+            }
+            for p in paiements
+        ]
+        sorties = [
+            {
+                "id": d.id, "date": d.date, "categorie": d.categorie_id,
+                "categorie_nom": d.categorie.nom, "motif": d.motif, "montant": d.montant,
+                "mode_paiement": d.mode_paiement, "mode_paiement_display": d.get_mode_paiement_display(),
+                "reference": d.reference, "responsable": d.responsable,
+                "enregistre_par_nom": d.enregistre_par.get_full_name() if d.enregistre_par else None,
+            }
+            for d in depenses
+        ]
+        total_rentrees = sum((r["montant"] for r in rentrees), Decimal("0"))
+        total_sorties = sum((s["montant"] for s in sorties), Decimal("0"))
+        return {
+            "date_debut": debut, "date_fin": fin,
+            "total_rentrees": total_rentrees, "total_sorties": total_sorties,
+            "solde": total_rentrees - total_sorties,
+            "rentrees": rentrees, "sorties": sorties,
+        }
+
+    def get(self, request):
+        return Response(self._donnees(request))
+
+
+class CaissePdfView(APIView):
+    """Version imprimable (PDF) du tableau de bord Caisse — le rapport journalier demandé quand
+    date_debut = date_fin = aujourd'hui (le réglage par défaut)."""
+
+    permission_classes = [IsAuthenticated, IsAdminOrComptabilite]
+
+    def get(self, request):
+        vue = CaisseView()
+        donnees = vue._donnees(request)
+        ecole = request.user.ecole
+        html = render_to_string("payments/caisse_pdf.html", {
+            **donnees,
+            "ecole_nom": ecole.nom if ecole else "École Manager",
+            "ecole_adresse": ecole.adresse if ecole else "",
+            "ecole_telephone": ecole.telephone if ecole else "",
+            "ecole_logo_data_uri": _image_data_uri(ecole.logo, _mm_px(16, 16), mode="contain") if ecole and ecole.logo else None,
+            "couleur_principale": ecole.couleur_principale if ecole else "#14304f",
+            "couleur_secondaire": ecole.couleur_secondaire if ecole else "#b8860b",
+            "genere_par": request.user.get_full_name(),
+        })
+        buffer = BytesIO()
+        pisa.CreatePDF(html, dest=buffer, encoding="utf-8")
+        response = HttpResponse(buffer.getvalue(), content_type="application/pdf")
+        nom_fichier = f"rapport_caisse_{donnees['date_debut']}_{donnees['date_fin']}.pdf"
+        response["Content-Disposition"] = f'attachment; filename="{nom_fichier}"'
+        return response
+
+
 class FraisViewSet(viewsets.ModelViewSet):
     queryset = Frais.objects.select_related("eleve__user", "type_frais", "annee_scolaire").prefetch_related("paiements")
     serializer_class = FraisSerializer
@@ -209,6 +386,18 @@ class FraisViewSet(viewsets.ModelViewSet):
             from rest_framework.permissions import IsAuthenticated
             return [IsAuthenticated()]
         return super().get_permissions()
+
+    def perform_destroy(self, instance):
+        # La suppression d'un frais est en CASCADE sur ses paiements (voir Paiement.frais) : un
+        # frais déjà payé, même partiellement, ne doit donc jamais être supprimé, sous peine de
+        # perdre l'historique d'encaissement. Seul un frais encore intégralement impayé (aucun
+        # paiement enregistré dessus) peut l'être — ex: un frais généré par erreur.
+        if instance.montant_paye > 0:
+            raise ValidationError(
+                "Impossible de supprimer ce frais : des paiements y sont déjà enregistrés "
+                "(historique de paiements). Seul un frais impayé peut être supprimé."
+            )
+        instance.delete()
 
     @action(detail=False, methods=["get"], url_path="suivi-mensuel")
     def suivi_mensuel(self, request):
@@ -397,7 +586,7 @@ class FraisViewSet(viewsets.ModelViewSet):
             "ecole_nom": ecole.nom if ecole else "École Manager",
             "ecole_adresse": ecole.adresse if ecole else "",
             "ecole_telephone": ecole.telephone if ecole else "",
-            "ecole_logo_data_uri": _image_data_uri(ecole.logo) if ecole else None,
+            "ecole_logo_data_uri": _image_data_uri(ecole.logo, _mm_px(15, 15), mode="contain") if ecole else None,
             "couleur_principale": ecole.couleur_principale if ecole else "#14304f",
             "couleur_secondaire": ecole.couleur_secondaire if ecole else "#b8860b",
         })
@@ -405,6 +594,57 @@ class FraisViewSet(viewsets.ModelViewSet):
         pisa.CreatePDF(html, dest=buffer, encoding="utf-8")
         response = HttpResponse(buffer.getvalue(), content_type="application/pdf")
         response["Content-Disposition"] = f'attachment; filename="proforma_{eleve.matricule}_{annee.libelle}.pdf"'
+        return response
+
+    @action(detail=False, methods=["get"], url_path="suivi-mensuel-pdf")
+    def suivi_mensuel_pdf(self, request):
+        """Version imprimable (PDF) du suivi mensuel des paiements de scolarité d'un élève —
+        même calcul/permissions que `suivi_mensuel`, en document téléchargeable."""
+        from academics.models import AnneeScolaire
+        from people.models import EleveProfile
+
+        eleve_id = request.query_params.get("eleve")
+        if not eleve_id:
+            raise ValidationError("Le paramètre 'eleve' est requis.")
+        eleve = get_object_or_404(EleveProfile, pk=eleve_id, user__ecole_id=request.user.ecole_id)
+
+        if request.user.role == "student" and getattr(request.user, "eleve_profile", None) != eleve:
+            raise ValidationError("Vous ne pouvez consulter que votre propre suivi de paiement.")
+        if request.user.role == "parent" and eleve.parent_id != request.user.id:
+            raise ValidationError("Vous ne pouvez consulter que le suivi de paiement de vos enfants.")
+
+        annee_id = request.query_params.get("annee_scolaire")
+        if annee_id:
+            annee = get_object_or_404(AnneeScolaire, pk=annee_id, ecole_id=request.user.ecole_id)
+        else:
+            annee = AnneeScolaire.objects.filter(ecole_id=request.user.ecole_id, active=True).first()
+        if not annee:
+            raise ValidationError("Aucune année scolaire active pour votre établissement.")
+
+        mois = _calculer_suivi_mensuel(eleve, annee)
+        total_du = sum((m["montant_du"] for m in mois), Decimal("0"))
+        total_paye = sum((m["montant_paye"] for m in mois), Decimal("0"))
+
+        ecole = eleve.user.ecole
+        html = render_to_string("payments/suivi_mensuel_pdf.html", {
+            "eleve": eleve,
+            "annee_scolaire": annee.libelle,
+            "mois": mois,
+            "total_du": total_du,
+            "total_paye": total_paye,
+            "total_solde": total_du - total_paye,
+            "date_edition": date.today(),
+            "ecole_nom": ecole.nom if ecole else "École Manager",
+            "ecole_adresse": ecole.adresse if ecole else "",
+            "ecole_telephone": ecole.telephone if ecole else "",
+            "ecole_logo_data_uri": _image_data_uri(ecole.logo, _mm_px(15, 15), mode="contain") if ecole and ecole.logo else None,
+            "couleur_principale": ecole.couleur_principale if ecole else "#14304f",
+            "couleur_secondaire": ecole.couleur_secondaire if ecole else "#b8860b",
+        })
+        buffer = BytesIO()
+        pisa.CreatePDF(html, dest=buffer, encoding="utf-8")
+        response = HttpResponse(buffer.getvalue(), content_type="application/pdf")
+        response["Content-Disposition"] = f'attachment; filename="suivi_mensuel_{eleve.matricule}_{annee.libelle}.pdf"'
         return response
 
     @action(detail=False, methods=["get"], url_path="summary")
@@ -508,6 +748,11 @@ class PaiementViewSet(viewsets.ModelViewSet):
         if self.action in ("list", "retrieve"):
             from rest_framework.permissions import IsAuthenticated
             return [IsAuthenticated()]
+        if self.action == "destroy":
+            # Suppression d'un paiement déjà encaissé : réservée à l'administrateur, même la
+            # comptabilité (qui peut pourtant créer des paiements) n'y a pas accès — un paiement
+            # supprimé par erreur fausse l'historique et le suivi mensuel de l'élève.
+            return [IsAdmin()]
         return super().get_permissions()
 
     def perform_create(self, serializer):
@@ -515,8 +760,28 @@ class PaiementViewSet(viewsets.ModelViewSet):
         from accounts.services import journaliser
 
         paiement = serializer.save(enregistre_par=self.request.user)
+
+        # Premier paiement sur ce frais : on fige la réduction en vigueur à cet instant (voir
+        # Frais.facteur_applique/montant_du) — un changement ultérieur de catégorie de paiement
+        # de l'élève n'affectera plus ce frais, la réduction ne s'applique jamais à une somme
+        # déjà versée.
+        frais = paiement.frais
+        if frais.facteur_applique is None and frais.type_frais.est_mensuel:
+            frais.facteur_applique = frais.eleve.facteur_mensualite
+            frais.save(update_fields=["facteur_applique"])
+
         journaliser(
             self.request.user, JournalUtilisateur.Categorie.PAIEMENT,
             f"Paiement enregistré : {paiement.frais.eleve.user.get_full_name()} — {paiement.montant}",
             self.request,
         )
+
+    def perform_destroy(self, instance):
+        # Symétrique de perform_create() : si ce paiement était le dernier encaissé sur ce frais,
+        # on "dégèle" la réduction (le frais suit de nouveau la catégorie courante de l'élève,
+        # comme s'il n'avait jamais été payé) plutôt que de garder un gel devenu sans objet.
+        frais = instance.frais
+        instance.delete()
+        if not frais.paiements.exists() and frais.facteur_applique is not None:
+            frais.facteur_applique = None
+            frais.save(update_fields=["facteur_applique"])

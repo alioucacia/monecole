@@ -156,7 +156,16 @@ export default function TeachersPage() {
           </div>
           <Input label="Prénom" required value={form.first_name} onChange={(e) => setForm({ ...form, first_name: e.target.value })} />
           <Input label="Nom" required value={form.last_name} onChange={(e) => setForm({ ...form, last_name: e.target.value })} />
-          <Input label="Matricule" required value={form.matricule} onChange={(e) => setForm({ ...form, matricule: e.target.value })} />
+          {editing ? (
+            <Input label="Matricule" required value={form.matricule} onChange={(e) => setForm({ ...form, matricule: e.target.value })} />
+          ) : (
+            <label className="block">
+              <span className="block text-sm font-semibold text-slate-600 mb-1.5">Matricule</span>
+              <p className="text-sm text-slate-400 bg-slate-50 border border-slate-200 rounded-xl px-3.5 py-2.5">
+                Généré automatiquement (initiales + n° d'embauche)
+              </p>
+            </label>
+          )}
           <Input label="Email" type="email" value={form.email} onChange={(e) => setForm({ ...form, email: e.target.value })} />
           <Input label="Spécialité" value={form.specialite} onChange={(e) => setForm({ ...form, specialite: e.target.value })} />
           <Input label="Diplôme" value={form.diplome} onChange={(e) => setForm({ ...form, diplome: e.target.value })} />

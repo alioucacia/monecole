@@ -1,0 +1,106 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8" />
+<style>
+    @page { size: A4; margin: 1.6cm; }
+    body { font-family: Helvetica, Arial, sans-serif; color: #1e1b2e; font-size: 11px; }
+
+    table.header { width: 100%; border-bottom: 3px solid {{ couleur_principale }}; padding-bottom: 10px; margin-bottom: 4px; }
+    .header .logo { width: 15mm; height: 15mm; object-fit: contain; margin-bottom: 3px; }
+    .header .nom { color: {{ couleur_principale }}; font-size: 16px; font-weight: bold; margin: 0; text-transform: uppercase; }
+    .header .coord { color: #6b7280; font-size: 9px; margin: 2px 0 0 0; }
+    .header .num { text-align: right; font-size: 9px; color: #6b7280; }
+    .header .num .valeur { font-size: 11px; font-weight: bold; color: {{ couleur_principale }}; }
+
+    .bandeau { margin: 12px 0 14px 0; padding: 8px 14px; background-color: {{ couleur_secondaire }};
+        color: #ffffff; font-size: 13px; font-weight: bold; text-align: center; text-transform: uppercase; letter-spacing: 0.5px; }
+
+    table.infos { width: 100%; background-color: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; margin-bottom: 16px; }
+    .infos td { padding: 8px 14px; font-size: 11px; }
+    .infos .label { color: {{ couleur_principale }}; font-size: 9px; text-transform: uppercase; font-weight: bold; }
+    .infos .value { color: #1e1b2e; font-weight: bold; font-size: 12.5px; }
+
+    table.lignes { width: 100%; border-collapse: collapse; margin-top: 4px; }
+    table.lignes th { background-color: {{ couleur_principale }}; color: #ffffff; padding: 7px; text-align: left; font-size: 9px; text-transform: uppercase; }
+    table.lignes th.right, table.lignes td.right { text-align: right; }
+    table.lignes td { padding: 7px; font-size: 11px; border-bottom: 1px solid #e2e8f0; }
+    table.lignes tr.alt td { background-color: #f8fafc; }
+    table.lignes tr.total td { border-top: 1.5px solid {{ couleur_principale }}; border-bottom: none; font-weight: bold; padding-top: 9px; }
+
+    .statut { display: inline-block; padding: 2px 8px; border-radius: 10px; font-size: 9px; font-weight: bold; }
+    .statut-paye { background-color: #d1fae5; color: #065f46; }
+    .statut-partiel { background-color: #fef3c7; color: #92400e; }
+    .statut-non_paye { background-color: #fee2e2; color: #991b1b; }
+
+    .footer-note { margin-top: 18px; font-size: 9.5px; color: #6b7280; }
+    .footer { margin-top: 20px; width: 100%; text-align: center; font-size: 9px; color: #94a3b8; padding-top: 10px; border-top: 1px dashed #cbd5e1; }
+</style>
+</head>
+<body>
+    <table class="header">
+        <tr>
+            <td>
+                {% if ecole_logo_data_uri %}<img class="logo" src="{{ ecole_logo_data_uri }}" /><br/>{% endif %}
+                <p class="nom">{{ ecole_nom }}</p>
+                {% if ecole_adresse or ecole_telephone %}
+                <p class="coord">{{ ecole_adresse|default:"" }}{% if ecole_adresse and ecole_telephone %} · {% endif %}{{ ecole_telephone|default:"" }}</p>
+                {% endif %}
+            </td>
+            <td width="130" class="num">
+                <div>Émis le</div>
+                <div class="valeur">{{ date_edition|date:"d/m/Y" }}</div>
+            </td>
+        </tr>
+    </table>
+
+    <div class="bandeau">Suivi des paiements de scolarité — {{ annee_scolaire }}</div>
+
+    <table class="infos">
+        <tr>
+            <td width="35%"><div class="label">Élève</div><div class="value">{{ eleve.user.get_full_name }}</div></td>
+            <td width="25%"><div class="label">Matricule</div><div class="value">{{ eleve.matricule }}</div></td>
+            <td width="40%"><div class="label">Classe</div><div class="value">{{ eleve.classe|default:"—" }}</div></td>
+        </tr>
+    </table>
+
+    <table class="lignes">
+        <thead>
+            <tr>
+                <th>Mois</th>
+                <th class="right">Montant dû</th>
+                <th class="right">Payé</th>
+                <th>Statut</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for m in mois %}
+            <tr {% if forloop.counter|divisibleby:2 %}class="alt"{% endif %}>
+                <td>{{ m.mois }}</td>
+                <td class="right">{{ m.montant_du|floatformat:2 }} GNF</td>
+                <td class="right">{{ m.montant_paye|floatformat:2 }} GNF</td>
+                <td>
+                    <span class="statut statut-{{ m.statut }}">
+                        {% if m.statut == "paye" %}Payé{% elif m.statut == "partiel" %}Partiel{% else %}Non payé{% endif %}
+                    </span>
+                </td>
+            </tr>
+            {% empty %}
+            <tr><td colspan="4">Aucun frais mensuel suivi sur cette année scolaire.</td></tr>
+            {% endfor %}
+            {% if mois %}
+            <tr class="total">
+                <td>Total</td>
+                <td class="right">{{ total_du|floatformat:2 }} GNF</td>
+                <td class="right">{{ total_paye|floatformat:2 }} GNF</td>
+                <td class="right">Solde : {{ total_solde|floatformat:2 }} GNF</td>
+            </tr>
+            {% endif %}
+        </tbody>
+    </table>
+
+    <p class="footer-note">Ce document récapitule uniquement les frais mensuels (ex: scolarité) — les frais ponctuels (inscription, cantine, transport...) ne sont pas suivis mois par mois.</p>
+
+    <p class="footer">Document généré le {% now "d/m/Y à H:i" %} — {{ ecole_nom }}</p>
+</body>
+</html>

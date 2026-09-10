@@ -1,0 +1,117 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8" />
+<style>
+    /* Carte PVC standard CR80 (85,6 × 54 mm) — page PDF à la taille EXACTE de la carte, pas
+       centrée sur une A4 comme badge_eleve_pdf.html (celle-ci est pensée pour l'impression
+       directe sur une imprimante à cartes, pas pour découper soi-même). Mêmes pièges
+       xhtml2pdf/reportlab que badge_eleve_pdf.html/_badge_eleve_style.html (voir ces fichiers) :
+       largeurs en mm, jamais en %% ; aucun padding horizontal sur une <td> (il s'ajoute à la
+       largeur déclarée) ; l'espacement horizontal passe par un <div> interne ou par une vraie
+       cellule d'espacement vide selon que le contenu est du texte simple ou une table imbriquée. */
+    @page { size: 85.6mm 54mm; margin: 0; }
+    html, body { margin: 0; padding: 0; }
+    body { font-family: Helvetica, Arial, sans-serif; color: #1e1b2e; }
+
+    table.carte { width: 85.6mm; }
+    .carte td { padding: 0; }
+
+    /* Les 3 bandes ont une hauteur EXPLICITE qui totalise exactement 54mm (9 + 37 + 8) : sans
+       ça, une <table> ne s'étire pas pour remplir la hauteur de page disponible (elle ne prend
+       que la hauteur nécessaire à son contenu), laissant un grand vide blanc en bas de la carte
+       plutôt que des bandes réparties sur toute la hauteur. */
+    table.header { width: 85.6mm; background-color: {{ couleur_principale }}; }
+    .header td { height: 9mm; padding: 0; vertical-align: middle; }
+    .header .pad { padding: 1.5mm 0 1.5mm 2.5mm; }
+    .header .ecole { color: #ffffff; font-weight: bold; letter-spacing: 0.2px; margin: 0; line-height: 1.15; text-transform: uppercase; white-space: nowrap; }
+    .header .tag {
+        display: block; background-color: rgba(255,255,255,0.2); color: #ffffff; font-size: 5.5px; font-weight: bold;
+        text-align: center; text-transform: uppercase; letter-spacing: 0.3px; padding: 1mm 0; margin: 1.5mm 2.5mm 1.5mm 0;
+    }
+    .crest { width: 6.5mm; height: 6.5mm; }
+    .crest img { width: 6.5mm; height: 6.5mm; }
+    .crest .fallback {
+        width: 6.5mm; height: 6.5mm; background-color: rgba(255,255,255,0.25); color: #ffffff;
+        font-size: 7px; font-weight: bold; text-align: center; vertical-align: middle;
+    }
+
+    table.corps { width: 85.6mm; }
+    .corps td { height: 37mm; padding: 0; vertical-align: middle; }
+    .photo { width: 17mm; height: 21mm; border: 0.5pt solid #cbd5e1; }
+    .photo img { width: 17mm; height: 21mm; object-fit: cover; }
+    .initiales {
+        width: 17mm; height: 21mm; background-color: {{ couleur_secondaire }}; color: #ffffff;
+        font-size: 13px; font-weight: bold; text-align: center; vertical-align: middle;
+    }
+    .infos .pad { padding: 1.5mm 0 0 2mm; }
+    .infos .nom { font-size: 7.5px; font-weight: bold; color: #1e1b2e; margin: 0 0 1mm 0; line-height: 1.15; }
+    .infos .ligne { font-size: 6px; color: #4b5563; margin: 0 0 0.8mm 0; }
+    .infos .ligne b { color: #1e1b2e; }
+    .qr-cell { text-align: center; }
+    .qr-cell .pad { padding: 1.5mm 2mm 0 0; }
+    .qr-cell img { width: 11mm; height: 11mm; }
+
+    table.footer { width: 85.6mm; background-color: {{ couleur_secondaire }}; }
+    .footer td { height: 8mm; padding: 0; vertical-align: middle; }
+    .footer .pad { padding: 1mm 2.5mm; font-size: 5.5px; color: #ffffff; }
+    .footer .annee { font-weight: bold; }
+    .footer .matricule { text-align: right; letter-spacing: 0.3px; }
+</style>
+</head>
+<body>
+    <table class="carte"><tr><td>
+
+        <table class="header"><tr>
+            <td style="width: 8mm;">
+                <div class="pad">
+                    <div class="crest">
+                        {% if logo_data_uri %}<img src="{{ logo_data_uri }}" />{% else %}<div class="fallback">{{ ecole_initiale }}</div>{% endif %}
+                    </div>
+                </div>
+            </td>
+            <td style="width: 62mm;">
+                <div class="pad">
+                    <p class="ecole" style="font-size: {{ ecole_nom_taille }}px;">{{ ecole_nom }}</p>
+                </div>
+            </td>
+            <td style="width: 15.6mm;">
+                <span class="tag">Élève</span>
+            </td>
+        </tr></table>
+
+        <table class="corps"><tr>
+            <td style="width: 20mm;">
+                <div style="padding: 1.5mm 0 0 1.5mm;">
+                    {% if photo_data_uri %}
+                    <div class="photo"><img src="{{ photo_data_uri }}" /></div>
+                    {% else %}
+                    <div class="initiales">{{ initiales }}</div>
+                    {% endif %}
+                </div>
+            </td>
+            <td class="infos" style="width: 51.6mm;">
+                <div class="pad">
+                    <p class="nom">{{ nom_complet }}</p>
+                    <p class="ligne">Matricule : <b>{{ matricule }}</b></p>
+                    <p class="ligne">Classe : <b>{{ classe|default:"—" }}</b></p>
+                    {% if annee_scolaire %}<p class="ligne">Année : <b>{{ annee_scolaire }}</b></p>{% endif %}
+                </div>
+            </td>
+            <td class="qr-cell" style="width: 14mm;">
+                <div class="pad"><img src="{{ qr_data_uri }}" /></div>
+            </td>
+        </tr></table>
+
+        <table class="footer"><tr>
+            <td style="width: 50mm;">
+                <div class="pad annee">{% if valid_upto %}Valable jusqu'au {{ valid_upto }}{% else %}&nbsp;{% endif %}</div>
+            </td>
+            <td style="width: 35.6mm;">
+                <div class="pad matricule">{{ matricule }}</div>
+            </td>
+        </tr></table>
+
+    </td></tr></table>
+</body>
+</html>

@@ -39,6 +39,10 @@ export default function StudentsPage() {
   const [saving, setSaving] = useState(false);
   const [exporting, setExporting] = useState(false);
   const [exportingPdf, setExportingPdf] = useState(false);
+  const [importModalOpen, setImportModalOpen] = useState(false);
+  const [importing, setImporting] = useState(false);
+  const [importRapport, setImportRapport] = useState<{ crees: number; total_lignes: number; erreurs: { ligne: number; message: string }[] } | null>(null);
+  const [importError, setImportError] = useState("");
 
   const { items, loading, hasNext, hasPrevious, goNext, goPrevious, reload } = usePaginated<EleveProfile>(
     () => elevesApi.list({ search: search || undefined, classe: classeFilter || undefined, cycle: cycleFilter || undefined }),
@@ -154,6 +158,24 @@ export default function StudentsPage() {
     }
   };
 
+  const handleImportFile = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const fichier = e.target.files?.[0];
+    e.target.value = "";
+    if (!fichier) return;
+    setImporting(true);
+    setImportRapport(null);
+    setImportError("");
+    try {
+      const { data } = await elevesApi.importExcel(fichier);
+      setImportRapport(data);
+      if (data.crees > 0) reload();
+    } catch (err) {
+      setImportError(extractErrorMessage(err));
+    } finally {
+      setImporting(false);
+    }
+  };
+
   return (
     <div>
       <PageHeader
@@ -163,6 +185,7 @@ export default function StudentsPage() {
           <div className="flex gap-2">
             <Button variant="secondary" onClick={handleExport} disabled={exporting}>{exporting ? "Export…" : "📤 Exporter CSV"}</Button>
             <Button variant="secondary" onClick={handleExportPdf} disabled={exportingPdf}>{exportingPdf ? "Export…" : "🖨️ Exporter PDF"}</Button>
+            <Button variant="secondary" onClick={() => { setImportRapport(null); setImportError(""); setImportModalOpen(true); }}>📥 Importer Excel</Button>
             <Button onClick={openCreate}>+ Nouvel élève</Button>
           </div>
         ) : undefined}
@@ -272,7 +295,7 @@ export default function StudentsPage() {
           <Input label="Email" type="email" value={form.email} onChange={(e) => setForm({ ...form, email: e.target.value })} />
           <Select label="Classe" value={form.classe} onChange={(e) => setForm({ ...form, classe: e.target.value })}>
             <option value="">— Aucune —</option>
-            <ClasseOptions classes={classes} />
+            <ClasseOptions classes={classes} avecPlacesDisponibles />
           </Select>
           <Select label="Genre" value={form.sexe} onChange={(e) => setForm({ ...form, sexe: e.target.value })}>
             <option value="">— Non précisé —</option>
@@ -385,6 +408,53 @@ export default function StudentsPage() {
             <Button type="submit" disabled={saving}>{saving ? "Enregistrement…" : "Enregistrer"}</Button>
           </div>
         </form>
+      </Modal>
+
+      <Modal open={importModalOpen} onClose={() => setImportModalOpen(false)} title="Importer des élèves depuis Excel">
+        <div className="space-y-4">
+          <p className="text-sm text-slate-500">
+            Remplissez le modèle (une ligne par élève), puis importez-le ici. Chaque ligne est traitée indépendamment :
+            les lignes valides créent l'élève (matricule généré automatiquement si absent, identifiants envoyés par
+            email/SMS), les lignes en erreur sont listées ci-dessous pour correction.
+          </p>
+
+          <Button variant="secondary" onClick={() => elevesApi.importExcelModele("modele_import_eleves.xlsx")}>
+            ⬇️ Télécharger le modèle Excel
+          </Button>
+
+          <label className="block">
+            <span className="block text-sm font-semibold text-slate-600 mb-1.5">Fichier rempli (.xlsx)</span>
+            <input
+              type="file" accept=".xlsx" onChange={handleImportFile} disabled={importing}
+              className="text-sm text-slate-500 file:mr-3 file:py-1.5 file:px-3 file:rounded-full file:border-0 file:text-xs file:font-semibold file:bg-brand-50 file:text-brand-700 hover:file:bg-brand-100"
+            />
+          </label>
+
+          {importing && <div className="flex justify-center py-4"><Spinner /></div>}
+
+          {importError && <p className="text-sm text-rose-600 bg-rose-50 border border-rose-100 rounded-xl px-3.5 py-2.5">{importError}</p>}
+
+          {importRapport && (
+            <div className="space-y-2">
+              <p className="text-sm font-semibold text-ink-900">
+                {importRapport.crees} élève{importRapport.crees > 1 ? "s" : ""} importé{importRapport.crees > 1 ? "s" : ""} sur {importRapport.total_lignes} ligne{importRapport.total_lignes > 1 ? "s" : ""}.
+              </p>
+              {importRapport.erreurs.length > 0 && (
+                <div className="max-h-48 overflow-y-auto rounded-xl border border-rose-100 bg-rose-50 divide-y divide-rose-100">
+                  {importRapport.erreurs.map((err, i) => (
+                    <p key={i} className="px-3.5 py-2 text-xs text-rose-700">
+                      <strong>Ligne {err.ligne}</strong> — {err.message}
+                    </p>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
+
+          <div className="flex justify-end">
+            <Button type="button" variant="secondary" onClick={() => setImportModalOpen(false)}>Fermer</Button>
+          </div>
+        </div>
       </Modal>
     </div>
   );
