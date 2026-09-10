@@ -110,6 +110,12 @@ class Classe(models.Model):
     def effectif(self):
         return self.eleves.count()
 
+    @property
+    def places_disponibles(self) -> int:
+        """Nombre de places encore libres avant d'atteindre `capacite` — jamais négatif (une
+        classe peut ponctuellement dépasser sa capacité si celle-ci est réduite après coup)."""
+        return max(self.capacite - self.effectif, 0)
+
 
 class Matiere(models.Model):
     ecole = models.ForeignKey("tenants.Ecole", on_delete=models.CASCADE, null=True, related_name="matieres")

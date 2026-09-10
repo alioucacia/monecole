@@ -17,6 +17,7 @@ class MatiereSerializer(serializers.ModelSerializer):
 
 class ClasseSerializer(serializers.ModelSerializer):
     effectif = serializers.IntegerField(read_only=True)
+    places_disponibles = serializers.IntegerField(read_only=True)
     professeur_principal_nom = serializers.CharField(
         source="professeur_principal.get_full_name", read_only=True, default=None
     )
@@ -27,7 +28,7 @@ class ClasseSerializer(serializers.ModelSerializer):
         model = Classe
         fields = [
             "id", "nom", "niveau", "cycle", "cycle_display", "annee_scolaire", "annee_scolaire_libelle",
-            "professeur_principal", "professeur_principal_nom", "capacite", "effectif",
+            "professeur_principal", "professeur_principal_nom", "capacite", "effectif", "places_disponibles",
         ]
 
 

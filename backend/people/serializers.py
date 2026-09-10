@@ -92,6 +92,18 @@ class EleveProfileWriteSerializer(serializers.ModelSerializer):
         # `required=False` plutôt qu'un champ en lecture seule.
         extra_kwargs = {"matricule": {"required": False, "allow_blank": True}}
 
+    def validate_classe(self, value):
+        # Pas de vérification si l'élève est déjà dans cette classe (aucun changement : il est
+        # déjà compté dans son effectif) ou si on la retire (`value` = None).
+        if value is None or (self.instance and self.instance.classe_id == value.id):
+            return value
+        if value.places_disponibles <= 0:
+            raise serializers.ValidationError(
+                f"« {value.nom} » a atteint son effectif maximum ({value.capacite} élèves) — "
+                "augmentez sa capacité ou choisissez une autre classe."
+            )
+        return value
+
     def validate(self, attrs):
         if attrs.get("parent_creer"):
             manquants = {
