@@ -1,0 +1,79 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8" />
+<style>
+    @page { size: A4; margin: 2cm; }
+    body { font-family: Helvetica, Arial, sans-serif; color: #1e1b2e; font-size: 11px; }
+    .header { text-align: center; border-bottom: 3px solid {{ couleur_principale }}; padding-bottom: 10px; margin-bottom: 16px; }
+    .header .logo { width: 16mm; height: 16mm; object-fit: contain; margin-bottom: 4px; }
+    .header h1 { color: {{ couleur_principale }}; font-size: 20px; margin: 0 0 4px 0; text-transform: uppercase; }
+    .header .coord { color: #9ca3af; margin: 0 0 4px 0; font-size: 9px; }
+    .header p { color: #6b7280; margin: 0; font-size: 11px; }
+    .infos { width: 100%; margin-bottom: 16px; }
+    .infos td { padding: 3px 0; font-size: 11px; }
+    .infos .label { color: #6b7280; width: 30%; }
+    .infos .value { font-weight: bold; }
+    table.lignes { width: 100%; border-collapse: collapse; margin-top: 8px; }
+    table.lignes th { background-color: #f3f4f6; color: {{ couleur_principale }}; padding: 8px; text-align: left; font-size: 10px; text-transform: uppercase; border: 1px solid #e5e7eb; }
+    table.lignes td { padding: 8px; border: 1px solid #eee; font-size: 12px; }
+    .right { text-align: right; }
+    .net { margin-top: 20px; width: 100%; }
+    .net .box { border: 2px solid {{ couleur_principale }}; border-radius: 6px; text-align: center; padding: 12px; }
+    .net .value { font-size: 22px; font-weight: bold; color: {{ couleur_secondaire }}; }
+    .net .label { font-size: 10px; color: #6b7280; text-transform: uppercase; }
+    .footer { margin-top: 40px; width: 100%; text-align: center; font-size: 10px; color: #6b7280; padding-top: 20px; border-top: 1px solid #ddd; }
+</style>
+</head>
+<body>
+    <div class="header">
+        {% if ecole_logo_data_uri %}<img class="logo" src="{{ ecole_logo_data_uri }}" />{% endif %}
+        <h1>{{ ecole_nom }}</h1>
+        {% if ecole_adresse or ecole_telephone %}
+        <p class="coord">{{ ecole_adresse|default:"" }}{% if ecole_adresse and ecole_telephone %} · {% endif %}{{ ecole_telephone|default:"" }}</p>
+        {% endif %}
+        <p>Fiche de paie — {{ paie.mois|date:"F Y" }}</p>
+    </div>
+
+    <table class="infos">
+        <tr>
+            <td class="label">Enseignant</td><td class="value">{{ paie.enseignant.user.get_full_name }}</td>
+            <td class="label">Matricule</td><td class="value">{{ paie.enseignant.matricule }}</td>
+        </tr>
+        <tr>
+            <td class="label">Spécialité</td><td class="value">{{ paie.enseignant.specialite|default:"—" }}</td>
+            <td class="label">Statut</td><td class="value">{% if paie.payee %}Payée le {{ paie.date_paiement|date:"d/m/Y" }}{% else %}En attente{% endif %}</td>
+        </tr>
+    </table>
+
+    <table class="lignes">
+        <thead>
+            <tr><th>Élément</th><th class="right">Montant</th></tr>
+        </thead>
+        <tbody>
+            {% if paie.mode_calcul == "horaire" %}
+            <tr><td>Heures enseignées</td><td class="right">{{ paie.nombre_heures|floatformat:2 }} h</td></tr>
+            <tr><td>Taux horaire</td><td class="right">{{ paie.taux_horaire|floatformat:2 }} GNF/h</td></tr>
+            <tr><td>Salaire calculé ({{ paie.nombre_heures|floatformat:2 }} h × {{ paie.taux_horaire|floatformat:2 }})</td><td class="right">{{ paie.salaire_calcule|floatformat:2 }} GNF</td></tr>
+            {% else %}
+            <tr><td>Salaire de base</td><td class="right">{{ paie.salaire_base|floatformat:2 }} GNF</td></tr>
+            {% endif %}
+            <tr><td>Primes</td><td class="right">+ {{ paie.primes|floatformat:2 }} GNF</td></tr>
+            <tr><td>Retenues</td><td class="right">− {{ paie.retenues|floatformat:2 }} GNF</td></tr>
+        </tbody>
+    </table>
+
+    <table class="net">
+        <tr>
+            <td class="box">
+                <div class="value">{{ paie.net_a_payer|floatformat:2 }} GNF</div>
+                <div class="label">Net à payer</div>
+            </td>
+        </tr>
+    </table>
+
+    {% if paie.commentaire %}<p style="margin-top:16px; color:#6b7280;">{{ paie.commentaire }}</p>{% endif %}
+
+    <p class="footer">Document généré le {% now "d/m/Y à H:i" %} — {{ ecole_nom }}</p>
+</body>
+</html>

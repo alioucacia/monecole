@@ -1,0 +1,569 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8" />
+<style>
+    @page { size: A4; margin: 0; }
+    body { font-family: Helvetica, Arial, sans-serif; color: #1a2233; font-size: 10px; margin: 0; }
+
+    /* Cadre général façon document officiel.
+       Piège xhtml2pdf/reportlab de plus, au-delà des 3 déjà documentés dans
+       badge_eleve_pdf.html : le `padding` déclaré sur UNE cellule (ex: la cellule de cadre
+       ci-dessous) peut se répercuter sur des <td> descendants situés dans des tables
+       imbriquées bien plus loin dans l'arbre — un `padding: 10mm 11mm 8mm 11mm` ici a fini par
+       réapparaître, en pleine valeur, sur une cellule totalement différente (16mm de large)
+       ailleurs dans le document, jusqu'à produire une largeur disponible négative et un crash
+       reportlab. Aucun `padding` n'est donc utilisé sur la cellule de cadre : la marge de page
+       (haut/droite/bas/gauche) et l'espace entre la bordure et le contenu sont tous les deux
+       obtenus avec de VRAIES cellules d'espacement vides (page-marge-* / cadre-pad-*),
+       exactement comme pour les autres pièges déjà répertoriés. */
+    table.page-marge { width: 210mm; border-collapse: collapse; }
+    .page-marge td { padding: 0; }
+    .page-marge-haut { height: 10mm; }
+    .page-marge-bas { height: 8mm; }
+    .page-marge-gauche, .page-marge-droite { width: 11mm; }
+
+    table.cadre { width: 188mm; border: 1.6px solid {{ b.couleur_principale }}; border-collapse: collapse; }
+    .cadre td { padding: 0; }
+    .cadre-pad-haut, .cadre-pad-bas { height: 4mm; }
+    .cadre-pad-gauche, .cadre-pad-droite { width: 4mm; }
+
+    table.masthead { width: 180mm; margin-bottom: 3px; }
+    .masthead td { vertical-align: middle; text-align: center; }
+    .republique { font-size: 13px; font-weight: bold; color: {{ b.couleur_principale }}; margin: 0; letter-spacing: 0.5px; }
+    .devise { font-size: 9px; font-weight: bold; margin: 1mm 0 0 0; }
+    .devise .rouge { color: #d21034; }
+    .devise .jaune { color: #ce9e17; }
+    .devise .verte { color: #1a7a3c; }
+    .trait { border-top: 1px dashed #9ca3af; width: 38mm; margin: 1.5mm auto; }
+    table.drapeau { width: 13mm; border-collapse: collapse; }
+    table.drapeau td { height: 7.5mm; padding: 0; }
+    .ref-code { font-size: 7.5px; color: #94a3b8; text-align: right; }
+
+    table.ecole-header { width: 180mm; margin: 5px 0 9px 0; padding-bottom: 7px; border-bottom: 2.4px solid {{ b.couleur_principale }}; }
+    .ecole-header .logo { width: 16mm; height: 16mm; object-fit: contain; }
+    .ecole-header .nom { font-size: 15px; font-weight: bold; color: {{ b.couleur_principale }}; margin: 0; text-transform: uppercase; letter-spacing: 0.3px; }
+    .ecole-header .coord { font-size: 8.5px; color: #64748b; margin: 1px 0 0 0; }
+
+    .titre-bloc { text-align: center; margin-bottom: 9px; }
+    .titre { display: inline-block; font-size: 13px; font-weight: bold; letter-spacing: 0.6px; text-transform: uppercase;
+        color: #ffffff; background-color: {{ b.couleur_principale }}; padding: 4px 22px; border-radius: 1mm; }
+    .sous-titre { font-size: 9px; color: #64748b; margin-top: 3px; }
+
+    /* Modèle 2 — Moderne : bandeau plein deux tons (principale/secondaire), sans pilule de
+       titre séparée en dessous — tout est fusionné dans le bandeau. */
+    table.eh-m2 { width: 180mm; margin: 5px 0 9px 0; }
+    .eh-m2 .bloc-nom { background-color: {{ b.couleur_principale }}; padding: 6px 10px; }
+    .eh-m2 .bloc-nom .logo { width: 13mm; height: 13mm; object-fit: contain; }
+    .eh-m2 .bloc-nom .nom { font-size: 13px; font-weight: bold; color: #ffffff; margin: 0; text-transform: uppercase; letter-spacing: 0.3px; }
+    .eh-m2 .bloc-nom .coord { font-size: 7.5px; color: #dbe4f0; margin: 1px 0 0 0; }
+    .eh-m2 .bloc-titre { background-color: {{ b.couleur_secondaire }}; padding: 6px 10px; text-align: right; width: 42mm; }
+    .eh-m2 .bloc-titre .titre-m2 { font-size: 10.5px; font-weight: bold; color: #ffffff; text-transform: uppercase; letter-spacing: 0.4px; margin: 0; }
+    .eh-m2 .bloc-titre .sous-titre-m2 { font-size: 7.5px; color: #fff7e0; margin: 2px 0 0 0; }
+
+    /* Modèle 3 — Élégant : pas de remplissage, double filet fin en couleur principale, titre
+       centré discret encadré d'un filet secondaire. */
+    table.eh-m3 { width: 180mm; margin: 5px 0 4px 0; border-top: 1px solid {{ b.couleur_principale }}; border-bottom: 1px solid {{ b.couleur_principale }}; padding: 7px 0; }
+    .eh-m3 .logo { width: 14mm; height: 14mm; object-fit: contain; }
+    .eh-m3 .nom { font-size: 14px; font-weight: bold; color: #1a2233; margin: 0; text-transform: uppercase; letter-spacing: 1.2px; text-align: center; }
+    .eh-m3 .coord { font-size: 8px; color: #64748b; margin: 2px 0 0 0; text-align: center; }
+    .titre-bloc-m3 { text-align: center; margin: 9px 0; padding: 5px 0; border-top: 0.75px solid {{ b.couleur_secondaire }}; border-bottom: 0.75px solid {{ b.couleur_secondaire }}; }
+    .titre-bloc-m3 .titre-m3 { font-size: 11.5px; font-weight: bold; letter-spacing: 1.5px; text-transform: uppercase; color: {{ b.couleur_principale }}; margin: 0; }
+    .titre-bloc-m3 .sous-titre { font-size: 8.5px; color: #64748b; margin-top: 3px; }
+
+    /* Modèle 4 — Compact : une seule barre dense (nom + titre sur la même ligne), sans logo
+       ni ligne séparée — priorité à la densité pour l'impression en masse. */
+    table.eh-m4 { width: 180mm; margin: 4px 0 8px 0; background-color: {{ b.couleur_principale }}; }
+    .eh-m4 td { padding: 5px 10px; }
+    .eh-m4 .nom { font-size: 11.5px; font-weight: bold; color: #ffffff; margin: 0; text-transform: uppercase; }
+    .eh-m4 .titre-m4 { font-size: 10px; font-weight: bold; color: #ffffff; text-align: right; text-transform: uppercase; letter-spacing: 0.3px; }
+    .ref-code-m4 { font-size: 7.5px; color: #94a3b8; text-align: right; margin: 0 0 6px 0; }
+
+    table.eleve-infos { width: 180mm; margin-bottom: 9px; background-color: #f8fafc; border: 0.75px solid #e2e8f0; border-radius: 1.5mm; }
+    .eleve-infos td { vertical-align: top; padding: 6px 8px; font-size: 9.5px; }
+    .eleve-infos .label { color: #64748b; }
+    .eleve-infos .valeur { font-weight: bold; color: #1a2233; }
+    .valeur-highlight { font-weight: bold; color: {{ b.couleur_secondaire }}; }
+    .photo { width: 19mm; height: 23mm; border: 1px solid #cbd5e1; border-radius: 1.5mm; }
+    .photo img { width: 19mm; height: 23mm; object-fit: cover; border-radius: 1.5mm; }
+    .avatar { width: 19mm; height: 23mm; border-radius: 1.5mm; background-color: {{ b.couleur_principale }}; color: #ffffff;
+        font-size: 15px; font-weight: bold; text-align: center; vertical-align: middle; }
+
+    table.notes { width: 180mm; border-collapse: collapse; font-size: 8.5px; }
+    table.notes th { background-color: {{ b.couleur_principale }}; color: #ffffff; padding: 3.5px 2px; text-align: center; font-weight: bold; border: 0.5px solid #2c4a6e; }
+    table.notes td { padding: 3px 2px; text-align: center; border: 0.5px solid #e2e8f0; }
+    table.notes td.nom-matiere { text-align: left; padding-left: 4px; font-weight: 600; }
+    table.notes tr:nth-child(even) td { background-color: #f8fafc; }
+    table.notes tr.totaux td, table.notes tr.totaux th { background-color: #fdf6e3; font-weight: bold; color: #7a5c00; }
+
+    .recap-titre { color: {{ b.couleur_principale }}; font-weight: bold; font-size: 10px; margin: 11px 0 4px 0; text-transform: uppercase; letter-spacing: 0.3px; }
+    table.recap-layout { width: 180mm; }
+    table.recap { width: 112mm; font-size: 9px; border-collapse: collapse; }
+    table.recap th { background-color: {{ b.couleur_principale }}; color: #ffffff; padding: 3px; border: 0.5px solid #2c4a6e; }
+    table.recap td { padding: 3px; text-align: center; border: 0.5px solid #e2e8f0; }
+    table.recap tr.annuelle td { font-weight: bold; background-color: #fdf6e3; color: #7a5c00; }
+
+    table.stats { width: 69mm; font-size: 9px; border: 0.75px solid #e2e8f0; border-radius: 2mm; background-color: #f8fafc; }
+    .stats td { padding: 3.5px 6px; }
+    .stats .label { color: #64748b; }
+    .stats .valeur { font-weight: bold; color: #1a2233; text-align: right; }
+    .stats-titre { font-size: 8px; font-weight: bold; color: {{ b.couleur_principale }}; text-transform: uppercase; padding: 4px 6px 2px 6px; }
+
+    table.decision { width: 180mm; margin-top: 11px; border: 0.75px solid #e2e8f0; border-radius: 1.5mm; background-color: #f8fafc; }
+    table.decision td { padding: 6px 8px; }
+    .decision-titre { font-weight: bold; font-size: 9.5px; color: {{ b.couleur_principale }}; }
+    .case { display: inline; font-size: 9.5px; margin-right: 12px; }
+    .box { display: inline-block; border: 1.2px solid #1a2233; width: 8px; height: 8px; padding: 1px 4px; margin-right: 2px; font-size: 8px; font-weight: bold; }
+    .box-ok { background-color: #1a7a3c; color: #ffffff; border-color: #1a7a3c; }
+
+    table.signatures { width: 180mm; margin-top: 20px; }
+    .signatures td { width: 33.33%; text-align: center; vertical-align: top; font-size: 8.5px; color: #64748b; }
+    .signature-ligne { border-top: 0.75px solid #94a3b8; margin: 14mm 6mm 2px 6mm; }
+    .signature-role { font-weight: bold; color: #1a2233; font-size: 8.5px; }
+    .signature-nom { font-size: 8px; color: #64748b; margin-top: 1px; }
+
+    table.footer { width: 180mm; margin-top: 14px; border-top: 0.5px dashed #cbd5e1; padding-top: 5px; }
+    .footer td { font-size: 7.5px; color: #94a3b8; }
+    .footer .droite { text-align: right; }
+
+    /* Modèle 5 — Officiel : reproduit le format papier officiel (IRE/DPE/DSEE en en-tête,
+       bandeaux de section pleine couleur, tableau SEM1/SEM2, bloc « RESULTAT DE FIN
+       D'ANNEES »). Couleurs pilotées par couleur_principale/couleur_secondaire comme les
+       autres modèles — c'est la valeur de couleur_secondaire choisie pour l'école qui donne
+       le ton (ex: saumon/orange) aux bandeaux. */
+    table.m5-header { width: 180mm; margin-bottom: 6px; }
+    .m5-header td { vertical-align: top; padding: 0 4px; font-size: 8px; color: #1a2233; }
+    .m5-header .m5-ministere p { margin: 0 0 1.5px 0; }
+    .m5-header .m5-code { margin-top: 3px; }
+    .m5-header .m5-logo-cell { width: 20mm; text-align: center; }
+    .m5-header .m5-logo { width: 17mm; height: 17mm; object-fit: contain; }
+    .m5-header .m5-logo-fallback {
+        width: 17mm; height: 17mm; background-color: {{ b.couleur_principale }}; color: #ffffff;
+        font-size: 16px; font-weight: bold; text-align: center; vertical-align: middle; margin: 0 auto;
+    }
+    .m5-header .m5-republique { text-align: right; }
+    .m5-header .m5-rep-titre { font-size: 11px; font-weight: bold; margin: 0 0 2px 0; }
+    .m5-header .m5-annee { margin-top: 4px; }
+
+    .m5-banniere {
+        margin: 8px 0; padding: 6px 14px; background-color: {{ b.couleur_secondaire }}; color: #ffffff;
+        font-size: 13px; font-weight: bold; text-align: center; text-transform: uppercase; letter-spacing: 0.4px;
+    }
+
+    table.m5-identite { width: 180mm; margin-bottom: 9px; }
+    .m5-identite td { padding: 2px 0; font-size: 10.5px; vertical-align: middle; }
+    .m5-label { color: #1a2233; font-weight: bold; }
+    .m5-valeur { color: #1a2233; }
+    .m5-photo { width: 18mm; height: 18mm; border: 1px solid #cbd5e1; object-fit: cover; }
+    .m5-photo-fallback {
+        width: 18mm; height: 18mm; background-color: {{ b.couleur_principale }}; color: #ffffff;
+        font-size: 14px; font-weight: bold; text-align: center; vertical-align: middle; margin: 0 auto;
+    }
+
+    table.m5-notes { width: 180mm; border-collapse: collapse; font-size: 9px; margin-bottom: 4px; }
+    table.m5-notes th { background-color: {{ b.couleur_secondaire }}; color: #ffffff; padding: 4px 2px; text-align: center; font-weight: bold; border: 0.5px solid #ffffff; }
+    table.m5-notes td { padding: 3.5px 2px; text-align: center; border: 0.5px solid #cbd5e1; }
+    table.m5-notes td.m5-matiere { text-align: left; padding-left: 5px; font-weight: 600; }
+    table.m5-notes tr.m5-moyennes-row td { font-weight: bold; text-transform: uppercase; }
+    table.m5-notes tr.m5-total-row td { font-weight: bold; text-transform: uppercase; background-color: #fdf1ec; color: {{ b.couleur_secondaire }}; }
+
+    table.m5-summary { width: 180mm; margin: 10px 0 4px 0; }
+    .m5-summary td { padding: 2.5px 0; font-size: 10.5px; }
+    .m5-summary .m5-summary-label { width: 45%; color: #1a2233; }
+    .m5-summary .m5-summary-value { font-weight: bold; color: {{ b.couleur_secondaire }}; }
+
+    table.m5-resultats { width: 180mm; border-collapse: collapse; margin-bottom: 4px; }
+    .m5-resultats td.m5-resultat-col { border: 0.75px solid #e2e8f0; padding: 6px; text-align: center; vertical-align: top; }
+    .m5-resultats td.m5-resultat-annuelle { background-color: #fdf1ec; }
+    .m5-resultat-titre { font-size: 8px; color: #64748b; text-transform: uppercase; margin: 0 0 3px 0; }
+    .m5-resultat-valeur { font-size: 13px; font-weight: bold; color: {{ b.couleur_secondaire }}; margin: 0; }
+    .m5-resultat-rang { font-size: 7.5px; color: #64748b; margin: 3px 0 0 0; }
+
+    table.m5-decision { width: 180mm; }
+    .m5-decision-item { text-align: center; font-size: 10px; padding: 4px 0; }
+    .m5-checkbox { display: inline-block; border: 1.2px solid #1a2233; width: 9px; height: 9px; padding: 1px 4px; margin-left: 4px; font-size: 8px; font-weight: bold; }
+    .m5-checked { background-color: {{ b.couleur_secondaire }}; color: #ffffff; border-color: {{ b.couleur_secondaire }}; }
+</style>
+</head>
+<body>
+<table class="page-marge" cellspacing="0" cellpadding="0"><tr><td colspan="3" class="page-marge-haut">&nbsp;</td></tr>
+<tr>
+<td class="page-marge-gauche">&nbsp;</td>
+<td>
+<table class="cadre" cellspacing="0" cellpadding="0"><tr><td class="cadre-pad-gauche">&nbsp;</td><td>
+<table cellspacing="0" cellpadding="0" style="width: 180mm;"><tr><td class="cadre-pad-haut" style="height: 4mm;">&nbsp;</td></tr><tr><td>
+
+{% if b.modele == 5 %}
+    <table class="m5-header">
+        <tr>
+            <td class="m5-ministere">
+                {% if b.entete_ministere_1 %}<p>{{ b.entete_ministere_1 }}</p>{% endif %}
+                {% if b.entete_ministere_2 %}<p>{{ b.entete_ministere_2 }}</p>{% endif %}
+                <p class="m5-code"><b>IRE :</b> {{ b.ire|default:"—" }}</p>
+                <p><b>DPE :</b> {{ b.dpe|default:"—" }}</p>
+                <p><b>DSEE :</b> {{ b.dsee|default:"—" }}</p>
+            </td>
+            <td class="m5-logo-cell">
+                {% if b.ecole_logo_data_uri %}
+                <img class="m5-logo" src="{{ b.ecole_logo_data_uri }}" />
+                {% else %}
+                <div class="m5-logo-fallback">{{ b.ecole_nom|first|upper }}</div>
+                {% endif %}
+            </td>
+            <td class="m5-republique">
+                <p class="m5-rep-titre">{{ b.entete_republique }}</p>
+                <p class="devise">{{ b.entete_devise_html }}</p>
+                <p class="m5-annee"><b>Année Scolaire :</b> {{ b.periode.annee_scolaire }}</p>
+            </td>
+        </tr>
+    </table>
+
+    <div class="m5-banniere">Bulletin Scolaire du {{ b.periode.nom }}</div>
+
+    <table class="m5-identite">
+        <tr>
+            <td style="width: 33%;"><span class="m5-label">Matricule :</span> <span class="m5-valeur">{{ b.eleve.matricule }}</span></td>
+            <td style="width: 47%;"><span class="m5-label">Classe :</span> <span class="m5-valeur">{{ b.eleve.classe|default:"—" }}</span></td>
+            <td rowspan="2" style="width: 20mm; text-align: center;">
+                {% if b.photo_data_uri %}
+                <img class="m5-photo" src="{{ b.photo_data_uri }}" />
+                {% else %}
+                <div class="m5-photo-fallback">{{ b.eleve.nom_complet|first|upper }}</div>
+                {% endif %}
+            </td>
+        </tr>
+        <tr>
+            <td colspan="2"><span class="m5-label">Nom et Prénom :</span> <span class="m5-valeur">{{ b.eleve.nom_complet }}</span></td>
+        </tr>
+    </table>
+
+    <table class="m5-notes" cellspacing="0" cellpadding="0">
+        <thead>
+            <tr>
+                <th style="width: 5%;">N°</th>
+                <th>MATIÈRES</th>
+                <th style="width: 9%;">COEF</th>
+                {% for pn in b.periodes_colonnes %}<th style="width: 11%;">{{ pn|upper }}</th>{% endfor %}
+                <th style="width: 16%;">OBSERVATIONS</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for m in b.matieres %}
+            <tr>
+                <td>{{ forloop.counter }}</td>
+                <td class="m5-matiere">{{ m.matiere_nom }}</td>
+                <td>{{ m.coefficient|floatformat:2 }}</td>
+                {% for dp in m.detail_periodes %}<td>{{ dp.moyenne|default:"—" }}</td>{% endfor %}
+                <td>{{ m.appreciation|default:"—" }}</td>
+            </tr>
+            {% endfor %}
+            <tr class="m5-moyennes-row">
+                <td colspan="2">Moyennes</td>
+                <td></td>
+                {% for pn in b.periodes_colonnes %}<td></td>{% endfor %}
+                <td></td>
+            </tr>
+            <tr class="m5-total-row">
+                <td colspan="2">Total</td>
+                <td>{{ b.total_coefficient|floatformat:2 }}</td>
+                {% for r in b.recap_periodes %}<td>{{ r.moyenne|default:"—" }}</td>{% endfor %}
+                <td></td>
+            </tr>
+        </tbody>
+    </table>
+
+    <table class="m5-summary">
+        <tr>
+            <td class="m5-summary-label">Moyenne du : {{ b.periode.nom }}</td>
+            <td class="m5-summary-value">{{ b.moyenne_generale|default:"—" }} / {{ b.bareme_notation }}</td>
+        </tr>
+        <tr>
+            <td class="m5-summary-label">Rang</td>
+            <td class="m5-summary-value">{% if b.rang %}{{ b.rang }} / {{ b.effectif_classe }} élèves{% else %}—{% endif %}</td>
+        </tr>
+        <tr>
+            <td class="m5-summary-label">Appréciation</td>
+            <td class="m5-summary-value">{{ b.mention|default:"—" }}</td>
+        </tr>
+    </table>
+
+    {% if b.recap_periodes|length > 1 %}
+    <div class="m5-banniere">Résultat de fin d'années</div>
+    <table class="m5-resultats" cellspacing="0" cellpadding="0">
+        <tr>
+            {% for r in b.recap_periodes %}
+            <td class="m5-resultat-col">
+                <p class="m5-resultat-titre">Moyenne du {{ r.nom }}</p>
+                <p class="m5-resultat-valeur">{{ r.moyenne|default:"—" }} / {{ b.bareme_notation }}</p>
+                <p class="m5-resultat-rang">RANG : {% if r.rang %}{{ r.rang }} / {{ r.effectif }}{% else %}—{% endif %} élèves</p>
+            </td>
+            {% endfor %}
+            <td class="m5-resultat-col m5-resultat-annuelle">
+                <p class="m5-resultat-titre">Moyenne Annuelle</p>
+                <p class="m5-resultat-valeur">{{ b.moyenne_generale|default:"—" }} / {{ b.bareme_notation }}</p>
+                <p class="m5-resultat-rang">{% if b.rang %}RANG : {{ b.rang }} / {{ b.effectif_classe }} élèves{% endif %}</p>
+            </td>
+        </tr>
+    </table>
+    {% endif %}
+
+    <div class="m5-banniere">Décision finale de la direction</div>
+    <table class="m5-decision">
+        <tr>
+            <td class="m5-decision-item">Admis(e) <span class="m5-checkbox {% if b.decision == 'admis' %}m5-checked{% endif %}">{% if b.decision == 'admis' %}✓{% endif %}</span></td>
+            <td class="m5-decision-item">Repêché(e) <span class="m5-checkbox {% if b.decision == 'repeche' %}m5-checked{% endif %}">{% if b.decision == 'repeche' %}✓{% endif %}</span></td>
+            <td class="m5-decision-item">Redouble <span class="m5-checkbox {% if b.decision == 'redouble' %}m5-checked{% endif %}">{% if b.decision == 'redouble' %}✓{% endif %}</span></td>
+        </tr>
+    </table>
+
+{% else %}
+    <table class="masthead">
+        <tr>
+            <td style="width: 16mm; text-align:left;">
+                <table class="drapeau"><tr>
+                    <td style="background-color:#d21034;"></td>
+                    <td style="background-color:#ce9e17;"></td>
+                    <td style="background-color:#1a7a3c;"></td>
+                </tr></table>
+            </td>
+            <td>
+                <p class="republique">{{ b.entete_republique|upper }}</p>
+                <p class="devise">{{ b.entete_devise_html }}</p>
+                <div class="trait"></div>
+            </td>
+            <td style="width: 16mm;">&nbsp;</td>
+        </tr>
+    </table>
+
+    {% if b.modele == 2 %}
+    <table class="eh-m2">
+        <tr>
+            <td class="bloc-nom">
+                <table cellspacing="0" cellpadding="0"><tr>
+                    {% if b.ecole_logo_data_uri %}<td style="width: 15mm;"><img class="logo" src="{{ b.ecole_logo_data_uri }}" /></td>{% endif %}
+                    <td>
+                        <p class="nom">{{ b.ecole_nom }}</p>
+                        {% if b.ecole_adresse or b.ecole_telephone %}
+                        <p class="coord">{{ b.ecole_adresse|default:"" }}{% if b.ecole_adresse and b.ecole_telephone %} · {% endif %}{{ b.ecole_telephone|default:"" }}</p>
+                        {% endif %}
+                    </td>
+                </tr></table>
+            </td>
+            <td class="bloc-titre">
+                <p class="titre-m2">Bulletin de Notes</p>
+                <p class="sous-titre-m2">{{ b.periode.nom }} — {{ b.periode.annee_scolaire }}</p>
+            </td>
+        </tr>
+    </table>
+    <p class="ref-code">Réf. {{ b.eleve.matricule }}-{{ b.periode.id|default:"AN" }}</p>
+
+    {% elif b.modele == 3 %}
+    <table class="eh-m3">
+        <tr>
+            {% if b.ecole_logo_data_uri %}<td style="width: 18mm;"><img class="logo" src="{{ b.ecole_logo_data_uri }}" /></td>{% endif %}
+            <td>
+                <p class="nom">{{ b.ecole_nom }}</p>
+                {% if b.ecole_adresse or b.ecole_telephone %}
+                <p class="coord">{{ b.ecole_adresse|default:"" }}{% if b.ecole_adresse and b.ecole_telephone %} · {% endif %}{{ b.ecole_telephone|default:"" }}</p>
+                {% endif %}
+            </td>
+            {% if b.ecole_logo_data_uri %}<td style="width: 18mm;">&nbsp;</td>{% endif %}
+        </tr>
+    </table>
+    <div class="titre-bloc-m3">
+        <p class="titre-m3">Bulletin de Notes — {{ b.periode.nom }}</p>
+        <p class="sous-titre">Année scolaire {{ b.periode.annee_scolaire }}</p>
+    </div>
+    <p class="ref-code">Réf. {{ b.eleve.matricule }}-{{ b.periode.id|default:"AN" }}</p>
+
+    {% elif b.modele == 4 %}
+    <p class="ref-code-m4">Réf. {{ b.eleve.matricule }}-{{ b.periode.id|default:"AN" }}</p>
+    <table class="eh-m4">
+        <tr>
+            <td><p class="nom">{{ b.ecole_nom }}</p></td>
+            <td class="titre-m4">Bulletin de Notes — {{ b.periode.nom }} ({{ b.periode.annee_scolaire }})</td>
+        </tr>
+    </table>
+
+    {% else %}
+    <table class="ecole-header">
+        <tr>
+            {% if b.ecole_logo_data_uri %}
+            <td style="width: 20mm;"><img class="logo" src="{{ b.ecole_logo_data_uri }}" /></td>
+            {% endif %}
+            <td style="text-align:center;">
+                <p class="nom">{{ b.ecole_nom }}</p>
+                {% if b.ecole_adresse or b.ecole_telephone %}
+                <p class="coord">{{ b.ecole_adresse|default:"" }}{% if b.ecole_adresse and b.ecole_telephone %} · {% endif %}{{ b.ecole_telephone|default:"" }}</p>
+                {% endif %}
+            </td>
+            {% if b.ecole_logo_data_uri %}<td style="width: 20mm;">&nbsp;</td>{% endif %}
+        </tr>
+    </table>
+
+    <div class="titre-bloc">
+        <span class="titre">Bulletin de Notes — {{ b.periode.nom }}</span>
+        <p class="sous-titre">Année scolaire {{ b.periode.annee_scolaire }}</p>
+    </div>
+    <p class="ref-code">Réf. {{ b.eleve.matricule }}-{{ b.periode.id|default:"AN" }}</p>
+    {% endif %}
+
+    <table class="eleve-infos" cellspacing="0" cellpadding="0">
+        <tr>
+            <td style="width: 22mm;">
+                {% if b.photo_data_uri %}
+                <div class="photo"><img src="{{ b.photo_data_uri }}" /></div>
+                {% else %}
+                <div class="avatar">{{ b.eleve.nom_complet|first|upper }}</div>
+                {% endif %}
+            </td>
+            <td style="width: 43%;">
+                <p><span class="label">Matricule : </span><span class="valeur-highlight">{{ b.eleve.matricule }}</span></p>
+                <p><span class="label">Nom &amp; Prénom(s) : </span><span class="valeur">{{ b.eleve.nom_complet }}</span></p>
+                <p><span class="label">Né(e) le : </span><span class="valeur">{{ b.eleve.date_naissance|date:"d/m/Y"|default:"—" }}</span>
+                   <span class="label"> — Genre : </span><span class="valeur">{% if b.eleve.sexe == "F" %}Féminin{% elif b.eleve.sexe == "M" %}Masculin{% else %}—{% endif %}</span></p>
+            </td>
+            <td>
+                <p><span class="label">Année scolaire : </span><span class="valeur">{{ b.periode.annee_scolaire }}</span></p>
+                <p><span class="label">Classe : </span><span class="valeur">{{ b.eleve.classe|default:"—" }}</span></p>
+                <p><span class="label">Effectif classe : </span><span class="valeur">{{ b.effectif_classe|default:"—" }}</span></p>
+            </td>
+        </tr>
+    </table>
+
+    <table class="notes" cellspacing="0" cellpadding="0">
+        <thead>
+            <tr>
+                <th rowspan="2" style="width:3%;">N°</th>
+                <th rowspan="2" style="width:17%;">MATIÈRES</th>
+                <th rowspan="2" style="width:6%;">COEF.</th>
+                {% for pn in b.periodes_colonnes %}
+                <th colspan="2">{{ pn|upper }}</th>
+                {% endfor %}
+                <th rowspan="2" style="width:7%;">MOY.</th>
+                <th rowspan="2" style="width:14%;">APPRÉCIATIONS</th>
+            </tr>
+            <tr>
+                {% for pn in b.periodes_colonnes %}
+                <th>Cours</th><th>Compo</th>
+                {% endfor %}
+            </tr>
+        </thead>
+        <tbody>
+            {% for m in b.matieres %}
+            <tr>
+                <td>{{ forloop.counter }}</td>
+                <td class="nom-matiere">{{ m.matiere_nom }}</td>
+                <td>{{ m.coefficient }}</td>
+                {% for dp in m.detail_periodes %}
+                <td>{{ dp.cours|default:"—" }}</td>
+                <td>{{ dp.compo|default:"—" }}</td>
+                {% endfor %}
+                <td><strong>{{ m.moyenne|default:"—" }}</strong></td>
+                <td>{{ m.appreciation|default:"—" }}</td>
+            </tr>
+            {% endfor %}
+            <tr class="totaux">
+                <td colspan="3">TOTAUX</td>
+                {% for ct in b.colonnes_totaux %}
+                <td>{{ ct.cours_total|default:"—" }}</td>
+                <td>{{ ct.compo_total|default:"—" }}</td>
+                {% endfor %}
+                <td colspan="2"></td>
+            </tr>
+            <tr class="totaux">
+                <td colspan="3">MOYENNES</td>
+                {% for ct in b.colonnes_totaux %}
+                <td>{{ ct.cours_moyenne|default:"—" }}</td>
+                <td>{{ ct.compo_moyenne|default:"—" }}</td>
+                {% endfor %}
+                <td colspan="2"></td>
+            </tr>
+        </tbody>
+    </table>
+
+    <p class="recap-titre">Tableau récapitulatif</p>
+    <table class="recap-layout">
+        <tr>
+            <td style="width: 60%; vertical-align: top;">
+                <table class="recap" cellspacing="0" cellpadding="0">
+                    <thead><tr><th>Périodes</th><th>Moyennes</th><th>Rangs</th><th>Appréciations</th></tr></thead>
+                    <tbody>
+                        {% for r in b.recap_periodes %}
+                        <tr>
+                            <td>{{ r.nom }}</td>
+                            <td>{{ r.moyenne|default:"—" }}/20</td>
+                            <td>{% if r.rang %}{{ r.rang }}{% if r.effectif %} / {{ r.effectif }}{% endif %}{% else %}—{% endif %}</td>
+                            <td>{{ r.appreciation|default:"—" }}</td>
+                        </tr>
+                        {% endfor %}
+                        <tr class="annuelle">
+                            <td>Moyenne annuelle</td>
+                            <td>{{ b.moyenne_generale|default:"—" }}/20</td>
+                            <td>{% if b.rang %}{{ b.rang }} / {{ b.effectif_classe }}{% else %}—{% endif %}</td>
+                            <td>{{ b.mention|default:"—" }}</td>
+                        </tr>
+                    </tbody>
+                </table>
+            </td>
+            <td style="width: 3%;">&nbsp;</td>
+            <td style="width: 37%; vertical-align: top;">
+                <table class="stats" cellspacing="0" cellpadding="0">
+                    <tr><td colspan="2" class="stats-titre">Statistiques de classe</td></tr>
+                    <tr><td class="label">Meilleure moyenne</td><td class="valeur">{% if b.meilleure_moyenne %}{{ b.meilleure_moyenne }}/20{% else %}—{% endif %}</td></tr>
+                    <tr><td class="label">Moyenne de classe</td><td class="valeur">{% if b.moyenne_classe_generale %}{{ b.moyenne_classe_generale }}/20{% else %}—{% endif %}</td></tr>
+                    <tr><td class="label">Plus faible moyenne</td><td class="valeur">{% if b.plus_faible_moyenne %}{{ b.plus_faible_moyenne }}/20{% else %}—{% endif %}</td></tr>
+                    <tr><td colspan="2" class="stats-titre">Assiduité</td></tr>
+                    <tr><td class="label">Absences justifiées</td><td class="valeur">{{ b.absences.absences_justifiees }}</td></tr>
+                    <tr><td class="label">Absences injustifiées</td><td class="valeur">{{ b.absences.absences_injustifiees }}</td></tr>
+                    <tr><td class="label">Retards</td><td class="valeur">{{ b.absences.retards }}</td></tr>
+                </table>
+            </td>
+        </tr>
+    </table>
+
+    <table class="decision">
+        <tr>
+            <td class="decision-titre">Décision du conseil de classe :</td>
+            <td class="case">Admis(e) <span class="box {% if b.decision == 'admis' %}box-ok{% endif %}">{% if b.decision == 'admis' %}✓{% endif %}</span></td>
+            <td class="case">Repêché(e) <span class="box {% if b.decision == 'repeche' %}box-ok{% endif %}">{% if b.decision == 'repeche' %}✓{% endif %}</span></td>
+            <td class="case">Redouble <span class="box {% if b.decision == 'redouble' %}box-ok{% endif %}">{% if b.decision == 'redouble' %}✓{% endif %}</span></td>
+        </tr>
+    </table>
+{% endif %}
+
+    <table class="signatures">
+        <tr>
+            <td>
+                <div class="signature-ligne"></div>
+                <div class="signature-role">Le Parent / Tuteur</div>
+            </td>
+            <td>
+                <div class="signature-ligne"></div>
+                <div class="signature-role">Le Professeur Principal</div>
+                {% if b.professeur_principal_nom %}<div class="signature-nom">{{ b.professeur_principal_nom }}</div>{% endif %}
+            </td>
+            <td>
+                <div class="signature-ligne"></div>
+                <div class="signature-role">Le Chef d'Établissement</div>
+                <div class="signature-nom">Cachet &amp; signature</div>
+            </td>
+        </tr>
+    </table>
+
+    <table class="footer">
+        <tr>
+            <td>Document officiel — à conserver</td>
+            <td class="droite">Fait à Conakry, le {% now "d/m/Y" %} — {{ b.ecole_nom }}</td>
+        </tr>
+    </table>
+
+</td></tr><tr><td class="cadre-pad-bas" style="height: 4mm;">&nbsp;</td></tr></table>
+</td><td class="cadre-pad-droite">&nbsp;</td></tr></table>
+</td>
+<td class="page-marge-droite">&nbsp;</td>
+</tr>
+<tr><td colspan="3" class="page-marge-bas">&nbsp;</td></tr>
+</table>
+</body>
+</html>

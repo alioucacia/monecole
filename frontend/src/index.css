@@ -1,0 +1,138 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+html, body, #root {
+  height: 100%;
+}
+
+body {
+  @apply antialiased text-slate-800;
+  font-family: "Plus Jakarta Sans", ui-sans-serif, system-ui, sans-serif;
+  background:
+    radial-gradient(1100px 500px at 100% -10%, rgb(139 92 246 / 0.08), transparent 60%),
+    radial-gradient(900px 480px at -10% 10%, rgb(20 184 166 / 0.07), transparent 55%),
+    #f8f7fc;
+}
+
+h1, h2, h3, h4 {
+  letter-spacing: -0.01em;
+}
+
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+::-webkit-scrollbar-thumb {
+  @apply bg-brand-200 rounded-full;
+}
+::-webkit-scrollbar-thumb:hover {
+  @apply bg-brand-300;
+}
+
+/* Fond dégradé réutilisable pour les surfaces "héro" (sidebar, panneau de connexion...) */
+.gradient-surface {
+  background: linear-gradient(160deg, #2e1065 0%, #4c1d95 45%, #6d28d9 100%);
+}
+
+/* Dégradé magenta → bleu pour la barre latérale principale */
+.gradient-sidebar {
+  background: linear-gradient(165deg, #c026d3 0%, #9333ea 30%, #6d28d9 60%, #2563eb 100%);
+}
+
+/* Barre de progression des toasts (voir context/ToastContext.tsx) */
+@keyframes toast-progress {
+  from { width: 100%; }
+  to { width: 0%; }
+}
+
+@media print {
+  .no-print {
+    display: none !important;
+  }
+  .print-area {
+    box-shadow: none !important;
+  }
+}
+
+/* ---------------------------------------------------------------------------
+ * Mode sombre — l'appli entière est construite sur une palette neutre réduite
+ * (blanc / slate / ink), quasi toujours consommée via les composants partagés
+ * de ui.tsx (Card, Table, Input, Modal...). On la retouche donc une seule fois
+ * ici plutôt que d'ajouter des variantes dark: dans chaque page. Activé en
+ * posant la classe .dark sur <html> (voir ThemeContext + le bouton du topbar).
+ * --------------------------------------------------------------------------- */
+.dark body {
+  background:
+    radial-gradient(1100px 500px at 100% -10%, rgb(139 92 246 / 0.14), transparent 60%),
+    radial-gradient(900px 480px at -10% 10%, rgb(20 184 166 / 0.1), transparent 55%),
+    #0f0b1f;
+  color: #cbd5e1;
+}
+
+.dark .bg-white,
+.dark .bg-white\/95,
+.dark .bg-white\/80 {
+  background-color: #171227;
+}
+
+.dark .bg-slate-50,
+.dark .bg-slate-50\/60,
+.dark .bg-slate-100 {
+  background-color: #1e1836;
+}
+
+.dark .bg-brand-50,
+.dark .bg-brand-50\/40,
+.dark .bg-brand-50\/60 {
+  background-color: rgb(139 92 246 / 0.14);
+}
+
+.dark .hover\:bg-slate-50:hover,
+.dark .hover\:bg-slate-100:hover,
+.dark .hover\:bg-brand-50:hover {
+  background-color: rgb(139 92 246 / 0.16);
+}
+
+.dark .border-slate-100,
+.dark .border-slate-200,
+.dark .border-slate-300,
+.dark .hover\:border-slate-300:hover {
+  border-color: #2c2447;
+}
+
+.dark .divide-slate-50 > :not([hidden]) ~ :not([hidden]),
+.dark .divide-slate-100 > :not([hidden]) ~ :not([hidden]) {
+  border-color: #2c2447;
+}
+
+.dark .text-ink-900 {
+  color: #f1eefc;
+}
+.dark .text-slate-800 {
+  color: #e5e0f5;
+}
+.dark .text-slate-700,
+.dark .hover\:text-slate-700:hover {
+  color: #d7d0ec;
+}
+.dark .text-slate-600,
+.dark .hover\:text-slate-600:hover {
+  color: #b7aed6;
+}
+.dark .text-slate-500 {
+  color: #9c93bc;
+}
+.dark .text-slate-400 {
+  color: #786fa0;
+}
+.dark .placeholder\:text-slate-400::placeholder {
+  color: #5b527d;
+}
+
+.dark ::-webkit-scrollbar-thumb {
+  background-color: #3a3060;
+}
+.dark ::-webkit-scrollbar-thumb:hover {
+  background-color: #4a3d78;
+}

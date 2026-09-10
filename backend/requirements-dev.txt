@@ -1,0 +1,6 @@
+# Outils de développement/mesure — ne pas installer dans l'image de production.
+-r requirements.txt
+
+# Mesure locale du débit réel (voir DEPLOYMENT.md et locustfile.py) — pas nécessaire à
+# l'exécution de l'app, uniquement pour charger-tester une instance locale/de staging.
+locust==2.29.1

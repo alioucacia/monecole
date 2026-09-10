@@ -1,0 +1,11 @@
+from rest_framework.routers import DefaultRouter
+
+from .views import FraisViewSet, PaiementViewSet, TarifClasseViewSet, TypeFraisViewSet
+
+router = DefaultRouter()
+router.register("types-frais", TypeFraisViewSet, basename="type-frais")
+router.register("tarifs-classe", TarifClasseViewSet, basename="tarif-classe")
+router.register("frais", FraisViewSet, basename="frais")
+router.register("paiements", PaiementViewSet, basename="paiement")
+
+urlpatterns = router.urls

@@ -1,0 +1,161 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8" />
+<style>
+    @page { size: A4; margin: 1.4cm; }
+    body { font-family: Helvetica, Arial, sans-serif; color: #1e1b2e; font-size: 11px; }
+
+    .fiche { {% if not forloop.last %}page-break-after: always;{% endif %} }
+    .header .logo { width: 11mm; height: 11mm; object-fit: contain; margin-bottom: 3px; }
+
+    {% if modele == 2 %}
+    /* Modèle 2 — Moderne : bandeau deux tons (principale/secondaire). */
+    table.header { width: 100%; margin-bottom: 14px; }
+    .header td { padding: 14px 20px; }
+    .header .bloc-nom { background-color: {{ couleur_principale }}; }
+    .header .brand { color: #ffffff; font-size: 18px; font-weight: bold; }
+    .header .subtitle { color: #e6e9f2; font-size: 10px; margin-top: 2px; }
+    .header .badge { background-color: {{ couleur_secondaire }}; color: #ffffff; padding: 6px 12px; font-size: 10px; font-weight: bold; text-align: center; }
+    {% elif modele == 3 %}
+    /* Modèle 3 — Élégant : pas de remplissage, filet fin. */
+    table.header { width: 100%; margin-bottom: 14px; border-top: 1px solid {{ couleur_principale }}; border-bottom: 1px solid {{ couleur_principale }}; }
+    .header td { padding: 12px 20px; }
+    .header .brand { color: {{ couleur_principale }}; font-size: 18px; font-weight: bold; letter-spacing: 0.5px; }
+    .header .subtitle { color: #6b7280; font-size: 10px; margin-top: 2px; }
+    .header .badge { background-color: #ffffff; border: 1px solid {{ couleur_secondaire }}; color: {{ couleur_secondaire }}; padding: 5px 11px; font-size: 10px; font-weight: bold; text-align: center; }
+    {% elif modele == 4 %}
+    /* Modèle 4 — Compact : bandeau dense, une seule couleur. */
+    table.header { width: 100%; background-color: {{ couleur_principale }}; margin-bottom: 10px; }
+    .header td { padding: 9px 14px; }
+    .header .brand { color: #ffffff; font-size: 14px; font-weight: bold; }
+    .header .subtitle { color: #e6e9f2; font-size: 9px; margin-top: 1px; }
+    .header .badge { background-color: rgba(255,255,255,0.22); color: #ffffff; padding: 4px 10px; font-size: 9px; font-weight: bold; text-align: center; }
+    {% else %}
+    /* Modèle 1 — Classique. */
+    table.header { width: 100%; background-color: {{ couleur_principale }}; border-radius: 10px; margin-bottom: 14px; }
+    .header td { padding: 14px 20px; }
+    .header .brand { color: #ffffff; font-size: 18px; font-weight: bold; }
+    .header .subtitle { color: #e6e9f2; font-size: 10px; margin-top: 2px; }
+    .header .badge { background-color: #ffffff; color: {{ couleur_principale }}; border-radius: 6px; padding: 6px 12px; font-size: 10px; font-weight: bold; text-align: center; }
+    {% endif %}
+
+    .infos { width: 100%; background-color: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; margin-bottom: 14px; }
+    .infos td { padding: 8px 14px; font-size: 11px; }
+    .infos .label { color: {{ couleur_principale }}; font-size: 9px; text-transform: uppercase; font-weight: bold; }
+    .infos .value { color: #1e1b2e; font-weight: bold; font-size: 13px; }
+
+    table.recap { width: 100%; margin-bottom: 14px; }
+    .recap td { padding: 5px; }
+    .recap .box { border-radius: 10px; text-align: center; padding: 10px; }
+    .recap .box-attendu { border: 2px solid #94a3b8; }
+    .recap .box-attendu .value { font-size: 18px; font-weight: bold; color: #475569; }
+    .recap .box-paye { background-color: #059669; }
+    .recap .box-paye .value { font-size: 20px; font-weight: bold; color: #ffffff; }
+    .recap .box-solde { border: 2px solid {{ couleur_principale }}; }
+    .recap .box-solde .value { font-size: 18px; font-weight: bold; color: {{ couleur_principale }}; }
+    .recap .label { font-size: 9px; text-transform: uppercase; letter-spacing: 0.4px; }
+    .recap .box-attendu .label, .recap .box-solde .label { color: #6b7280; }
+    .recap .box-paye .label { color: #d1fae5; }
+
+    table.paiements { width: 100%; border-collapse: collapse; margin-top: 4px; }
+    table.paiements th { background-color: {{ couleur_principale }}; color: #ffffff; padding: 7px; text-align: left; font-size: 9px; text-transform: uppercase; }
+    table.paiements td { padding: 6px 7px; font-size: 11px; border-bottom: 1px solid #e2e8f0; }
+    table.paiements tr.alt td { background-color: #f8fafc; }
+
+    .statut-pill { padding: 3px 10px; border-radius: 8px; font-size: 9px; font-weight: bold; color: #ffffff; }
+    .statut-paye { background-color: #059669; }
+    .statut-partiel { background-color: #d97706; }
+    .statut-impaye { background-color: #dc2626; }
+
+    .footer { margin-top: 26px; width: 100%; }
+    .footer td { text-align: center; font-size: 10px; color: #6b7280; padding-top: 18px; border-top: 1px dashed #cbd5e1; }
+</style>
+</head>
+<body>
+    {% for f in fiches %}
+    <div class="fiche">
+        <table class="header">
+            <tr>
+                {% if modele == 2 %}
+                <td class="bloc-nom">
+                    {% if ecole_logo_data_uri %}<img class="logo" src="{{ ecole_logo_data_uri }}" />{% endif %}
+                    <div class="brand">{{ ecole_nom }}</div>
+                    <div class="subtitle">{{ titre }} — {{ f.annee_scolaire }}</div>
+                </td>
+                {% else %}
+                <td>
+                    {% if ecole_logo_data_uri %}<img class="logo" src="{{ ecole_logo_data_uri }}" />{% endif %}
+                    <div class="brand">{{ ecole_nom }}</div>
+                    <div class="subtitle">{{ titre }} — {{ f.annee_scolaire }}</div>
+                </td>
+                {% endif %}
+                <td width="130" class="badge">{{ f.classe|default:"—" }}</td>
+            </tr>
+        </table>
+
+        <table class="infos">
+            <tr>
+                <td width="30%"><div class="label">Élève</div><div class="value">{{ f.eleve_nom }}</div></td>
+                <td width="25%"><div class="label">Matricule</div><div class="value">{{ f.matricule }}</div></td>
+                <td width="25%"><div class="label">Type de frais</div><div class="value">{{ f.type_frais }}</div></td>
+                <td width="20%"><div class="label">Statut</div>
+                    <div class="value">
+                        <span class="statut-pill {% if f.statut == 'paye' %}statut-paye{% elif f.statut == 'partiel' %}statut-partiel{% else %}statut-impaye{% endif %}">
+                            {% if f.statut == 'paye' %}Payé{% elif f.statut == 'partiel' %}Partiel{% else %}Impayé{% endif %}
+                        </span>
+                    </div>
+                </td>
+            </tr>
+        </table>
+
+        <table class="recap">
+            <tr>
+                <td width="34%" class="box box-attendu">
+                    <div class="value">{{ f.montant_du|floatformat:2 }} GNF</div>
+                    <div class="label">Montant dû</div>
+                </td>
+                <td width="33%" class="box box-paye">
+                    <div class="value">{{ f.montant_paye|floatformat:2 }} GNF</div>
+                    <div class="label">Total payé</div>
+                </td>
+                <td width="33%" class="box box-solde">
+                    <div class="value">{{ f.solde|floatformat:2 }} GNF</div>
+                    <div class="label">Solde restant</div>
+                </td>
+            </tr>
+        </table>
+
+        <table class="paiements">
+            <thead>
+                <tr>
+                    <th width="20%">Date</th>
+                    <th width="25%">Montant</th>
+                    <th width="20%">Mode</th>
+                    <th width="20%">Référence</th>
+                    <th width="15%">Enregistré par</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for p in f.paiements %}
+                <tr {% if forloop.counter|divisibleby:2 %}class="alt"{% endif %}>
+                    <td>{{ p.date_paiement|date:"d/m/Y" }}</td>
+                    <td style="font-weight:bold; color:#059669;">{{ p.montant|floatformat:2 }} GNF</td>
+                    <td>{{ p.get_mode_paiement_display }}</td>
+                    <td>{{ p.reference|default:"—" }}</td>
+                    <td>{{ p.enregistre_par.get_full_name|default:"—" }}</td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+
+        <table class="footer">
+            <tr>
+                <td width="50%">Signature du caissier</td>
+                <td width="50%">Cachet de l'établissement</td>
+            </tr>
+        </table>
+    </div>
+    {% endfor %}
+</body>
+</html>

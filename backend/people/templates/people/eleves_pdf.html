@@ -1,0 +1,52 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8" />
+<style>
+    @page { size: A4 landscape; margin: 1.5cm; }
+    body { font-family: Helvetica, Arial, sans-serif; color: #1e1b2e; font-size: 10px; }
+    .header { text-align: center; border-bottom: 3px solid #6d28d9; padding-bottom: 10px; margin-bottom: 14px; }
+    .header h1 { color: #4c1d95; font-size: 18px; margin: 0 0 4px 0; }
+    .header p { color: #6b7280; margin: 0; font-size: 10px; }
+    table.eleves { width: 100%; border-collapse: collapse; margin-top: 8px; }
+    table.eleves th { background-color: #ede9fe; color: #4c1d95; padding: 6px; text-align: left; font-size: 9px; text-transform: uppercase; border: 1px solid #ddd6fe; }
+    table.eleves td { padding: 6px; border: 1px solid #eee; font-size: 10px; }
+    .footer { margin-top: 16px; width: 100%; text-align: right; font-size: 9px; color: #6b7280; }
+</style>
+</head>
+<body>
+    <div class="header">
+        <h1>École Manager</h1>
+        <p>Liste des élèves{% if classe_nom %} — {{ classe_nom }}{% endif %} ({{ total }} élève{{ total|pluralize }})</p>
+    </div>
+
+    <table class="eleves">
+        <thead>
+            <tr>
+                <th>Matricule</th>
+                <th>Nom</th>
+                <th>Prénom</th>
+                <th>Classe</th>
+                <th>Parent</th>
+                <th>Email</th>
+                <th>Téléphone</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for eleve in eleves %}
+            <tr>
+                <td>{{ eleve.matricule }}</td>
+                <td>{{ eleve.user.last_name }}</td>
+                <td>{{ eleve.user.first_name }}</td>
+                <td>{{ eleve.classe.nom|default:"—" }}</td>
+                <td>{{ eleve.parent.get_full_name|default:"—" }}</td>
+                <td>{{ eleve.user.email|default:"—" }}</td>
+                <td>{{ eleve.user.phone|default:"—" }}</td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+
+    <p class="footer">Généré le {{ date_generation|date:"d/m/Y à H:i" }}</p>
+</body>
+</html>

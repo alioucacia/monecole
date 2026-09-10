@@ -1,0 +1,120 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8" />
+<style>
+    /* Voir badge_eleve_pdf.html pour le détail des 3 pièges xhtml2pdf/reportlab corrigés ici
+       (largeurs en mm jamais en %, pas de padding horizontal sur un <td>, padding-left d'un
+       <div> ignoré s'il enveloppe une <table>) — ce gabarit n'a pas de table imbriquée dans ses
+       colonnes, donc seule la règle des largeurs en mm et de l'absence de padding sur <td>
+       s'applique ici. Page A4 (et non à la taille exacte de la carte) pour un rendu/impression
+       prévisible sur n'importe quel lecteur PDF ou imprimante — la carte garde ses vraies
+       dimensions (92×58mm) mais est centrée sur la page. */
+    @page { size: A4; margin: 0; }
+    html, body { margin: 0; padding: 0; }
+    body { font-family: Helvetica, Arial, sans-serif; color: #1e1b2e; }
+
+    table.page { width: 210mm; }
+    .page td { padding: 0; }
+
+    table.card { width: 92mm; border: 1.4pt solid {% if accent == "enseignant" %}#0d9488{% else %}#6d28d9{% endif %}; }
+
+    table.header { width: 92mm; background-color: {% if accent == "enseignant" %}#0d9488{% else %}#6d28d9{% endif %}; }
+    .header td { padding: 0; vertical-align: middle; }
+    .header .pad { padding: 2mm 0 1.5mm 3mm; }
+    .header .ecole { color: #ffffff; font-size: 9.5px; font-weight: bold; letter-spacing: 0.3px; margin: 0; }
+    .header .role { color: {% if accent == "enseignant" %}#99f6e4{% else %}#ddd6fe{% endif %}; font-size: 7px; font-weight: bold; text-transform: uppercase; letter-spacing: 1px; margin: 0.5mm 0 0 0; }
+    .header .badge-role {
+        background-color: rgba(255,255,255,0.18); color: #ffffff; font-size: 6.5px; font-weight: bold;
+        padding: 1mm 2.2mm; text-transform: uppercase; letter-spacing: 0.4px;
+    }
+
+    table.body { width: 92mm; }
+    .body td { padding: 0; vertical-align: top; }
+    .body .pad { padding: 2.5mm 0 0 3mm; }
+    .photo { width: 19mm; height: 23mm; border: 1pt solid {% if accent == "enseignant" %}#99f6e4{% else %}#ddd6fe{% endif %}; text-align: center; }
+    .photo img { width: 19mm; height: 23mm; object-fit: cover; }
+    .initiales {
+        width: 19mm; height: 23mm; background-color: {% if accent == "enseignant" %}#ccfbf1{% else %}#ede9fe{% endif %};
+        color: {% if accent == "enseignant" %}#0d9488{% else %}#6d28d9{% endif %}; font-size: 17px; font-weight: bold;
+        text-align: center; vertical-align: middle;
+    }
+    .infos .nom { font-size: 11.5px; font-weight: bold; color: #1e1b2e; margin: 0 0 1mm 0; line-height: 1.15; }
+    .infos .detail { font-size: 8px; color: #6b7280; margin: 0 0 1mm 0; }
+    .matricule-pill {
+        display: inline; background-color: {% if accent == "enseignant" %}#f0fdfa{% else %}#f5f3ff{% endif %};
+        color: {% if accent == "enseignant" %}#0d9488{% else %}#6d28d9{% endif %}; font-size: 8px; font-weight: bold;
+        padding: 0.8mm 2mm; letter-spacing: 0.3px;
+    }
+    .qr-cell { text-align: center; }
+    .qr-cell img { width: 15mm; height: 15mm; }
+    .qr-cell .scan-label { font-size: 5.5px; color: #9ca3af; text-transform: uppercase; letter-spacing: 0.4px; margin-top: 0.5mm; }
+
+    table.footer { width: 92mm; background-color: {% if accent == "enseignant" %}#134e4a{% else %}#4c1d95{% endif %}; }
+    .footer td { padding: 0; }
+    .footer .pad { padding: 1.5mm 3mm; font-size: 6.5px; color: #ffffff; }
+    .footer .annee { font-weight: bold; }
+    .footer .ecole-foot { text-align: right; opacity: 0.85; }
+</style>
+</head>
+<body>
+    <table class="page"><tr><td style="height: 119mm;">&nbsp;</td></tr></table>
+    <table class="page"><tr>
+        <td style="width: 59mm;">&nbsp;</td>
+        <td style="width: 92mm;">
+
+    <table class="card"><tr><td>
+
+        <table class="header"><tr>
+            <td style="width: 68mm;">
+                <div class="pad">
+                    <p class="ecole">{{ ecole_nom }}</p>
+                    <p class="role">Carte {{ role_label }}</p>
+                </div>
+            </td>
+            <td style="width: 24mm; text-align:right;">
+                <div class="pad" style="padding-left:0; padding-right:3mm;">
+                    <span class="badge-role">{{ role_label }}</span>
+                </div>
+            </td>
+        </tr></table>
+
+        <table class="body"><tr>
+            <td style="width: 22mm;">
+                <div class="pad">
+                    {% if photo_data_uri %}
+                    <div class="photo"><img src="{{ photo_data_uri }}" /></div>
+                    {% else %}
+                    <div class="initiales">{{ initiales }}</div>
+                    {% endif %}
+                </div>
+            </td>
+            <td style="width: 53mm;">
+                <div class="pad infos">
+                    <p class="nom">{{ nom_complet }}</p>
+                    <p class="detail">{{ sous_titre2 }}</p>
+                    <span class="matricule-pill">{{ matricule }}</span>
+                </div>
+            </td>
+            <td class="qr-cell" style="width: 17mm;">
+                <img src="{{ qr_data_uri }}" />
+                <p class="scan-label">Scanner pour vérifier</p>
+            </td>
+        </tr></table>
+
+        <table class="footer"><tr>
+            <td style="width: 46mm;">
+                <div class="pad annee">{% if annee_scolaire %}Année {{ annee_scolaire }}{% else %}&nbsp;{% endif %}</div>
+            </td>
+            <td style="width: 46mm;">
+                <div class="pad ecole-foot">{{ ecole_nom }}</div>
+            </td>
+        </tr></table>
+
+    </td></tr></table>
+
+        </td>
+        <td style="width: 59mm;">&nbsp;</td>
+    </tr></table>
+</body>
+</html>

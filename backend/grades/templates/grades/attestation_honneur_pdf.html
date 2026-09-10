@@ -1,0 +1,72 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8" />
+<style>
+    @page { size: A4 landscape; margin: 0; }
+    body { font-family: Helvetica, Arial, sans-serif; color: #1e1b2e; }
+
+    table.page { width: 100%; }
+    td.frame {
+        border: 3px solid #d4af37; padding: 0; vertical-align: top;
+    }
+    table.inner { width: 100%; border: 1px solid #e0c869; margin: 8px; }
+    .inner td { text-align: center; padding: 10px 60px; }
+
+    .kicker { color: #7c3aed; font-size: 13px; letter-spacing: 3px; text-transform: uppercase; font-weight: bold; margin-top: 30px; }
+    .titre { font-size: 40px; font-weight: bold; color: #4c1d95; margin-top: 10px; }
+    .sous-titre { font-size: 13px; color: #6b7280; margin-top: 4px; }
+
+    .nom-eleve { font-size: 32px; font-weight: bold; color: #1e1b2e; margin-top: 26px; border-bottom: 2px solid #d4af37; display: inline-block; padding-bottom: 6px; }
+
+    .texte { font-size: 14px; color: #374151; margin-top: 26px; line-height: 1.8; }
+    .details { margin-top: 18px; }
+    .pill { display: inline-block; background-color: #f5f3ff; color: #4c1d95; border: 1px solid #ddd6fe; border-radius: 20px; padding: 6px 18px; font-size: 12px; font-weight: bold; margin: 0 6px; }
+
+    table.signatures { width: 80%; margin: 46px auto 0 auto; }
+    .signatures td { text-align: center; font-size: 11px; color: #6b7280; padding-top: 20px; border-top: 1px solid #d1d5db; }
+
+    .footer { text-align: center; font-size: 9px; color: #9ca3af; padding-top: 30px; }
+    .medaille { font-size: 46px; margin-top: 20px; }
+</style>
+</head>
+<body>
+{% for l in laureats %}
+<table class="page">
+    <tr>
+        <td class="frame">
+            <table class="inner">
+                <tr><td>
+                    <div class="medaille">{% if l.rang == 1 %}🥇{% elif l.rang == 2 %}🥈{% elif l.rang == 3 %}🥉{% else %}🏅{% endif %}</div>
+                    <div class="kicker">École Manager · {{ periode.annee_scolaire }}</div>
+                    <div class="titre">Attestation d'Excellence</div>
+                    <div class="sous-titre">Décernée en reconnaissance d'un travail scolaire remarquable</div>
+
+                    <div class="nom-eleve">{{ l.nom_complet }}</div>
+
+                    <div class="texte">
+                        Élève de la classe <strong>{{ classe.nom }}</strong>, s'est distingué(e) durant
+                        <strong>{{ periode.nom }}</strong> par la qualité de son travail et son sérieux.
+                    </div>
+                    <div class="details">
+                        <span class="pill">Rang {{ l.rang }}{% if effectif %} / {{ effectif }}{% endif %}</span>
+                        <span class="pill">Moyenne {{ l.moyenne_generale }}/20</span>
+                        {% if l.mention %}<span class="pill">{{ l.mention }}</span>{% endif %}
+                    </div>
+
+                    <table class="signatures">
+                        <tr>
+                            <td width="50%">Le Professeur Principal</td>
+                            <td width="50%">Le Directeur de l'établissement</td>
+                        </tr>
+                    </table>
+                    <div class="footer">Fait le {{ date_edition|date:"d/m/Y" }} — École Manager</div>
+                </td></tr>
+            </table>
+        </td>
+    </tr>
+</table>
+{% if not forloop.last %}<div style="page-break-after: always;"></div>{% endif %}
+{% endfor %}
+</body>
+</html>

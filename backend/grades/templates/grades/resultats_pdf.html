@@ -1,0 +1,71 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8" />
+<style>
+    @page { size: A4; margin: 2cm; }
+    body { font-family: Helvetica, Arial, sans-serif; color: #1e1b2e; font-size: 11px; }
+    .header { text-align: center; border-bottom: 3px solid #6d28d9; padding-bottom: 10px; margin-bottom: 16px; }
+    .header h1 { color: #4c1d95; font-size: 20px; margin: 0 0 4px 0; }
+    .header p { color: #6b7280; margin: 0; font-size: 11px; }
+    table.summary { width: 100%; margin-bottom: 16px; }
+    table.summary td { padding: 8px; }
+    table.summary .box { border: 2px solid #6d28d9; border-radius: 6px; text-align: center; }
+    table.summary .box .value { font-size: 18px; font-weight: bold; color: #4c1d95; }
+    table.summary .box .label { font-size: 9px; color: #6b7280; text-transform: uppercase; }
+    table.resultats { width: 100%; border-collapse: collapse; margin-top: 8px; }
+    table.resultats th { background-color: #ede9fe; color: #4c1d95; padding: 7px; text-align: left; font-size: 10px; text-transform: uppercase; border: 1px solid #ddd6fe; }
+    table.resultats td { padding: 7px; border: 1px solid #eee; font-size: 11px; }
+    .center { text-align: center; }
+    .footer { margin-top: 16px; width: 100%; text-align: right; font-size: 9px; color: #6b7280; }
+</style>
+</head>
+<body>
+    <div class="header">
+        <h1>École Manager</h1>
+        <p>Résultats — {{ classe.nom }} · {{ periode.nom }} ({{ periode.annee_scolaire }})</p>
+    </div>
+
+    <table class="summary">
+        <tr>
+            <td width="33%" class="box">
+                <div class="value">{{ effectif }}</div>
+                <div class="label">Effectif</div>
+            </td>
+            <td width="33%" class="box">
+                <div class="value">{% if moyenne_classe %}{{ moyenne_classe }}/20{% else %}—{% endif %}</div>
+                <div class="label">Moyenne de classe</div>
+            </td>
+            <td width="33%" class="box">
+                <div class="value">{% if taux_reussite %}{{ taux_reussite }}%{% else %}—{% endif %}</div>
+                <div class="label">Taux de réussite (&ge;10)</div>
+            </td>
+        </tr>
+    </table>
+
+    <table class="resultats">
+        <thead>
+            <tr>
+                <th class="center">Rang</th>
+                <th>Matricule</th>
+                <th>Élève</th>
+                <th class="center">Moyenne générale</th>
+                <th>Mention</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for r in resultats %}
+            <tr>
+                <td class="center">{{ r.rang|default:"—" }}</td>
+                <td>{{ r.matricule }}</td>
+                <td>{{ r.nom_complet }}</td>
+                <td class="center">{% if r.moyenne_generale %}{{ r.moyenne_generale }}/20{% else %}—{% endif %}</td>
+                <td>{{ r.mention|default:"—" }}</td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+
+    <p class="footer">Généré le {% now "d/m/Y à H:i" %}</p>
+</body>
+</html>

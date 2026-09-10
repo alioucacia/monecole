@@ -1,0 +1,89 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8" />
+<style>
+    @page { size: A4; margin: 2cm; }
+    body { font-family: Helvetica, Arial, sans-serif; color: #1e1b2e; font-size: 11px; }
+    table.header { width: 100%; background-color: #4c1d95; border-radius: 10px; margin-bottom: 18px; }
+    .header td { padding: 14px 20px; }
+    .header .brand { color: #ffffff; font-size: 20px; font-weight: bold; }
+    .header .subtitle { color: #ddd6fe; font-size: 10px; margin-top: 3px; }
+    .header .numero { background-color: #ffffff; color: #4c1d95; border-radius: 6px; padding: 8px 14px; font-size: 11px; font-weight: bold; text-align: center; }
+
+    .titre { text-align: center; font-size: 16px; font-weight: bold; margin-bottom: 18px; text-transform: uppercase; letter-spacing: 1px; }
+
+    table.infos { width: 100%; background-color: #f5f3ff; border: 1px solid #ede9fe; border-radius: 8px; margin-bottom: 18px; }
+    .infos td { padding: 10px 16px; font-size: 11px; vertical-align: top; }
+    .infos .label { color: #7c3aed; font-size: 9px; text-transform: uppercase; font-weight: bold; }
+    .infos .value { color: #1e1b2e; font-weight: bold; font-size: 13px; margin-top: 2px; }
+
+    table.lignes { width: 100%; border-collapse: collapse; margin-top: 8px; }
+    table.lignes th { background-color: #ede9fe; color: #4c1d95; padding: 10px; text-align: left; font-size: 10px; text-transform: uppercase; border: 1px solid #ddd6fe; }
+    table.lignes td { padding: 10px; border: 1px solid #eee; font-size: 12px; }
+    .right { text-align: right; }
+
+    table.net { margin-top: 20px; width: 100%; }
+    .net .box { border: 2px solid #4c1d95; border-radius: 8px; text-align: center; padding: 14px; }
+    .net .value { font-size: 24px; font-weight: bold; color: #4c1d95; }
+    .net .label { font-size: 10px; color: #6b7280; text-transform: uppercase; }
+
+    .footer { margin-top: 50px; width: 100%; text-align: center; font-size: 10px; color: #6b7280; padding-top: 18px; border-top: 1px dashed #c4b5fd; }
+</style>
+</head>
+<body>
+    <table class="header">
+        <tr>
+            <td>
+                <div class="brand">École Manager</div>
+                <div class="subtitle">Facture d'abonnement — plateforme de gestion scolaire</div>
+            </td>
+            <td width="140" class="numero">N° {{ p.numero_facture }}</td>
+        </tr>
+    </table>
+
+    <p class="titre">Facture / Reçu de paiement</p>
+
+    <table class="infos">
+        <tr>
+            <td width="50%"><div class="label">Établissement</div><div class="value">{{ p.ecole.nom }}</div></td>
+            <td width="50%"><div class="label">Période couverte</div><div class="value">{{ p.mois|date:"F Y" }}</div></td>
+        </tr>
+        <tr>
+            <td><div class="label">Date d'encaissement</div><div class="value">{{ p.date_paiement|date:"d/m/Y" }}</div></td>
+            <td><div class="label">Mode de paiement</div><div class="value">{{ p.get_mode_paiement_display }}</div></td>
+        </tr>
+        {% if p.reference %}
+        <tr>
+            <td colspan="2"><div class="label">Référence</div><div class="value">{{ p.reference }}</div></td>
+        </tr>
+        {% endif %}
+    </table>
+
+    <table class="lignes">
+        <thead>
+            <tr><th>Désignation</th><th class="right">Montant</th></tr>
+        </thead>
+        <tbody>
+            <tr>
+                <td>Abonnement plateforme École Manager — {{ p.mois|date:"F Y" }}</td>
+                <td class="right">{{ p.montant }} GNF</td>
+            </tr>
+        </tbody>
+    </table>
+
+    <table class="net">
+        <tr>
+            <td class="box">
+                <div class="value">{{ p.montant }} GNF</div>
+                <div class="label">Montant payé</div>
+            </td>
+        </tr>
+    </table>
+
+    <p class="footer">
+        {% if p.enregistre_par %}Enregistré par {{ p.enregistre_par.get_full_name }} — {% endif %}
+        Document généré le {% now "d/m/Y à H:i" %} — École Manager
+    </p>
+</body>
+</html>

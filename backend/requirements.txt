@@ -1,0 +1,26 @@
+Django==5.0.6
+djangorestframework==3.15.1
+djangorestframework-simplejwt==5.3.1
+django-cors-headers==4.3.1
+django-filter==24.2
+psycopg2-binary==2.9.9
+# Utilisé en local (ex: Python 3.14) quand psycopg2-binary n'a pas de wheel précompilé
+# disponible pour la version de Python installée — Django essaie psycopg avant psycopg2.
+psycopg[binary]==3.3.5; python_version >= "3.13"
+dj-database-url==2.2.0
+Pillow==10.3.0
+python-decouple==3.8
+xhtml2pdf==0.2.16
+qrcode==7.4.2
+python-barcode==0.16.1
+# Envoi de SMS réel (people/sms.py) — sans TWILIO_ACCOUNT_SID/TWILIO_AUTH_TOKEN/TWILIO_FROM_NUMBER
+# configurés (voir .env.example), les SMS restent simulés (journalisés) comme avant.
+twilio==9.11.0
+# Serveur applicatif de production (multi-worker/thread) — remplace `runserver`, mono-thread
+# et réservé au dev, voir DEPLOYMENT.md.
+gunicorn==22.0.0
+# Cache (endpoints chauds peu volatils) et throttling DRF, tous deux backés par Redis.
+django-redis==5.4.0
+# Sert les fichiers statiques (compressés, avec cache-busting) directement depuis Gunicorn,
+# sans dépendre d'un service nginx dédié pour ça.
+whitenoise==6.7.0

@@ -1,0 +1,21 @@
+# `COPY . .` dans le Dockerfile copierait sinon tout ceci dans l'image — notamment `.env`, qui
+# peut contenir de vrais identifiants de dev local (trouvé en testant le build : sans ce fichier,
+# `backend/.env` se retrouvait embarqué dans l'image, et son DATABASE_URL prenait le pas sur les
+# variables d'environnement du conteneur tant qu'aucune n'était explicitement définie).
+.env
+.env.*
+!.env.example
+
+__pycache__/
+*.py[cod]
+*.sqlite3
+
+.git/
+.gitignore
+
+staticfiles/
+media/
+
+.venv/
+venv/
+.pytest_cache/

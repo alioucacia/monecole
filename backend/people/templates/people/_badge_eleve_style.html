@@ -1,0 +1,154 @@
+<style>
+    /* Trois pièges xhtml2pdf/reportlab, vérifiés empiriquement (rendus de test comparés en
+       image), corrigés partout ci-dessous :
+       1) les largeurs en `%` sur des tables imbriquées ne se calculent pas fiablement — chaque
+          table a donc une largeur EXPLICITE en mm, jamais de `%`.
+       2) le padding d'un <td> S'AJOUTE à la largeur déclarée de la colonne (au lieu d'être
+          soustrait, comme box-sizing:content-box classique) — les <td> n'ont donc aucun padding
+          horizontal ; l'espacement horizontal vient d'un <div> interne (qui n'affecte pas la
+          largeur du <td>) OU d'une colonne <td> vide (ci-dessous).
+       3) un `padding-left` sur un <div> est bien appliqué s'il ne contient que du texte/img,
+          mais est SILENCIEUSEMENT IGNORÉ s'il contient une <table> imbriquée — pour la colonne
+          « informations » (qui contient une table), l'espacement à gauche est donc une vraie
+          colonne <td> vide dans la table extérieure, jamais un padding de <div>.
+
+       Page A4 (pas une page à la taille exacte de la carte) : un format de page personnalisé
+       minuscule (96×61mm) s'affiche/s'imprime de façon imprévisible selon le lecteur PDF ou
+       l'imprimante (mise à l'échelle forcée, recadrage...). La carte elle-même garde ses
+       dimensions réelles (96×61mm, la taille standard d'une carte d'identité) mais est centrée
+       sur une page A4 normale — s'imprime donc correctement sur n'importe quelle imprimante,
+       prête à découper/plastifier.
+
+       Ce fichier est partagé entre le badge individuel (badge_eleve_pdf.html) et le PDF groupé
+       de toute une classe (badges_classe_pdf.html, une carte par page) — n'y dupliquez jamais
+       ce style, modifiez-le ici. */
+    @page { size: A4; margin: 0; }
+    html, body { margin: 0; padding: 0; }
+    body { font-family: Helvetica, Arial, sans-serif; color: #1a2233; }
+
+    table.page { width: 210mm; }
+    .page td { padding: 0; }
+
+    table.body { width: 96mm; }
+    .body td { padding: 0; vertical-align: top; }
+    .body .pad { padding: 2mm 0 0 3mm; }
+    .photo { width: 26mm; height: 32mm; border: 1pt solid #cbd5e1; }
+    .photo img { width: 26mm; height: 32mm; object-fit: cover; }
+
+    table.infos { width: 48mm; }
+    .infos td { padding: 0 0 0.6mm 0; font-size: 6.4px; line-height: 1.3; }
+    .infos .spacer { width: 4mm; }
+    .infos .label { color: #64748b; font-weight: bold; width: 17mm; text-transform: uppercase; }
+    .infos .colon { width: 2mm; color: #64748b; }
+    .infos .valeur { color: #1a2233; font-weight: bold; width: 25mm; }
+
+    .side { text-align: center; }
+    .side .qr { width: 11mm; height: 11mm; }
+    .side .valid-label { font-size: 5px; color: #64748b; text-transform: uppercase; margin-top: 0.8mm; }
+
+    table.bottom { width: 96mm; }
+    .bottom td { padding: 0; vertical-align: bottom; }
+    .bottom .pad { padding: 1mm 0 1.5mm 3mm; }
+    .barcode img { height: 7mm; width: 34mm; }
+    .barcode .matricule { font-size: 6px; letter-spacing: 1px; color: #1a2233; text-align: center; margin: 0.3mm 0 0 0; }
+    .signature { text-align: center; }
+    .signature .ligne { border-top: 0.6pt solid #94a3b8; width: 22mm; margin: 0 auto 0.6mm auto; }
+    .signature .role { font-size: 5.5px; color: #64748b; text-transform: uppercase; letter-spacing: 0.3px; }
+
+    /* Les 4 « modèles » choisis par le Super Admin (Ecole.modele_badge) ne changent QUE ces
+       règles couleur/remplissage ci-dessous — jamais la structure des tables/<td> du corps de
+       la carte (photo, infos, QR, code-barres...) : c'est cette structure qui porte les 3
+       pièges documentés en haut de ce fichier, donc on ne la touche pas pour varier le style,
+       seule la palette change d'un modèle à l'autre. */
+    {% if modele == 2 %}
+    /* Modèle 2 — Moderne : rôles de couleur inversés (bandeau/pied en secondaire, accents en
+       principale) + bordure plus épaisse, pour un rendu plus affirmé que le classique. */
+    table.card { width: 96mm; border: 2pt solid {{ couleur_secondaire }}; }
+    table.header { width: 96mm; background-color: {{ couleur_secondaire }}; }
+    .header td { padding: 0; vertical-align: middle; }
+    .header .pad { padding: 2mm 0; }
+    .crest { width: 9mm; height: 9mm; margin-left: 3mm; }
+    .crest img { width: 9mm; height: 9mm; }
+    .crest .fallback { width: 9mm; height: 9mm; background-color: {{ couleur_principale }}; color: #ffffff; font-size: 9px; font-weight: bold; text-align: center; vertical-align: middle; }
+    .header .ecole { color: #ffffff; font-size: 11.5px; font-weight: bold; letter-spacing: 0.3px; margin: 0; line-height: 1.25; text-transform: uppercase; }
+    .header .adresse { color: #fdf2e0; font-size: 6px; margin: 0.5mm 0 0 0; letter-spacing: 0.2px; }
+    .header .tag { background-color: {{ couleur_principale }}; color: #ffffff; font-size: 7px; font-weight: bold; padding: 1.2mm 2.5mm; text-transform: uppercase; letter-spacing: 0.4px; white-space: nowrap; }
+    .initiales { width: 26mm; height: 32mm; background-color: {{ couleur_secondaire }}; color: #ffffff; font-size: 20px; font-weight: bold; text-align: center; vertical-align: middle; }
+    .side .valid-date { font-size: 6px; color: {{ couleur_secondaire }}; font-weight: bold; }
+    .side .session { display: inline-block; margin-top: 1.5mm; background-color: {{ couleur_secondaire }}; color: #ffffff; font-size: 6px; font-weight: bold; padding: 1mm 2mm; }
+    table.footer { width: 96mm; background-color: {{ couleur_principale }}; }
+    .footer td { padding: 0; text-align: center; }
+    .footer .pad { padding: 1mm 0; font-size: 5.5px; color: #ffffff; font-weight: bold; letter-spacing: 0.3px; text-transform: uppercase; }
+
+    {% elif modele == 3 %}
+    /* Modèle 3 — Élégant : bandeau/pied non remplis (blanc), couleur portée par le texte et de
+       fins filets plutôt que des aplats — rendu plus sobre. */
+    table.card { width: 96mm; border: 1.4pt solid {{ couleur_principale }}; }
+    table.header { width: 96mm; background-color: #ffffff; border-bottom: 0.75pt solid {{ couleur_secondaire }}; }
+    .header td { padding: 0; vertical-align: middle; }
+    .header .pad { padding: 2mm 0; }
+    .crest { width: 9mm; height: 9mm; margin-left: 3mm; }
+    .crest img { width: 9mm; height: 9mm; }
+    .crest .fallback { width: 9mm; height: 9mm; background-color: {{ couleur_principale }}; color: #ffffff; font-size: 9px; font-weight: bold; text-align: center; vertical-align: middle; }
+    .header .ecole { color: {{ couleur_principale }}; font-size: 11.5px; font-weight: bold; letter-spacing: 0.3px; margin: 0; line-height: 1.25; text-transform: uppercase; }
+    .header .adresse { color: #64748b; font-size: 6px; margin: 0.5mm 0 0 0; letter-spacing: 0.2px; }
+    .header .tag { background-color: #ffffff; border: 0.75pt solid {{ couleur_secondaire }}; color: {{ couleur_secondaire }}; font-size: 7px; font-weight: bold; padding: 0.9mm 2.2mm; text-transform: uppercase; letter-spacing: 0.4px; white-space: nowrap; }
+    .initiales { width: 26mm; height: 32mm; background-color: {{ couleur_principale }}; color: #ffffff; font-size: 20px; font-weight: bold; text-align: center; vertical-align: middle; }
+    .side .valid-date { font-size: 6px; color: {{ couleur_principale }}; font-weight: bold; }
+    .side .session { display: inline-block; margin-top: 1.5mm; background-color: #ffffff; border: 0.75pt solid {{ couleur_secondaire }}; color: {{ couleur_secondaire }}; font-size: 6px; font-weight: bold; padding: 0.7mm 1.7mm; }
+    table.footer { width: 96mm; background-color: #ffffff; border-top: 0.75pt solid {{ couleur_secondaire }}; }
+    .footer td { padding: 0; text-align: center; }
+    .footer .pad { padding: 1mm 0; font-size: 5.5px; color: {{ couleur_principale }}; font-weight: bold; letter-spacing: 0.3px; text-transform: uppercase; }
+
+    {% elif modele == 4 %}
+    /* Modèle 4 — Compact : monochrome (une seule couleur pour bandeau, pied et accents), pour
+       un badge plus dense visuellement, sans rupture de ton. */
+    table.card { width: 96mm; border: 1.4pt solid {{ couleur_principale }}; }
+    table.header { width: 96mm; background-color: {{ couleur_principale }}; }
+    .header td { padding: 0; vertical-align: middle; }
+    .header .pad { padding: 2mm 0; }
+    .crest { width: 9mm; height: 9mm; margin-left: 3mm; }
+    .crest img { width: 9mm; height: 9mm; }
+    .crest .fallback { width: 9mm; height: 9mm; background-color: {{ couleur_principale }}; border: 0.6pt solid #ffffff; color: #ffffff; font-size: 9px; font-weight: bold; text-align: center; vertical-align: middle; }
+    .header .ecole { color: #ffffff; font-size: 11.5px; font-weight: bold; letter-spacing: 0.3px; margin: 0; line-height: 1.25; text-transform: uppercase; }
+    .header .adresse { color: #cbd5e1; font-size: 6px; margin: 0.5mm 0 0 0; letter-spacing: 0.2px; }
+    .header .tag { background-color: {{ couleur_principale }}; border: 0.6pt solid #ffffff; color: #ffffff; font-size: 7px; font-weight: bold; padding: 1mm 2.3mm; text-transform: uppercase; letter-spacing: 0.4px; white-space: nowrap; }
+    .initiales { width: 26mm; height: 32mm; background-color: {{ couleur_principale }}; color: #ffffff; font-size: 20px; font-weight: bold; text-align: center; vertical-align: middle; }
+    .side .valid-date { font-size: 6px; color: {{ couleur_principale }}; font-weight: bold; }
+    .side .session { display: inline-block; margin-top: 1.5mm; background-color: {{ couleur_principale }}; color: #ffffff; font-size: 6px; font-weight: bold; padding: 1mm 2mm; }
+    table.footer { width: 96mm; background-color: {{ couleur_principale }}; }
+    .footer td { padding: 0; text-align: center; }
+    .footer .pad { padding: 1mm 0; font-size: 5.5px; color: #ffffff; font-weight: bold; letter-spacing: 0.3px; text-transform: uppercase; }
+
+    {% else %}
+    /* Modèle 1 — Classique : bandeau en couleur principale, pied/accents en couleur
+       secondaire (design d'origine). */
+    table.card { width: 96mm; border: 1.4pt solid {{ couleur_principale }}; }
+    table.header { width: 96mm; background-color: {{ couleur_principale }}; }
+    .header td { padding: 0; vertical-align: middle; }
+    .header .pad { padding: 2mm 0; }
+    .crest { width: 9mm; height: 9mm; margin-left: 3mm; }
+    .crest img { width: 9mm; height: 9mm; }
+    .crest .fallback { width: 9mm; height: 9mm; background-color: {{ couleur_secondaire }}; color: #ffffff; font-size: 9px; font-weight: bold; text-align: center; vertical-align: middle; }
+    .header .ecole { color: #ffffff; font-size: 11.5px; font-weight: bold; letter-spacing: 0.3px; margin: 0; line-height: 1.25; text-transform: uppercase; }
+    .header .adresse { color: #cbd5e1; font-size: 6px; margin: 0.5mm 0 0 0; letter-spacing: 0.2px; }
+    .header .tag { background-color: {{ couleur_secondaire }}; color: #ffffff; font-size: 7px; font-weight: bold; padding: 1.2mm 2.5mm; text-transform: uppercase; letter-spacing: 0.4px; white-space: nowrap; }
+    .initiales { width: 26mm; height: 32mm; background-color: {{ couleur_principale }}; color: #ffffff; font-size: 20px; font-weight: bold; text-align: center; vertical-align: middle; }
+    .side .valid-date { font-size: 6px; color: {{ couleur_principale }}; font-weight: bold; }
+    .side .session { display: inline-block; margin-top: 1.5mm; background-color: {{ couleur_principale }}; color: #ffffff; font-size: 6px; font-weight: bold; padding: 1mm 2mm; }
+    table.footer { width: 96mm; background-color: {{ couleur_secondaire }}; }
+    .footer td { padding: 0; text-align: center; }
+    .footer .pad { padding: 1mm 0; font-size: 5.5px; color: #ffffff; font-weight: bold; letter-spacing: 0.3px; text-transform: uppercase; }
+    {% endif %}
+
+    /* Grille du PDF groupé par classe (badges_classe_pdf.html) : 8 cartes par page A4,
+       2 colonnes x 4 lignes. 7mm de marge de chaque côté + 4mm d'espace entre les deux
+       colonnes = 7+96+4+96+7 = 210mm (largeur A4 exacte). */
+    table.grille { width: 210mm; }
+    .grille td { padding: 0; }
+    .grille .marge-page { width: 7mm; }
+    .grille .marge-haut { height: 6mm; }
+    .grille .carte-cell { width: 96mm; vertical-align: top; }
+    .grille .colonne-gap { width: 4mm; }
+    .grille .ligne-gap { height: 4mm; }
+</style>

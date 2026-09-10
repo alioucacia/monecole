@@ -1,0 +1,27 @@
+# Python / Django
+__pycache__/
+*.pyc
+.venv/
+venv/
+db.sqlite3
+db.sqlite3.bak
+staticfiles/
+media/
+.env
+# Sauvegardes DB (core/management/commands/backup_daily.py) — contiennent des données
+# personnelles réelles (élèves, parents, personnel) et des mots de passe hachés : jamais en git.
+backend/backups/
+# Logs de session dev (serveur Django / Vite) — bruit local, pas de contenu utile au dépôt.
+*.log
+
+# Node / Vite
+node_modules/
+dist/
+.env.local
+*.tsbuildinfo
+
+# Éditeurs / OS
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
