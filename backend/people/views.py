@@ -600,7 +600,7 @@ def _initials(name):
 
 
 def _ecole_nom(user):
-    return user.ecole.nom if user.ecole_id else "École Manager"
+    return user.ecole.nom if user.ecole_id else "Taly-School"
 
 
 def _taille_police_ecole_badge(nom: str) -> float:
@@ -1095,7 +1095,7 @@ class PaieEnseignantViewSet(viewsets.ModelViewSet):
         ecole = paie.enseignant.user.ecole
         context = {
             "paie": paie,
-            "ecole_nom": ecole.nom if ecole else "École Manager",
+            "ecole_nom": ecole.nom if ecole else "Taly-School",
             "ecole_adresse": ecole.adresse if ecole else "",
             "ecole_telephone": ecole.telephone if ecole else "",
             "ecole_logo_data_uri": _image_data_uri(ecole.logo, _mm_px(16, 16), mode="contain") if ecole else None,

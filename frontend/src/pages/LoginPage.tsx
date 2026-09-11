@@ -72,7 +72,7 @@ export default function LoginPage() {
   const [rememberMe, setRememberMe] = useState(true);
   const [shake, setShake] = useState(false);
   const [loading, setLoading] = useState(false);
-  const [nomPlateforme, setNomPlateforme] = useState("École Manager");
+  const [nomPlateforme, setNomPlateforme] = useState("Taly-School");
 
   useEffect(() => {
     plateformeBrandingApi.get().then(({ data }) => {

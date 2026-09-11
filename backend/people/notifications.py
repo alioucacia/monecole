@@ -56,7 +56,7 @@ def notifier_creation_compte_eleve(
     from tenants.messages_templates import rendre_modele
 
     ecole = eleve_user.ecole if eleve_user.ecole_id else None
-    nom_ecole = ecole.nom if ecole else "École Manager"
+    nom_ecole = ecole.nom if ecole else "Taly-School"
 
     sujet_eleve, message_eleve = rendre_modele(
         ecole, "compte_cree",

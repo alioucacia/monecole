@@ -7,10 +7,10 @@ export default defineConfig({
     react(),
     VitePWA({
       registerType: "autoUpdate",
-      includeAssets: ["pwa-192.png", "pwa-512.png"],
+      includeAssets: ["pwa-192.png", "pwa-512.png", "pwa-512-maskable.png"],
       manifest: {
-        name: "École Manager",
-        short_name: "École Manager",
+        name: "Taly-School",
+        short_name: "Taly-School",
         description: "Gestion scolaire complète — élèves, notes, présences, paiements.",
         lang: "fr",
         theme_color: "#6d28d9",
@@ -21,7 +21,7 @@ export default defineConfig({
         icons: [
           { src: "/pwa-192.png", sizes: "192x192", type: "image/png" },
           { src: "/pwa-512.png", sizes: "512x512", type: "image/png" },
-          { src: "/pwa-512.png", sizes: "512x512", type: "image/png", purpose: "maskable" },
+          { src: "/pwa-512-maskable.png", sizes: "512x512", type: "image/png", purpose: "maskable" },
         ],
       },
       workbox: {

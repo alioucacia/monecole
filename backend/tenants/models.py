@@ -321,11 +321,11 @@ class ParametresPlateforme(models.Model):
     restent dans les variables d'environnement du serveur — jamais en base, pour éviter
     qu'ils ne transitent par une API lisible même en lecture seule."""
 
-    nom_plateforme = models.CharField(max_length=100, default="École Manager")
+    nom_plateforme = models.CharField(max_length=100, default="Taly-School")
     logo = models.ImageField(upload_to="plateforme/", blank=True, null=True)
 
     email_expediteur_nom = models.CharField(
-        max_length=100, default="École Manager",
+        max_length=100, default="Taly-School",
         help_text="Nom affiché comme expéditeur des e-mails automatiques (le compte SMTP reste celui du .env)",
     )
     support_email = models.EmailField(blank=True, help_text="Adresse affichée aux écoles pour le support")

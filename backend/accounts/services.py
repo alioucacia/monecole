@@ -48,13 +48,13 @@ def reinitialiser_mot_de_passe(utilisateur) -> dict:
             # pour savoir si l'e-mail est réellement parti, plutôt que déduire le succès de
             # l'absence d'exception.
             nb_envoyes = send_mail(
-                subject="École Manager — Votre mot de passe a été réinitialisé",
+                subject="Taly-School — Votre mot de passe a été réinitialisé",
                 message=(
                     f"Bonjour {utilisateur.get_full_name() or utilisateur.username},\n\n"
                     "Un administrateur vient de réinitialiser votre mot de passe.\n"
                     f"Nouveau mot de passe temporaire : {nouveau_mot_de_passe}\n\n"
                     "Connectez-vous puis changez-le dès que possible depuis votre profil.\n\n"
-                    "— L'équipe École Manager"
+                    "— L'équipe Taly-School"
                 ),
                 from_email=settings.DEFAULT_FROM_EMAIL,
                 recipient_list=[utilisateur.email],

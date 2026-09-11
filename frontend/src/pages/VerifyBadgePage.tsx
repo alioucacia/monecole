@@ -18,7 +18,7 @@ export default function VerifyBadgePage() {
   const { token } = useParams<{ token: string }>();
   const [result, setResult] = useState<VerifyResult | null>(null);
   const [loading, setLoading] = useState(true);
-  const [nomPlateforme, setNomPlateforme] = useState("École Manager");
+  const [nomPlateforme, setNomPlateforme] = useState("Taly-School");
 
   useEffect(() => {
     if (!token) return;

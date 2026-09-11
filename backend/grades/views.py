@@ -385,7 +385,7 @@ def _build_bulletin(eleve, periodes, periode_label):
             classe_periode.professeur_principal.get_full_name()
             if classe_periode and classe_periode.professeur_principal_id else None
         ),
-        "ecole_nom": eleve.user.ecole.nom if eleve.user.ecole_id else "École Manager",
+        "ecole_nom": eleve.user.ecole.nom if eleve.user.ecole_id else "Taly-School",
         "ecole_adresse": eleve.user.ecole.adresse if eleve.user.ecole_id else "",
         "ecole_telephone": eleve.user.ecole.telephone if eleve.user.ecole_id else "",
         "ecole_logo_data_uri": (
@@ -563,7 +563,7 @@ class BulletinSendEmailView(APIView):
             subject=f"Bulletin scolaire — {bulletin['eleve']['nom_complet']} ({label['nom']})",
             body=(
                 f"Bonjour,\n\nVeuillez trouver ci-joint le bulletin de {bulletin['eleve']['nom_complet']} "
-                f"pour {label['nom']}.\n\n— École Manager"
+                f"pour {label['nom']}.\n\n— Taly-School"
             ),
             from_email=settings.DEFAULT_FROM_EMAIL,
             to=[destinataire],
@@ -597,7 +597,7 @@ class BulletinSendSmsView(APIView):
         token = _make_bulletin_token(eleve.id, periode_id, annee_id)
         lien = f"{settings.BACKEND_PUBLIC_URL}/api/grades/bulletin/pdf/public/{token}/"
         message = (
-            f"École Manager : le bulletin de {eleve.user.get_full_name()} ({label['nom']}) est disponible ici : "
+            f"Taly-School : le bulletin de {eleve.user.get_full_name()} ({label['nom']}) est disponible ici : "
             f"{lien} (lien valable 14 jours)."
         )
         send_sms(telephone, message)
@@ -630,7 +630,7 @@ class BulletinSendWhatsAppView(APIView):
         token = _make_bulletin_token(eleve.id, periode_id, annee_id)
         lien = f"{settings.BACKEND_PUBLIC_URL}/api/grades/bulletin/pdf/public/{token}/"
         message = (
-            f"École Manager : le bulletin de {eleve.user.get_full_name()} ({label['nom']}) est disponible ici : "
+            f"Taly-School : le bulletin de {eleve.user.get_full_name()} ({label['nom']}) est disponible ici : "
             f"{lien} (lien valable 14 jours)."
         )
         envoye = send_whatsapp(telephone, message)
@@ -719,7 +719,7 @@ class ResultatsPdfView(APIView):
             "effectif": len(resultats),
             "moyenne_classe": moyenne_classe,
             "taux_reussite": taux_reussite,
-            "ecole_nom": request.user.ecole.nom if request.user.ecole_id else "École Manager",
+            "ecole_nom": request.user.ecole.nom if request.user.ecole_id else "Taly-School",
         })
         buffer = BytesIO()
         pisa.CreatePDF(html, dest=buffer, encoding="utf-8")
@@ -764,7 +764,7 @@ class AttestationHonneurPdfView(APIView):
             "laureats": laureats,
             "effectif": len(resultats),
             "date_edition": timezone.localdate(),
-            "ecole_nom": request.user.ecole.nom if request.user.ecole_id else "École Manager",
+            "ecole_nom": request.user.ecole.nom if request.user.ecole_id else "Taly-School",
         })
         buffer = BytesIO()
         pisa.CreatePDF(html, dest=buffer, encoding="utf-8")

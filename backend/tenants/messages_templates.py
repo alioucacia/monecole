@@ -69,7 +69,7 @@ def rendre_modele(ecole, cle: str, **jetons) -> tuple[str, str]:
     from .models import ModeleMessage
 
     info = MODELES_MESSAGE[cle]
-    valeurs = {"nom_ecole": ecole.nom if ecole else "École Manager", **jetons}
+    valeurs = {"nom_ecole": ecole.nom if ecole else "Taly-School", **jetons}
 
     modele = ModeleMessage.objects.filter(ecole=ecole, cle=cle).first() if ecole else None
     sujet = modele.sujet if modele and modele.sujet else info["sujet_defaut"]

@@ -117,14 +117,14 @@ class PasswordResetRequestView(APIView):
             token = default_token_generator.make_token(user)
             reset_link = f"{settings.FRONTEND_URL}/reinitialiser-mot-de-passe/{uid}/{token}"
             send_mail(
-                subject="Réinitialisation de votre mot de passe — École Manager",
+                subject="Réinitialisation de votre mot de passe — Taly-School",
                 message=(
                     f"Bonjour {user.get_full_name() or user.username},\n\n"
                     "Vous avez demandé la réinitialisation de votre mot de passe.\n"
                     f"Cliquez sur ce lien pour en choisir un nouveau :\n{reset_link}\n\n"
                     "Ce lien expire dans 3 jours. Si vous n'êtes pas à l'origine de cette "
                     "demande, ignorez simplement cet e-mail.\n\n"
-                    "— L'équipe École Manager"
+                    "— L'équipe Taly-School"
                 ),
                 from_email=settings.DEFAULT_FROM_EMAIL,
                 recipient_list=[user.email],

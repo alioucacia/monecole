@@ -20,6 +20,7 @@ node_modules/
 dist/
 .env.local
 *.tsbuildinfo
+frontend/.tsc-out/
 
 # Éditeurs / OS
 .vscode/

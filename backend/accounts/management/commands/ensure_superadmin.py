@@ -24,7 +24,7 @@ class Command(BaseCommand):
 
     def add_arguments(self, parser):
         parser.add_argument("--username", default="superadmin", help="Identifiant de connexion (défaut : superadmin)")
-        parser.add_argument("--email", default="superadmin@ecole-manager.local", help="Adresse e-mail du compte")
+        parser.add_argument("--email", default="superadmin@taly-school.com", help="Adresse e-mail du compte")
         parser.add_argument(
             "--password", default=None,
             help="Mot de passe — un mot de passe aléatoire fort est généré et affiché si omis (recommandé)",

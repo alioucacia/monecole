@@ -143,12 +143,12 @@ class EcoleViewSet(viewsets.ModelViewSet):
             if not admin:
                 continue
             message = (
-                f"École Manager : l'abonnement de « {ecole.nom} » est en retard de paiement. "
+                f"Taly-School : l'abonnement de « {ecole.nom} » est en retard de paiement. "
                 f"Accès suspendu dans {ecole.jours_avant_blocage} jour(s) sans régularisation. Merci de nous contacter."
             )
             if admin.email:
                 send_mail(
-                    subject="École Manager — Abonnement en retard",
+                    subject="Taly-School — Abonnement en retard",
                     message=message, from_email=settings.DEFAULT_FROM_EMAIL,
                     recipient_list=[admin.email], fail_silently=True,
                 )

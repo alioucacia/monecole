@@ -1,4 +1,4 @@
-# École Manager — Gestion scolaire complète
+# Taly-School — Gestion scolaire complète
 
 Application complète de gestion d'école : élèves, enseignants, classes, notes/bulletins,
 résultats, présences, emploi du temps, paiements (en GNF), bibliothèque, transport scolaire,

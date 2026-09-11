@@ -108,7 +108,7 @@ def _render_fiches_pdf(fiches: list[dict], titre: str, ecole=None) -> bytes:
     donc une seule résolution suffit plutôt que de la refaire fiche par fiche."""
     html = render_to_string("payments/fiche_paiement_pdf.html", {
         "fiches": fiches, "titre": titre,
-        "ecole_nom": ecole.nom if ecole else "École Manager",
+        "ecole_nom": ecole.nom if ecole else "Taly-School",
         "ecole_logo_data_uri": _image_data_uri(ecole.logo, _mm_px(11, 11), mode="contain") if ecole else None,
         "couleur_principale": ecole.couleur_principale if ecole else "#14304f",
         "couleur_secondaire": ecole.couleur_secondaire if ecole else "#b8860b",
@@ -340,7 +340,7 @@ class CaissePdfView(APIView):
         ecole = request.user.ecole
         html = render_to_string("payments/caisse_pdf.html", {
             **donnees,
-            "ecole_nom": ecole.nom if ecole else "École Manager",
+            "ecole_nom": ecole.nom if ecole else "Taly-School",
             "ecole_adresse": ecole.adresse if ecole else "",
             "ecole_telephone": ecole.telephone if ecole else "",
             "ecole_logo_data_uri": _image_data_uri(ecole.logo, _mm_px(16, 16), mode="contain") if ecole and ecole.logo else None,
@@ -583,7 +583,7 @@ class FraisViewSet(viewsets.ModelViewSet):
             "total_paye": total_paye,
             "total_solde": total_du - total_paye,
             "date_edition": date.today(),
-            "ecole_nom": ecole.nom if ecole else "École Manager",
+            "ecole_nom": ecole.nom if ecole else "Taly-School",
             "ecole_adresse": ecole.adresse if ecole else "",
             "ecole_telephone": ecole.telephone if ecole else "",
             "ecole_logo_data_uri": _image_data_uri(ecole.logo, _mm_px(15, 15), mode="contain") if ecole else None,
@@ -634,7 +634,7 @@ class FraisViewSet(viewsets.ModelViewSet):
             "total_paye": total_paye,
             "total_solde": total_du - total_paye,
             "date_edition": date.today(),
-            "ecole_nom": ecole.nom if ecole else "École Manager",
+            "ecole_nom": ecole.nom if ecole else "Taly-School",
             "ecole_adresse": ecole.adresse if ecole else "",
             "ecole_telephone": ecole.telephone if ecole else "",
             "ecole_logo_data_uri": _image_data_uri(ecole.logo, _mm_px(15, 15), mode="contain") if ecole and ecole.logo else None,

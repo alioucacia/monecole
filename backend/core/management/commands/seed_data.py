@@ -40,8 +40,8 @@ class Command(BaseCommand):
 
         self.stdout.write("Création du Super Admin de la plateforme…")
         superadmin = User.objects.create_superuser(
-            username="superadmin", email="superadmin@ecole-manager.local", password="superadmin123",
-            first_name="Plateforme", last_name="École Manager", role=User.Role.SUPERADMIN,
+            username="superadmin", email="superadmin@taly-school.com", password="superadmin123",
+            first_name="Plateforme", last_name="Taly-School", role=User.Role.SUPERADMIN,
         )
 
         self.stdout.write("Création de l'établissement de démonstration (École Lumière)…")

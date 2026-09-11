@@ -1,6 +1,12 @@
 {
   "compilerOptions": {
     "composite": true,
+    // Sans ceci, `tsc -b` (lancé par `npm run build`) émettait vite.config.js et
+    // vite.config.d.ts À CÔTÉ de vite.config.ts — Vite charge un .js en priorité sur le .ts
+    // s'il en trouve un, donc ce vite.config.js périmé prenait silencieusement le dessus sur
+    // la vraie config à chaque nouveau build. `composite: true` interdit `noEmit`, d'où
+    // `outDir` : on déplace la sortie hors de l'arborescence source plutôt que de la supprimer.
+    "outDir": "./.tsc-out",
     "skipLibCheck": true,
     "module": "ESNext",
     "moduleResolution": "bundler",

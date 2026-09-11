@@ -35,7 +35,7 @@
     <table class="header">
         <tr>
             <td>
-                <div class="brand">École Manager</div>
+                <div class="brand">Taly-School</div>
                 <div class="subtitle">Facture d'abonnement — plateforme de gestion scolaire</div>
             </td>
             <td width="140" class="numero">N° {{ p.numero_facture }}</td>
@@ -66,7 +66,7 @@
         </thead>
         <tbody>
             <tr>
-                <td>Abonnement plateforme École Manager — {{ p.mois|date:"F Y" }}</td>
+                <td>Abonnement plateforme Taly-School — {{ p.mois|date:"F Y" }}</td>
                 <td class="right">{{ p.montant }} GNF</td>
             </tr>
         </tbody>
@@ -83,7 +83,7 @@
 
     <p class="footer">
         {% if p.enregistre_par %}Enregistré par {{ p.enregistre_par.get_full_name }} — {% endif %}
-        Document généré le {% now "d/m/Y à H:i" %} — École Manager
+        Document généré le {% now "d/m/Y à H:i" %} — Taly-School
     </p>
 </body>
 </html>

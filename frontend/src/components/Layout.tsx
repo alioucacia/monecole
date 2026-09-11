@@ -4,6 +4,7 @@ import { Navigate, NavLink, Outlet, useLocation, useNavigate } from "react-route
 import { anneesApi, justificatifsApi, parametresEcoleApi, plateformeBrandingApi, supportApi, unwrapList } from "../api/services";
 import { useAuth } from "../context/AuthContext";
 import { useTheme } from "../context/ThemeContext";
+import { useInactivityLogout } from "../hooks/useInactivityLogout";
 import type { AnneeScolaire, Ecole, Role } from "../types";
 import { Spinner } from "./ui";
 import { TopbarActions } from "./TopbarActions";
@@ -379,6 +380,7 @@ export function ProtectedRoute(
 
 export function AppLayout() {
   const { user, logout, enModeSupport, quitterModeSupport } = useAuth();
+  useInactivityLogout(logout);
   const now = useClock();
   const { pathname } = useLocation();
   const navigate = useNavigate();
@@ -471,7 +473,7 @@ export function AppLayout() {
           <span className="text-2xl">🎒</span>
           {!repliee && (
             <div className="min-w-0">
-              <span className="font-extrabold text-white tracking-tight block leading-tight">{nomPlateforme || "École Manager"}</span>
+              <span className="font-extrabold text-white tracking-tight block leading-tight">{nomPlateforme || "Taly-School"}</span>
               {user.ecole_nom && <span className="text-[11px] text-white/70 truncate block">{user.ecole_nom}</span>}
             </div>
           )}
@@ -603,7 +605,7 @@ export function AppLayout() {
           </div>
           <div className="flex items-center gap-1 sm:gap-2 shrink-0">
             {user.role === "admin" && <span className="hidden lg:block"><AbonnementBadge ecole={ecoleAbonnement} /></span>}
-            <span className="hidden sm:block"><ThemeToggle /></span>
+            <ThemeToggle />
             <NavLink to="/profil" className="flex items-center gap-2.5 pl-1 pr-1 sm:pr-3 py-1 rounded-full group hover:bg-slate-100 transition-colors">
               <div className="h-9 w-9 shrink-0 rounded-full bg-gradient-to-br from-brand-500 to-accent-500 text-white flex items-center justify-center font-bold text-sm shadow-soft group-hover:shadow-glow transition-shadow">
                 {initials(displayName)}
