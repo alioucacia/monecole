@@ -397,11 +397,11 @@ class ParametresPlateformeView(APIView):
     permission_classes = [IsSuperAdmin]
 
     def get(self, request):
-        return Response(ParametresPlateformeSerializer(ParametresPlateforme.charger()).data)
+        return Response(ParametresPlateformeSerializer(ParametresPlateforme.charger(), context={"request": request}).data)
 
     def patch(self, request):
         parametres = ParametresPlateforme.charger()
-        serializer = ParametresPlateformeSerializer(parametres, data=request.data, partial=True)
+        serializer = ParametresPlateformeSerializer(parametres, data=request.data, partial=True, context={"request": request})
         serializer.is_valid(raise_exception=True)
         serializer.save()
         return Response(serializer.data)
@@ -418,7 +418,10 @@ class PlateformeBrandingView(APIView):
     permission_classes = [AllowAny]
 
     def get(self, request):
-        return Response(PlateformeBrandingSerializer(ParametresPlateforme.charger()).data)
+        # `context` : sans lui, `logo` (ImageField) sérialise en chemin relatif ("/media/...") au
+        # lieu d'une URL absolue — invisible dès que le frontend est servi depuis un autre domaine
+        # que l'API (cas de la prod : frontend et api.<domaine> séparés).
+        return Response(PlateformeBrandingSerializer(ParametresPlateforme.charger(), context={"request": request}).data)
 
 
 class FonctionnalitesDisponiblesView(APIView):

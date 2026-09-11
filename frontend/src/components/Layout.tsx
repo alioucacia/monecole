@@ -413,8 +413,12 @@ export function AppLayout() {
   const { annees, anneeId, setAnneeId } = useAnneesScolaires(!!user && user.role !== "superadmin");
   const ecoleAbonnement = useAbonnementEcole(!!user && user.role === "admin");
   const [nomPlateforme, setNomPlateforme] = useState<string | null>(null);
+  const [logoPlateforme, setLogoPlateforme] = useState<string | null>(null);
   useEffect(() => {
-    plateformeBrandingApi.get().then(({ data }) => setNomPlateforme(data.nom_plateforme)).catch(() => {});
+    plateformeBrandingApi.get().then(({ data }) => {
+      setNomPlateforme(data.nom_plateforme);
+      setLogoPlateforme(data.logo);
+    }).catch(() => {});
   }, []);
   if (!user) return null;
 
@@ -470,7 +474,11 @@ export function AppLayout() {
         </button>
 
         <div className={`h-16 flex items-center gap-2.5 shrink-0 ${repliee ? "justify-center px-2" : "px-5"}`}>
-          <span className="text-2xl">🎒</span>
+          {logoPlateforme ? (
+            <img src={logoPlateforme} alt="" className="h-9 w-9 rounded-lg object-cover shrink-0" />
+          ) : (
+            <span className="text-2xl">🎒</span>
+          )}
           {!repliee && (
             <div className="min-w-0">
               <span className="font-extrabold text-white tracking-tight block leading-tight">{nomPlateforme || "Taly-School"}</span>

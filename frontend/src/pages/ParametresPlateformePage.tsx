@@ -14,24 +14,38 @@ export default function ParametresPlateformePage() {
     nom_plateforme: "", email_expediteur_nom: "", support_email: "", support_telephone: "",
     sms_actif: true, maintenance_active: false, maintenance_message: "",
   });
+  const [logo, setLogo] = useState<File | null>(null);
+  const [logoPreview, setLogoPreview] = useState<string | null>(null);
 
   useEffect(() => {
     setLoading(true);
     parametresPlateformeApi.get()
-      .then(({ data }) => setForm({
-        nom_plateforme: data.nom_plateforme, email_expediteur_nom: data.email_expediteur_nom,
-        support_email: data.support_email, support_telephone: data.support_telephone,
-        sms_actif: data.sms_actif, maintenance_active: data.maintenance_active,
-        maintenance_message: data.maintenance_message,
-      }))
+      .then(({ data }) => {
+        setForm({
+          nom_plateforme: data.nom_plateforme, email_expediteur_nom: data.email_expediteur_nom,
+          support_email: data.support_email, support_telephone: data.support_telephone,
+          sms_actif: data.sms_actif, maintenance_active: data.maintenance_active,
+          maintenance_message: data.maintenance_message,
+        });
+        setLogoPreview(data.logo);
+      })
       .finally(() => setLoading(false));
   }, []);
+
+  const handleLogoChange = (file: File | null) => {
+    setLogo(file);
+    setLogoPreview(file ? URL.createObjectURL(file) : logoPreview);
+  };
 
   const handleSubmit = async (e: FormEvent) => {
     e.preventDefault();
     setSaving(true);
     try {
-      await parametresPlateformeApi.update(form);
+      const payload: Record<string, unknown> = { ...form };
+      if (logo) payload.logo = logo;
+      const { data } = await parametresPlateformeApi.update(payload);
+      setLogo(null);
+      setLogoPreview(data.logo);
       toast.success("Paramètres de la plateforme enregistrés.");
     } catch (err) {
       toast.error(extractErrorMessage(err));
@@ -115,6 +129,20 @@ export default function ParametresPlateformePage() {
       <form onSubmit={handleSubmit} className="space-y-6">
         <Card>
           <h3 className="font-bold text-ink-900 mb-4">Général</h3>
+          <div className="flex items-center gap-4 mb-5">
+            {logoPreview ? (
+              <img src={logoPreview} alt="" className="h-16 w-16 rounded-2xl object-cover border-2 border-brand-100 shrink-0" />
+            ) : (
+              <div className="h-16 w-16 rounded-2xl bg-brand-100 text-brand-700 flex items-center justify-center text-2xl shrink-0">
+                🏫
+              </div>
+            )}
+            <label className="block">
+              <span className="block text-sm font-semibold text-slate-600 mb-1.5">Logo de la plateforme</span>
+              <input type="file" accept="image/*" onChange={(e) => handleLogoChange(e.target.files?.[0] || null)} className="text-sm" />
+              <span className="block text-xs text-slate-400 mt-1">Affiché sur la page de connexion et dans la barre latérale de toute l'app.</span>
+            </label>
+          </div>
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <Input
               label="Nom de la plateforme" required value={form.nom_plateforme}

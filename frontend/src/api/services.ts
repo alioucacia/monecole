@@ -61,7 +61,9 @@ export const parametresEcoleApi = {
 // ---- Paramètres plateforme (Super Admin) ----
 export const parametresPlateformeApi = {
   get: () => api.get<ParametresPlateforme>("/tenants/parametres-plateforme/"),
-  update: (data: Record<string, unknown>) => api.patch<ParametresPlateforme>("/tenants/parametres-plateforme/", data),
+  // `toFormData` (comme pour `ecolesApi`) : nécessaire dès que `data.logo` est un `File` — reste
+  // compatible avec un envoi sans logo (simples champs texte/booléens).
+  update: (data: Record<string, unknown>) => api.patch<ParametresPlateforme>("/tenants/parametres-plateforme/", toFormData(data), multipartHeaders),
 };
 
 /** Nom + logo de la plateforme — publics, utilisés pour l'affichage (page de connexion,

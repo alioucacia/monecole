@@ -73,10 +73,12 @@ export default function LoginPage() {
   const [shake, setShake] = useState(false);
   const [loading, setLoading] = useState(false);
   const [nomPlateforme, setNomPlateforme] = useState("Taly-School");
+  const [logoPlateforme, setLogoPlateforme] = useState<string | null>(null);
 
   useEffect(() => {
     plateformeBrandingApi.get().then(({ data }) => {
       if (data.nom_plateforme) setNomPlateforme(data.nom_plateforme);
+      setLogoPlateforme(data.logo);
     }).catch(() => {});
   }, []);
 
@@ -108,8 +110,8 @@ export default function LoginPage() {
           <SchoolIllustration className="pointer-events-none absolute -right-10 -bottom-6 h-56 w-56 opacity-90" />
 
           <div className="relative">
-            <div className="h-14 w-14 rounded-2xl bg-white/10 flex items-center justify-center text-3xl mb-5 ring-1 ring-white/20">
-              🏫
+            <div className="h-14 w-14 rounded-2xl bg-white/10 flex items-center justify-center text-3xl mb-5 ring-1 ring-white/20 overflow-hidden">
+              {logoPlateforme ? <img src={logoPlateforme} alt="" className="h-full w-full object-cover" /> : "🏫"}
             </div>
             <h1 className="text-2xl font-extrabold tracking-tight">{nomPlateforme}</h1>
             <p className="mt-3 text-brand-100/90 leading-relaxed">

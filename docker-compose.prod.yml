@@ -69,6 +69,14 @@ services:
       # Partagé entre tous les réplicas — un fichier uploadé (logo, photo) doit être visible
       # quel que soit le réplica qui sert la requête suivante.
       - media_data:/app/media
+      # Idem pour les sauvegardes (commande `backup_daily`, bouton « Lancer une sauvegarde » côté
+      # Super Admin) : sans volume dédié, `/app/backups` est un simple dossier du conteneur —
+      # perdu au prochain déploiement/redémarrage, et invisible des AUTRES réplicas (le fichier
+      # n'existe que sur celui qui a exécuté la sauvegarde). Résultat côté Super Admin : le
+      # téléchargement échoue dès que la requête suivante tombe sur un autre réplica ("Le fichier
+      # de sauvegarde n'est plus disponible sur le serveur"), et toute sauvegarde disparaît au
+      # déploiement suivant même quand elle a "réussi".
+      - backups_data:/app/backups
     environment:
       - DEBUG=0
       - SECRET_KEY=${SECRET_KEY:?définir SECRET_KEY (longue valeur aléatoire, distincte du dev)}
@@ -113,3 +121,4 @@ services:
 volumes:
   postgres_data:
   media_data:
+  backups_data:
