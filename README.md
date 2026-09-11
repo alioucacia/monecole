@@ -45,8 +45,8 @@ python manage.py seed_data     # données de démo (optionnel mais recommandé)
 python manage.py runserver
 ```
 
-Par défaut le backend utilise SQLite si `DATABASE_URL` n'est pas défini. Pour PostgreSQL,
-définissez par exemple :
+`DATABASE_URL` est obligatoire (PostgreSQL uniquement, plus de repli SQLite) — définissez par
+exemple :
 ```
 DATABASE_URL=postgres://ecole_user:ecole_password@localhost:5432/ecole_db
 ```

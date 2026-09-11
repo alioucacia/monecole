@@ -92,7 +92,7 @@ WSGI_APPLICATION = "school_backend.wsgi.application"
 DATABASE_URL = config("DATABASE_URL", default=None)
 if not DATABASE_URL:
     raise ImproperlyConfigured(
-        "DATABASE_URL doit être défini (ex: postgres://aliou:Maman6562@@host:5432/ecole_db) — "
+        "DATABASE_URL doit être défini (ex: postgres://ecole_user:ecole_password@host:5432/nom_db) — "
         "voir .env.example. Ce projet n'utilise plus SQLite."
     )
 
