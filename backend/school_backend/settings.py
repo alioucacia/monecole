@@ -87,11 +87,17 @@ TEMPLATES = [
 
 WSGI_APPLICATION = "school_backend.wsgi.application"
 
-DATABASES = {
-    "default": dj_database_url.parse(
-        config("DATABASE_URL", default=f"sqlite:///{BASE_DIR / 'db.sqlite3'}"),
-        conn_max_age=600,
+# PostgreSQL uniquement — aucun repli SQLite : DATABASE_URL doit toujours être défini
+# (voir .env / .env.example, ou .env.prod / DEPLOYMENT.md en production).
+DATABASE_URL = config("DATABASE_URL", default=None)
+if not DATABASE_URL:
+    raise ImproperlyConfigured(
+        "DATABASE_URL doit être défini (ex: postgres://aliou:Maman6562@@host:5432/ecole_db) — "
+        "voir .env.example. Ce projet n'utilise plus SQLite."
     )
+
+DATABASES = {
+    "default": dj_database_url.parse(DATABASE_URL, conn_max_age=600)
 }
 
 AUTH_USER_MODEL = "accounts.User"
