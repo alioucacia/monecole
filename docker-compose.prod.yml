@@ -89,6 +89,16 @@ services:
     # — c'est le vrai levier de débit (voir backend/DEPLOYMENT.md), pas le nombre de workers
     # Gunicorn à lui seul.
 
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile.prod
+      args:
+        # Figé dans le JS au build (voir frontend/Dockerfile.prod) — pas une variable d'env
+        # lue au démarrage du conteneur, contrairement à celles du service `backend`.
+        VITE_API_URL: "${VITE_API_URL:?définir VITE_API_URL, ex. https://api.taly-school.com/api}"
+    restart: unless-stopped
+
   nginx:
     image: nginx:1.27-alpine
     restart: unless-stopped
@@ -98,6 +108,7 @@ services:
       - "80:80"
     depends_on:
       - backend
+      - frontend
 
 volumes:
   postgres_data:

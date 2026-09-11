@@ -1,0 +1,23 @@
+# Build de production du frontend — contrairement à ./Dockerfile (dev : `vite dev`), celui-ci
+# produit un bundle statique optimisé, servi par nginx. Voir docker-compose.prod.yml.
+
+# Étape 1 : compilation TypeScript + build Vite
+FROM node:20-alpine AS build
+WORKDIR /app
+
+# VITE_API_URL est lu par Vite AU MOMENT DU BUILD (import.meta.env, voir src/api/client.ts) —
+# contrairement à une variable d'env Django, elle est figée dans le JS généré une fois pour
+# toutes : impossible de la changer après coup sans reconstruire l'image.
+ARG VITE_API_URL
+ENV VITE_API_URL=$VITE_API_URL
+
+COPY package.json package-lock.json ./
+RUN npm ci
+COPY . .
+RUN npm run build
+
+# Étape 2 : image finale — juste nginx + les fichiers statiques, sans Node/node_modules.
+FROM nginx:1.27-alpine
+COPY --from=build /app/dist /usr/share/nginx/html
+COPY nginx.prod.conf /etc/nginx/conf.d/default.conf
+EXPOSE 80
