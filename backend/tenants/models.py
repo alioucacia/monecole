@@ -138,7 +138,10 @@ class Ecole(models.Model):
     # via une variable `modele` (voir les blocs `{% if modele == ... %}` dans chaque gabarit).
     modele_recu = models.PositiveSmallIntegerField(choices=ModeleDocument.choices, default=ModeleDocument.CLASSIQUE)
     modele_badge = models.PositiveSmallIntegerField(choices=ModeleDocument.choices, default=ModeleDocument.CLASSIQUE)
-    modele_bulletin = models.PositiveSmallIntegerField(choices=ModeleDocument.choices, default=ModeleDocument.CLASSIQUE)
+    # Bulletin : "Officiel" par défaut (et non "Classique" comme les autres documents) — c'est le
+    # format papier concrètement utilisé par l'établissement (voir migration 0019, qui bascule
+    # aussi toutes les écoles déjà créées dessus).
+    modele_bulletin = models.PositiveSmallIntegerField(choices=ModeleDocument.choices, default=ModeleDocument.OFFICIEL)
     modele_fiche_inscription = models.PositiveSmallIntegerField(
         choices=ModeleDocument.choices, default=ModeleDocument.CLASSIQUE
     )

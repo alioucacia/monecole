@@ -2,9 +2,10 @@ import { api } from "./client";
 import type {
   AffectationTransport, AgentCantineInfo, Annonce, AnneeScolaire, Bulletin, CaisseRapport, CategorieDepense, CategoriePaiement, Classe, Creneau, Depense, Ecole, EcoleStatsDetail,
   EcoleStatsGlobales, EcoleUtilisateur, EleveProfile,
-  Emprunt, Enseignement, EnseignantProfile, Fonctionnalite, Formule, Frais, InscriptionCantine, JournalActiviteEntry, JournalUtilisateurEntry, Livre, Matiere, Message, ModeleMessage, Note, Paginated,
-  AlerteParent, AnalysePerformance, ChauffeurInfo, EleveBadge, EnseignantBadge, GroupeRevision, JustificatifAbsence, MessageIA, PaiementEcole, Paiement, PaieEnseignant, ParametresPlateforme, Periode, PlanAbonnement, PlateformeBranding,
-  PointageEnseignant, Presence, RechercheGlobaleResult, Reunion, Participant, Resultats, SauvegardeLog, SuiviMensuelClasse, SuiviMensuelEleve, SupervisionData, TarifClasse, Ticket, TicketBus, TicketCantine, MessageTicket, Trajet, TypeFrais, User,
+  Emprunt, Enseignement, EnseignantProfile, Fonctionnalite, Formule, Frais, InscriptionCantine, JournalActiviteEntry, JournalUtilisateurEntry, Livre, Matiere, Message, ModeleMessage, Note, 
+  Paginated,AlerteParent, AnalysePerformance, ChauffeurInfo, EleveBadge, EnseignantBadge, GroupeRevision, JustificatifAbsence, MessageIA, PaiementEcole, Paiement, PaieEnseignant, 
+  ParametresPlateforme, Periode, PlanAbonnement, PlateformeBranding,PointageEnseignant, Presence, RechercheGlobaleResult, Reunion, Participant, Resultats, SauvegardeLog, SuiviMensuelClasse,
+  SuiviMensuelEleve, SupervisionData, TarifClasse, Ticket,TicketBus, TicketCantine, MessageTicket, Trajet, TypeFrais, User,
 } from "../types";
 
 // ---- Plateforme (Super Admin) ----
@@ -58,6 +59,10 @@ export const paiementsEcolesApi = {
 export const parametresEcoleApi = {
   get: () => api.get<Ecole>("/tenants/mon-ecole/"),
   update: (data: Record<string, unknown>) => api.patch<Ecole>("/tenants/mon-ecole/", data),
+  // Séparé de `update()` : `MonEcoleSerializer.parametres` est un champ imbriqué, que DRF ne
+  // sait pas redésérialiser depuis une chaîne JSON envoyée en multipart (nécessaire, elle,
+  // uniquement pour transporter le fichier) — un PATCH dédié au seul logo évite le conflit.
+  updateLogo: (file: File) => api.patch<Ecole>("/tenants/mon-ecole/", toFormData({ logo: file }), multipartHeaders),
 };
 
 // ---- Paramètres plateforme (Super Admin) ----

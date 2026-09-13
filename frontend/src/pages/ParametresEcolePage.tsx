@@ -3,6 +3,8 @@ import { useEffect, useState, type FormEvent } from "react";
 import { anneesApi, modelesMessageApi, parametresEcoleApi, periodesApi, unwrapList } from "../api/services";
 import { extractErrorMessage } from "../api/client";
 import { Badge, Button, Card, Input, PageHeader, Select, Spinner } from "../components/ui";
+import { useAuth } from "../context/AuthContext";
+import { useToast } from "../context/ToastContext";
 import type { AnneeScolaire, Ecole, ModeleMessage, Periode } from "../types";
 
 function Textarea({ label, value, onChange, rows = 3 }: { label: string; value: string; onChange: (v: string) => void; rows?: number }) {
@@ -16,6 +18,63 @@ function Textarea({ label, value, onChange, rows = 3 }: { label: string; value: 
         className="w-full rounded-xl border border-slate-200 bg-white px-3.5 py-2.5 text-sm text-slate-800 placeholder:text-slate-400 transition focus:outline-none focus:ring-4 focus:ring-brand-500/15 focus:border-brand-400"
       />
     </label>
+  );
+}
+
+/** Logo de l'école — sauvegardé indépendamment du reste du profil (son propre PATCH multipart,
+ * voir `parametresEcoleApi.updateLogo`) : le formulaire principal envoie du JSON (le champ
+ * `parametres` imbriqué ne survivrait pas à un aller-retour multipart), donc jamais les deux
+ * dans la même requête. `refreshUser()` ensuite pour que la sidebar (logo affiché à côté du nom
+ * de l'école, voir Layout.tsx) reflète le nouveau logo sans attendre une reconnexion. */
+function LogoEcoleSection({ ecole, onUpdated }: { ecole: Ecole | null; onUpdated: (ecole: Ecole) => void }) {
+  const toast = useToast();
+  const { refreshUser } = useAuth();
+  const [saving, setSaving] = useState(false);
+  const [apercu, setApercu] = useState<string | null>(null);
+
+  const handleChange = async (file: File | null) => {
+    if (!file) return;
+    setApercu(URL.createObjectURL(file));
+    setSaving(true);
+    try {
+      const { data } = await parametresEcoleApi.updateLogo(file);
+      onUpdated(data);
+      await refreshUser();
+      toast.success("Logo mis à jour.");
+    } catch (err) {
+      toast.error(extractErrorMessage(err));
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const logoAffiche = apercu || ecole?.logo || null;
+
+  return (
+    <Card>
+      <h3 className="font-bold text-ink-900 mb-1">Logo de l'école</h3>
+      <p className="text-xs text-slate-500 mb-4">
+        Affiché dans la barre latérale de tous les comptes de l'école, et sur les documents (bulletins, reçus, badges...).
+      </p>
+      <div className="flex items-center gap-4">
+        {logoAffiche ? (
+          <img src={logoAffiche} alt="Logo de l'école" className="h-16 w-16 rounded-xl object-cover border border-slate-200 shrink-0" />
+        ) : (
+          <div className="h-16 w-16 rounded-xl bg-brand-100 text-brand-700 flex items-center justify-center text-2xl font-bold shrink-0">
+            {(ecole?.nom?.[0] || "?").toUpperCase()}
+          </div>
+        )}
+        <label className="block">
+          <span className="inline-block cursor-pointer text-sm font-semibold text-brand-600 hover:underline">
+            {saving ? "Envoi…" : "Choisir une image…"}
+          </span>
+          <input
+            type="file" accept="image/*" className="hidden" disabled={saving}
+            onChange={(e) => handleChange(e.target.files?.[0] || null)}
+          />
+        </label>
+      </div>
+    </Card>
   );
 }
 
@@ -292,6 +351,8 @@ export default function ParametresEcolePage() {
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         <form onSubmit={handleSubmit} className="lg:col-span-2 space-y-6">
+          <LogoEcoleSection ecole={ecole} onUpdated={setEcole} />
+
           <Card>
             <h3 className="font-bold text-ink-900 mb-4">Profil de l'établissement</h3>
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
