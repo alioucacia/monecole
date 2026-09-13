@@ -1,11 +1,11 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, type FormEvent } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 
 import { ecolesApi, fonctionnalitesApi, paiementsEcolesApi, unwrapList } from "../api/services";
 import { extractErrorMessage } from "../api/client";
 import { useAuth } from "../context/AuthContext";
 import { useToast } from "../context/ToastContext";
-import { Badge, Button, Card, EmptyState, PageHeader, Spinner, StatCard, Table } from "../components/ui";
+import { Badge, Button, Card, EmptyState, Input, Modal, PageHeader, Spinner, StatCard, Table } from "../components/ui";
 import type { Ecole, EcoleStatsDetail, EcoleUtilisateur, Fonctionnalite, PaiementEcole } from "../types";
 
 const STATUT_LABELS: Record<string, { label: string; color: "green" | "amber" | "rose" | "slate" }> = {
@@ -53,6 +53,13 @@ export default function EcoleDetailPage() {
   const [desactivees, setDesactivees] = useState<Set<string>>(new Set());
   const [savingCouleurs, setSavingCouleurs] = useState(false);
   const [savingFonctionnalites, setSavingFonctionnalites] = useState(false);
+
+  // Création d'un compte Administrateur supplémentaire pour cette école (onglet Utilisateurs) —
+  // la création de l'école elle-même n'en crée qu'un seul au départ.
+  const [creerAdminOuvert, setCreerAdminOuvert] = useState(false);
+  const [creerAdminForm, setCreerAdminForm] = useState({ username: "", first_name: "", last_name: "", email: "", phone: "", password: "" });
+  const [creerAdminError, setCreerAdminError] = useState("");
+  const [creerAdminSaving, setCreerAdminSaving] = useState(false);
 
   useEffect(() => {
     if (!ecoleId) return;
@@ -111,6 +118,30 @@ export default function EcoleDetailPage() {
       toast.error(extractErrorMessage(err));
     } finally {
       setSavingFonctionnalites(false);
+    }
+  };
+
+  const openCreerAdmin = () => {
+    setCreerAdminForm({ username: "", first_name: "", last_name: "", email: "", phone: "", password: "" });
+    setCreerAdminError("");
+    setCreerAdminOuvert(true);
+  };
+
+  const handleSubmitCreerAdmin = async (e: FormEvent) => {
+    e.preventDefault();
+    if (!ecole) return;
+    setCreerAdminSaving(true);
+    setCreerAdminError("");
+    try {
+      await ecolesApi.creerAdmin(ecole.id, creerAdminForm);
+      const { data } = await ecolesApi.utilisateurs(ecole.id);
+      setUtilisateurs(data);
+      setCreerAdminOuvert(false);
+      toast.success("Compte Administrateur créé.");
+    } catch (err) {
+      setCreerAdminError(extractErrorMessage(err));
+    } finally {
+      setCreerAdminSaving(false);
     }
   };
 
@@ -176,6 +207,7 @@ export default function EcoleDetailPage() {
           <span className="text-sm text-slate-400">Créée le {new Date(ecole.date_creation).toLocaleDateString("fr-FR")}</span>
         </div>
         <div className="flex items-center gap-2">
+          <Button variant="secondary" onClick={openCreerAdmin}>+ Créer un compte admin</Button>
           <Button variant="secondary" onClick={handleSeConnecterCommeAdmin} disabled={connexionSupport}>
             {connexionSupport ? "Connexion…" : "🛠️ Se connecter en tant qu'admin"}
           </Button>
@@ -279,7 +311,15 @@ export default function EcoleDetailPage() {
                 <td className="px-4 py-3"><Badge color={ROLE_LABELS[u.role] || "slate"}>{u.role_display}</Badge></td>
                 <td className="px-4 py-3"><Badge color={u.is_active ? "green" : "rose"}>{u.is_active ? "Actif" : "Désactivé"}</Badge></td>
                 <td className="px-4 py-3 text-slate-500 text-xs">{new Date(u.date_joined).toLocaleDateString("fr-FR")}</td>
-                <td className="px-4 py-3 text-slate-500 text-xs">{u.last_login ? new Date(u.last_login).toLocaleString("fr-FR") : "Jamais connecté"}</td>
+                <td className="px-4 py-3 text-slate-500 text-xs">
+                  {u.en_ligne && (
+                    <span className="inline-flex items-center gap-1 text-emerald-600 font-semibold mr-2" title="En ligne actuellement">
+                      <span className="h-1.5 w-1.5 rounded-full bg-emerald-500 inline-block" />
+                      En ligne
+                    </span>
+                  )}
+                  {u.last_login ? new Date(u.last_login).toLocaleString("fr-FR") : "Jamais connecté"}
+                </td>
               </tr>
             ))}
           </Table>
@@ -397,6 +437,28 @@ export default function EcoleDetailPage() {
           </Card>
         </div>
       )}
+
+      <Modal open={creerAdminOuvert} onClose={() => setCreerAdminOuvert(false)} title={`Créer un compte admin — ${ecole.nom}`}>
+        <form onSubmit={handleSubmitCreerAdmin} className="space-y-4">
+          <div className="grid grid-cols-2 gap-3">
+            <Input label="Prénom" required value={creerAdminForm.first_name} onChange={(e) => setCreerAdminForm({ ...creerAdminForm, first_name: e.target.value })} />
+            <Input label="Nom" required value={creerAdminForm.last_name} onChange={(e) => setCreerAdminForm({ ...creerAdminForm, last_name: e.target.value })} />
+          </div>
+          <Input label="Identifiant" required value={creerAdminForm.username} onChange={(e) => setCreerAdminForm({ ...creerAdminForm, username: e.target.value })} />
+          <Input label="Email (optionnel)" type="email" value={creerAdminForm.email} onChange={(e) => setCreerAdminForm({ ...creerAdminForm, email: e.target.value })} />
+          <Input label="Téléphone (optionnel)" value={creerAdminForm.phone} onChange={(e) => setCreerAdminForm({ ...creerAdminForm, phone: e.target.value })} />
+          <Input
+            label="Mot de passe temporaire" type="text" required
+            value={creerAdminForm.password} onChange={(e) => setCreerAdminForm({ ...creerAdminForm, password: e.target.value })}
+          />
+          <p className="text-xs text-slate-400 -mt-2">Le nouvel administrateur devra le changer à sa première connexion.</p>
+          {creerAdminError && <p className="text-sm text-rose-600 bg-rose-50 border border-rose-100 rounded-xl px-3.5 py-2.5">{creerAdminError}</p>}
+          <div className="flex justify-end gap-2">
+            <Button type="button" variant="secondary" onClick={() => setCreerAdminOuvert(false)}>Annuler</Button>
+            <Button type="submit" disabled={creerAdminSaving}>{creerAdminSaving ? "Création…" : "Créer le compte"}</Button>
+          </div>
+        </form>
+      </Modal>
     </div>
   );
 }

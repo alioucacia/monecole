@@ -326,13 +326,13 @@ function AbonnementBadge({ ecole }: { ecole: Ecole | null }) {
   let texte: string;
   if (ecole.statut_abonnement === "paye") {
     const j = joursAvantProchaineEcheance(ecole.jour_echeance);
-    texte = `Abonnement à jour ✓ — prochaine échéance dans ${j} jour${j > 1 ? "s" : ""}`;
+    texte = `✓ Il vous reste ${j}j`;
   } else if (ecole.statut_abonnement === "en_attente" && ecole.jours_avant_echeance !== null) {
     const j = ecole.jours_avant_echeance;
-    texte = j > 0 ? `Échéance dans ${j} jour${j > 1 ? "s" : ""}` : "Échéance aujourd'hui";
+    texte = j > 0 ? `Il vous reste ${j}j` : "Échéance aujourd'hui";
   } else if (ecole.statut_abonnement === "en_retard" && ecole.jours_avant_blocage !== null) {
     const j = ecole.jours_avant_blocage;
-    texte = j > 0 ? `⚠️ Blocage dans ${j} jour${j > 1 ? "s" : ""}` : "⚠️ Blocage imminent";
+    texte = j > 0 ? `⚠️ Blocage dans ${j}j` : "⚠️ Blocage imminent";
   } else if (ecole.statut_abonnement === "bloque") {
     texte = "🚫 Accès bloqué — abonnement impayé";
   } else {

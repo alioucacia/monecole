@@ -1,14 +1,14 @@
 import { useEffect, useState, type FormEvent } from "react";
 import { Link } from "react-router-dom";
 
-import { anneesApi, classesApi, elevesApi, fraisApi, paiementsApi, typesFraisApi, unwrapList } from "../api/services";
+import { anneesApi, classesApi, elevesApi, fraisApi, paiementsApi, periodesApi, typesFraisApi, unwrapList } from "../api/services";
 import { extractErrorMessage } from "../api/client";
 import { Badge, Button, EmptyState, Input, Modal, PageHeader, Select, Spinner, StatCard, Table } from "../components/ui";
 import { CycleSelect } from "../components/CycleSelect";
 import { useAuth } from "../context/AuthContext";
 import { useToast } from "../context/ToastContext";
 import { usePaginated } from "../hooks/usePaginated";
-import type { AnneeScolaire, Classe, Cycle, EleveProfile, Frais, TypeFrais } from "../types";
+import type { AnneeScolaire, Classe, Cycle, EleveProfile, Frais, Periode, PeriodiciteFrais, TypeFrais } from "../types";
 
 const STATUT_LABELS: Record<string, { label: string; color: "green" | "amber" | "rose" }> = {
   paye: { label: "Payé", color: "green" },
@@ -27,7 +27,7 @@ function money(value: number | string) {
   return `${Number(value).toLocaleString("fr-FR")} GNF`;
 }
 
-const emptyFraisForm = { eleve: "", type_frais: "", annee_scolaire: "", montant: "", date_echeance: "", mois_echeance: "" };
+const emptyFraisForm = { eleve: "", type_frais: "", annee_scolaire: "", montant: "", date_echeance: "", mois_echeance: "", trimestre_echeance: "" };
 
 const MOIS_NOMS = [
   "Janvier", "Février", "Mars", "Avril", "Mai", "Juin",
@@ -45,7 +45,11 @@ function echeanceDuMois(annee: AnneeScolaire, mois: string): string {
   return `${anneeCalendaire}-${mois}-01`;
 }
 const emptyPaiementForm = { montant: "", mode_paiement: "especes", reference: "", mois: "" };
-const emptyTypeForm = { nom: "", montant_standard: "", est_mensuel: false };
+const emptyTypeForm = { nom: "", montant_standard: "", periodicite: "autre" as PeriodiciteFrais };
+
+const PERIODICITE_LABELS: Record<PeriodiciteFrais, string> = {
+  mensuel: "Mensuel", trimestriel: "Trimestriel", annuel: "Annuel", autre: "Autre / ponctuel",
+};
 
 /** "2026-09" (valeur d'un <input type="month">) → "2026-09-01" attendu par l'API. */
 function moisInputVersDate(moisInput: string) {
@@ -102,6 +106,9 @@ export default function PaymentsPage() {
   const [fraisForm, setFraisForm] = useState(emptyFraisForm);
   const [fraisError, setFraisError] = useState("");
   const [fraisSaving, setFraisSaving] = useState(false);
+  // Trimestres (Periode) de l'année scolaire choisie dans "Nouveau frais" — ne sert que pour la
+  // liste déroulante "Trimestre d'échéance" d'un type de frais Trimestriel (voir périodicité).
+  const [periodesAnnee, setPeriodesAnnee] = useState<Periode[]>([]);
 
   const [paiementTarget, setPaiementTarget] = useState<Frais | null>(null);
   const [paiementForm, setPaiementForm] = useState(emptyPaiementForm);
@@ -224,6 +231,16 @@ export default function PaymentsPage() {
     setFraisModalOpen(true);
   };
 
+  // Trimestres proposés par "Trimestre d'échéance" (type de frais Trimestriel) — dépendent de
+  // l'année scolaire choisie dans le formulaire, rechargés à chaque changement.
+  useEffect(() => {
+    if (!fraisForm.annee_scolaire) { setPeriodesAnnee([]); return; }
+    periodesApi.list({ annee_scolaire: fraisForm.annee_scolaire }).then(({ data }) => setPeriodesAnnee(unwrapList(data)));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [fraisForm.annee_scolaire]);
+
+  const typeFraisSelectionne = types.find((t) => t.id === Number(fraisForm.type_frais));
+
   const handleFraisSubmit = async (e: FormEvent) => {
     e.preventDefault();
     setFraisSaving(true);
@@ -312,7 +329,7 @@ export default function PaymentsPage() {
 
   const openTypeEdit = (type: TypeFrais) => {
     setTypeEditTarget(type);
-    setTypeForm({ nom: type.nom, montant_standard: type.montant_standard, est_mensuel: type.est_mensuel });
+    setTypeForm({ nom: type.nom, montant_standard: type.montant_standard, periodicite: type.periodicite });
     setTypeError("");
   };
 
@@ -321,7 +338,7 @@ export default function PaymentsPage() {
     setTypeSaving(true);
     setTypeError("");
     try {
-      const payload = { nom: typeForm.nom, montant_standard: typeForm.montant_standard, est_mensuel: typeForm.est_mensuel };
+      const payload = { nom: typeForm.nom, montant_standard: typeForm.montant_standard, periodicite: typeForm.periodicite };
       if (typeEditTarget) {
         await typesFraisApi.update(typeEditTarget.id, payload);
       } else {
@@ -497,38 +514,73 @@ export default function PaymentsPage() {
           </Select>
           <Select label="Type de frais" required value={fraisForm.type_frais} onChange={(e) => {
             const type = types.find((t) => t.id === Number(e.target.value));
-            setFraisForm({ ...fraisForm, type_frais: e.target.value, montant: type ? type.montant_standard : fraisForm.montant });
+            const annee = annees.find((a) => a.id === Number(fraisForm.annee_scolaire));
+            setFraisForm({
+              ...fraisForm, type_frais: e.target.value, montant: type ? type.montant_standard : fraisForm.montant,
+              mois_echeance: "", trimestre_echeance: "",
+              // Annuel : une seule échéance possible (fin d'année scolaire) — pas de liste à choisir.
+              date_echeance: type?.periodicite === "annuel" && annee ? annee.date_fin : fraisForm.date_echeance,
+            });
           }}>
             <option value="">— Sélectionner —</option>
-            {types.map((t) => <option key={t.id} value={t.id}>{t.nom}</option>)}
+            {types.map((t) => <option key={t.id} value={t.id}>{t.nom} ({t.periodicite_display})</option>)}
           </Select>
           <Select label="Année scolaire" required value={fraisForm.annee_scolaire} onChange={(e) => {
             const annee = annees.find((a) => a.id === Number(e.target.value));
             setFraisForm({
-              ...fraisForm, annee_scolaire: e.target.value,
-              date_echeance: annee && fraisForm.mois_echeance ? echeanceDuMois(annee, fraisForm.mois_echeance) : fraisForm.date_echeance,
+              ...fraisForm, annee_scolaire: e.target.value, trimestre_echeance: "",
+              date_echeance:
+                annee && fraisForm.mois_echeance ? echeanceDuMois(annee, fraisForm.mois_echeance)
+                : annee && typeFraisSelectionne?.periodicite === "annuel" ? annee.date_fin
+                : fraisForm.date_echeance,
             });
           }}>
             <option value="">— Sélectionner —</option>
             {annees.map((a) => <option key={a.id} value={a.id}>{a.libelle}</option>)}
           </Select>
           <Input label="Montant (GNF)" type="number" min={0} required value={fraisForm.montant} onChange={(e) => setFraisForm({ ...fraisForm, montant: e.target.value })} />
-          <Select label="Mois d'échéance" value={fraisForm.mois_echeance} onChange={(e) => {
-            const annee = annees.find((a) => a.id === Number(fraisForm.annee_scolaire));
-            setFraisForm({
-              ...fraisForm, mois_echeance: e.target.value,
-              date_echeance: annee && e.target.value ? echeanceDuMois(annee, e.target.value) : fraisForm.date_echeance,
-            });
-          }}>
-            <option value="">— Choisir un mois (optionnel) —</option>
-            {MOIS_NOMS.map((nom, i) => <option key={nom} value={String(i + 1).padStart(2, "0")}>{nom}</option>)}
-          </Select>
+
+          {/* Échéance : la liste déroulante proposée dépend de la périodicité du type de frais
+              choisi ci-dessus — mois de l'année scolaire (Mensuel), trimestres configurés
+              (Trimestriel), fin d'année scolaire déjà réglée automatiquement (Annuel), ou
+              directement la date libre ci-dessous (Autre / aucun type choisi). */}
+          {typeFraisSelectionne?.periodicite === "mensuel" && (
+            <Select label="Mois d'échéance" required value={fraisForm.mois_echeance} onChange={(e) => {
+              const annee = annees.find((a) => a.id === Number(fraisForm.annee_scolaire));
+              setFraisForm({
+                ...fraisForm, mois_echeance: e.target.value,
+                date_echeance: annee && e.target.value ? echeanceDuMois(annee, e.target.value) : fraisForm.date_echeance,
+              });
+            }}>
+              <option value="">— Choisir un mois —</option>
+              {MOIS_NOMS.map((nom, i) => <option key={nom} value={String(i + 1).padStart(2, "0")}>{nom}</option>)}
+            </Select>
+          )}
+          {typeFraisSelectionne?.periodicite === "trimestriel" && (
+            <Select label="Trimestre d'échéance" required value={fraisForm.trimestre_echeance} onChange={(e) => {
+              const periode = periodesAnnee.find((p) => p.id === Number(e.target.value));
+              setFraisForm({
+                ...fraisForm, trimestre_echeance: e.target.value,
+                date_echeance: periode ? periode.date_fin : fraisForm.date_echeance,
+              });
+            }}>
+              <option value="">
+                {periodesAnnee.length === 0 ? "— Aucun trimestre configuré pour cette année —" : "— Choisir un trimestre —"}
+              </option>
+              {periodesAnnee.map((p) => <option key={p.id} value={p.id}>{p.nom}</option>)}
+            </Select>
+          )}
+          {typeFraisSelectionne?.periodicite === "annuel" && (
+            <p className="text-xs text-slate-400 -mt-2">
+              Échéance fixée à la fin de l'année scolaire sélectionnée — modifiable ci-dessous si besoin.
+            </p>
+          )}
           <Input
             label="Date d'échéance"
             type="date"
             required
             value={fraisForm.date_echeance}
-            onChange={(e) => setFraisForm({ ...fraisForm, date_echeance: e.target.value, mois_echeance: "" })}
+            onChange={(e) => setFraisForm({ ...fraisForm, date_echeance: e.target.value, mois_echeance: "", trimestre_echeance: "" })}
           />
 
           {fraisError && <p className="text-sm text-rose-600 bg-rose-50 border border-rose-100 rounded-xl px-3.5 py-2.5">{fraisError}</p>}
@@ -628,12 +680,14 @@ export default function PaymentsPage() {
       <Modal open={typesModalOpen} onClose={() => setTypesModalOpen(false)} title="Types de frais">
         <div className="space-y-4">
           {types.length > 0 && (
-            <Table headers={["Nom", "Montant standard", "Mensuel", ""]}>
+            <Table headers={["Nom", "Montant standard", "Périodicité", ""]}>
               {types.map((t) => (
                 <tr key={t.id}>
                   <td className="px-4 py-2.5">{t.nom}</td>
                   <td className="px-4 py-2.5">{money(t.montant_standard)}</td>
-                  <td className="px-4 py-2.5">{t.est_mensuel ? <Badge color="brand">Oui — suivi mensuel</Badge> : <span className="text-slate-400">Non</span>}</td>
+                  <td className="px-4 py-2.5">
+                    {t.periodicite === "autre" ? <span className="text-slate-400">Autre / ponctuel</span> : <Badge color="brand">{t.periodicite_display}</Badge>}
+                  </td>
                   <td className="px-4 py-2.5">
                     <div className="flex gap-3">
                       <button onClick={() => openTypeEdit(t)} className="text-brand-600 hover:underline text-sm">Modifier</button>
@@ -649,15 +703,17 @@ export default function PaymentsPage() {
             <p className="text-sm font-medium text-slate-700">{typeEditTarget ? `Modifier « ${typeEditTarget.nom} »` : "Nouveau type de frais"}</p>
             <Input label="Nom" required value={typeForm.nom} onChange={(e) => setTypeForm({ ...typeForm, nom: e.target.value })} />
             <Input label="Montant standard (GNF)" type="number" min={0} required value={typeForm.montant_standard} onChange={(e) => setTypeForm({ ...typeForm, montant_standard: e.target.value })} />
-            <label className="flex items-center gap-2 text-sm text-slate-600">
-              <input
-                type="checkbox"
-                checked={typeForm.est_mensuel}
-                onChange={(e) => setTypeForm({ ...typeForm, est_mensuel: e.target.checked })}
-                className="rounded border-slate-300"
-              />
-              Frais récurrent chaque mois (ex : scolarité mensuelle) — active le suivi mois par mois
-            </label>
+            <Select
+              label="Périodicité"
+              value={typeForm.periodicite}
+              onChange={(e) => setTypeForm({ ...typeForm, periodicite: e.target.value as PeriodiciteFrais })}
+            >
+              {(Object.keys(PERIODICITE_LABELS) as PeriodiciteFrais[]).map((p) => <option key={p} value={p}>{PERIODICITE_LABELS[p]}</option>)}
+            </Select>
+            <p className="text-xs text-slate-400 -mt-2">
+              Détermine l'échéance proposée à la création d'un frais de ce type : un mois de l'année scolaire (Mensuel — active
+              aussi le suivi mois par mois), un trimestre (Trimestriel), l'année scolaire elle-même (Annuel), ou une date libre (Autre).
+            </p>
 
             {typeError && <p className="text-sm text-rose-600 bg-rose-50 border border-rose-100 rounded-xl px-3.5 py-2.5">{typeError}</p>}
 

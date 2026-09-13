@@ -47,6 +47,11 @@ class UserSerializer(UniqueLoginFieldsMixin, serializers.ModelSerializer):
     ecole_fonctionnalites_desactivees = serializers.ListField(
         source="ecole.fonctionnalites_desactivees", read_only=True, default=list,
     )
+    # Logo + adresse de l'école, affichés en haut du tableau de bord — mêmes raisons que les
+    # couleurs ci-dessus (porté par /me/, déjà chargé pour tous les rôles).
+    ecole_logo = serializers.ImageField(source="ecole.logo", read_only=True, default=None)
+    ecole_adresse = serializers.CharField(source="ecole.adresse", read_only=True, default=None)
+    en_ligne = serializers.BooleanField(read_only=True)
 
     class Meta:
         model = User
@@ -56,6 +61,7 @@ class UserSerializer(UniqueLoginFieldsMixin, serializers.ModelSerializer):
             "sexe", "date_of_birth", "is_active", "date_joined", "last_login",
             "doit_changer_mot_de_passe",
             "ecole_couleur_principale", "ecole_couleur_secondaire", "ecole_fonctionnalites_desactivees",
+            "ecole_logo", "ecole_adresse", "en_ligne",
         ]
         read_only_fields = ["id", "date_joined", "last_login", "ecole", "doit_changer_mot_de_passe"]
 
@@ -68,7 +74,7 @@ class JournalUtilisateurSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = JournalUtilisateur
-        fields = ["id", "horodatage", "categorie", "categorie_display", "description", "adresse_ip"]
+        fields = ["id", "horodatage", "categorie", "categorie_display", "description", "adresse_ip", "appareil"]
 
 
 class UserCreateSerializer(UniqueLoginFieldsMixin, serializers.ModelSerializer):

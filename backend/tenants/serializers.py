@@ -264,6 +264,7 @@ class EcoleUtilisateurSerializer(serializers.Serializer):
     is_active = serializers.BooleanField()
     date_joined = serializers.DateTimeField()
     last_login = serializers.DateTimeField(allow_null=True)
+    en_ligne = serializers.BooleanField()
 
 
 class RechercheGlobaleResultSerializer(serializers.Serializer):

@@ -26,6 +26,11 @@ export interface User {
   ecole_couleur_principale: string | null;
   ecole_couleur_secondaire: string | null;
   ecole_fonctionnalites_desactivees: string[];
+  // Logo + adresse de l'école de ce compte — affichés en haut du tableau de bord.
+  ecole_logo: string | null;
+  ecole_adresse: string | null;
+  // Activité dans les DELAI_EN_LIGNE_MINUTES dernières minutes (voir User.en_ligne côté backend).
+  en_ligne: boolean;
 }
 
 export type StatutAbonnement = "suspendu" | "paye" | "en_attente" | "en_retard" | "bloque";
@@ -215,6 +220,7 @@ export interface EcoleUtilisateur {
   is_active: boolean;
   date_joined: string;
   last_login: string | null;
+  en_ligne: boolean;
 }
 
 /** Une entrée de l'historique d'activité d'un compte (voir `usersApi.journal`) — connexions et
@@ -227,6 +233,8 @@ export interface JournalUtilisateurEntry {
   categorie_display: string;
   description: string;
   adresse_ip: string | null;
+  /** Résumé lisible du navigateur/appareil (ex: "Chrome sur Windows"), vide si non détecté. */
+  appareil: string;
 }
 
 export interface JournalActiviteEntry {
@@ -598,10 +606,15 @@ export interface JustificatifAbsence {
   cree_le: string;
 }
 
+export type PeriodiciteFrais = "mensuel" | "trimestriel" | "annuel" | "autre";
+
 export interface TypeFrais {
   id: number;
   nom: string;
   montant_standard: string;
+  periodicite: PeriodiciteFrais;
+  periodicite_display: string;
+  /** Dérivé de `periodicite` côté backend (== "mensuel") — lecture seule. */
   est_mensuel: boolean;
 }
 

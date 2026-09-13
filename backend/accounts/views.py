@@ -188,6 +188,26 @@ class UserViewSet(viewsets.ModelViewSet):
             description = "Compte réactivé" if utilisateur.is_active else "Compte désactivé"
             journaliser(utilisateur, JournalUtilisateur.Categorie.COMPTE, description, self.request)
 
+    def perform_destroy(self, instance):
+        from rest_framework.exceptions import ValidationError
+
+        from accounts.services import journaliser
+
+        if instance.id == self.request.user.id:
+            raise ValidationError("Vous ne pouvez pas supprimer votre propre compte.")
+        if instance.role == User.Role.ADMIN:
+            autres_admins_actifs = User.objects.filter(
+                ecole_id=instance.ecole_id, role=User.Role.ADMIN, is_active=True,
+            ).exclude(pk=instance.pk).exists()
+            if not autres_admins_actifs:
+                raise ValidationError(
+                    "Impossible de supprimer le dernier compte Administrateur actif de l'école — "
+                    "désactivez-le plutôt, ou créez d'abord un autre administrateur."
+                )
+        description = f"Compte « {instance.get_full_name() or instance.username} » ({instance.get_role_display()}) supprimé"
+        instance.delete()
+        journaliser(self.request.user, JournalUtilisateur.Categorie.COMPTE, description, self.request)
+
     @action(detail=True, methods=["post"], url_path="reinitialiser-mot-de-passe")
     def reinitialiser_mot_de_passe(self, request, pk=None):
         """Génère un nouveau mot de passe temporaire pour ce compte de son école (élève,

@@ -11,9 +11,24 @@ from people.models import EleveProfile
 
 
 class TypeFrais(models.Model):
+    class Periodicite(models.TextChoices):
+        MENSUEL = "mensuel", "Mensuel"
+        TRIMESTRIEL = "trimestriel", "Trimestriel"
+        ANNUEL = "annuel", "Annuel"
+        AUTRE = "autre", "Autre / ponctuel"
+
     ecole = models.ForeignKey("tenants.Ecole", on_delete=models.CASCADE, null=True, related_name="types_frais")
     nom = models.CharField(max_length=100, help_text="Ex: Frais de scolarité, Cantine, Transport")
     montant_standard = models.DecimalField(max_digits=10, decimal_places=2)
+    # Détermine la liste déroulante "Échéance" proposée à la création d'un Frais de ce type (voir
+    # PaymentsPage.tsx : mensuel -> mois de l'année scolaire, trimestriel -> les Periode (Trimestre
+    # 1/2/3...) de l'école, annuel -> l'année scolaire elle-même, autre -> une date libre comme
+    # avant). `est_mensuel` reste le champ historique utilisé par tout le suivi mensuel
+    # (Frais.montant_du, _calculer_suivi_mensuel, generer_pour_classe...) — pour ne pas devoir
+    # migrer ces nombreux points, il est maintenant dérivé automatiquement de `periodicite` (voir
+    # `save()` ci-dessous) plutôt que renseigné indépendamment : une seule information à tenir
+    # à jour, pas deux qui pourraient diverger.
+    periodicite = models.CharField(max_length=20, choices=Periodicite.choices, default=Periodicite.AUTRE)
     est_mensuel = models.BooleanField(
         default=False,
         help_text="Frais récurrent chaque mois (ex: scolarité mensuelle) — active le suivi mois par mois de l'élève",
@@ -24,6 +39,10 @@ class TypeFrais(models.Model):
 
     def __str__(self):
         return self.nom
+
+    def save(self, *args, **kwargs):
+        self.est_mensuel = self.periodicite == self.Periodicite.MENSUEL
+        super().save(*args, **kwargs)
 
 
 class TarifClasse(models.Model):

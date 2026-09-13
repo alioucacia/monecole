@@ -1,5 +1,12 @@
+from django.utils import timezone
 from rest_framework.exceptions import AuthenticationFailed
 from rest_framework_simplejwt.authentication import JWTAuthentication
+
+# Fréquence maximale d'écriture de `User.derniere_activite` — sans ce plancher, chaque requête
+# authentifiée (potentiellement plusieurs par seconde par utilisateur actif) déclencherait un
+# UPDATE, alors que la seule chose qui compte est de savoir si quelqu'un s'est manifesté dans
+# les dernières minutes (voir `User.en_ligne`).
+_DELAI_MAJ_ACTIVITE = timezone.timedelta(minutes=1)
 
 
 class PlateformeJWTAuthentication(JWTAuthentication):
@@ -19,6 +26,11 @@ class PlateformeJWTAuthentication(JWTAuthentication):
         if result is None:
             return None
         user, token = result
+
+        maintenant = timezone.now()
+        if not user.derniere_activite or maintenant - user.derniere_activite >= _DELAI_MAJ_ACTIVITE:
+            type(user).objects.filter(pk=user.pk).update(derniere_activite=maintenant)
+            user.derniere_activite = maintenant
 
         if user.role == "superadmin":
             return result

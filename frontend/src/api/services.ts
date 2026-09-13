@@ -17,6 +17,8 @@ export const ecolesApi = {
   stats: () => api.get<EcoleStatsGlobales>("/tenants/ecoles/stats/"),
   statsDetail: (id: number) => api.get<EcoleStatsDetail>(`/tenants/ecoles/${id}/stats-detail/`),
   utilisateurs: (id: number) => api.get<EcoleUtilisateur[]>(`/tenants/ecoles/${id}/utilisateurs/`),
+  creerAdmin: (id: number, data: { username: string; first_name: string; last_name: string; email?: string; phone?: string; password: string }) =>
+    api.post<User>(`/tenants/ecoles/${id}/creer-admin/`, data),
   export: (params?: Record<string, unknown>) => downloadFile("/tenants/ecoles/export/", params || {}, "ecoles.csv"),
   relancerRetard: () => api.post<{ relances: number }>("/tenants/ecoles/relancer-retard/"),
   seConnecterCommeAdmin: (id: number) => api.post<{ access: string; refresh: string; user: User }>(`/tenants/ecoles/${id}/se-connecter-comme-admin/`),

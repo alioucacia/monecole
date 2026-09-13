@@ -19,14 +19,43 @@ def _adresse_ip(request) -> str | None:
     return request.META.get("REMOTE_ADDR")
 
 
+# Reconnus dans cet ordre (le premier qui matche gagne) — volontairement une simple liste de
+# mots-clés plutôt qu'une dépendance externe (user-agents/httpagentparser) : suffisant pour un
+# résumé lisible dans l'historique de connexion ("Chrome sur Windows"), pas pour une détection
+# de compatibilité fine. iPad/iPhone doivent être testés avant "Mac" (Safari sur iPadOS annonce
+# aussi "Macintosh" dans son user-agent depuis iOS 13).
+_OS_MOTS_CLES = [
+    ("Windows", "Windows"), ("Android", "Android"), ("iPhone", "iPhone"), ("iPad", "iPad"),
+    ("Macintosh", "Mac"), ("Linux", "Linux"),
+]
+_NAVIGATEUR_MOTS_CLES = [
+    ("Edg/", "Edge"), ("OPR/", "Opera"), ("Chrome/", "Chrome"), ("CriOS/", "Chrome"),
+    ("Firefox/", "Firefox"), ("FxiOS/", "Firefox"), ("Safari/", "Safari"),
+]
+
+
+def _resumer_appareil(user_agent: str) -> str:
+    """« Chrome sur Windows », « Safari sur iPhone »... — vide si le User-Agent est absent ou
+    non reconnu plutôt que d'enregistrer une chaîne technique illisible."""
+    if not user_agent:
+        return ""
+    navigateur = next((nom for cle, nom in _NAVIGATEUR_MOTS_CLES if cle in user_agent), "")
+    systeme = next((nom for cle, nom in _OS_MOTS_CLES if cle in user_agent), "")
+    if navigateur and systeme:
+        return f"{navigateur} sur {systeme}"
+    return navigateur or systeme
+
+
 def journaliser(utilisateur, categorie: str, description: str, request=None) -> None:
     """Ajoute une entrée à l'historique d'activité de `utilisateur` (voir `JournalUtilisateur`)
     — appelé explicitement aux points clés de chaque app (connexion, gestion de compte, élèves,
     enseignants, notes, paiements) plutôt que par un signal générique, pour ne garder que des
-    actions significatives. `request`, quand disponible, permet d'enregistrer l'IP d'origine."""
+    actions significatives. `request`, quand disponible, permet d'enregistrer l'IP d'origine et
+    un résumé de l'appareil/navigateur utilisé."""
     JournalUtilisateur.objects.create(
         utilisateur=utilisateur, categorie=categorie, description=description,
         adresse_ip=_adresse_ip(request) if request is not None else None,
+        appareil=_resumer_appareil(request.META.get("HTTP_USER_AGENT", "")) if request is not None else "",
     )
 
 

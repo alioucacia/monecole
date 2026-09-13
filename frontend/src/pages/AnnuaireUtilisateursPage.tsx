@@ -23,6 +23,7 @@ export default function AnnuaireUtilisateursPage() {
   const [roleFilter, setRoleFilter] = useState("");
   const [ecoleFilter, setEcoleFilter] = useState("");
   const [statutFilter, setStatutFilter] = useState("");
+  const [enLigneSeulement, setEnLigneSeulement] = useState(false);
   const [ecoles, setEcoles] = useState<Ecole[]>([]);
 
   const [resetTarget, setResetTarget] = useState<User | null>(null);
@@ -40,9 +41,10 @@ export default function AnnuaireUtilisateursPage() {
       role: roleFilter || undefined,
       ecole: ecoleFilter || undefined,
       is_active: statutFilter || undefined,
+      en_ligne: enLigneSeulement ? "true" : undefined,
       ordering: "-date_joined",
     }),
-    [search, roleFilter, ecoleFilter, statutFilter]
+    [search, roleFilter, ecoleFilter, statutFilter, enLigneSeulement]
   );
 
   const openReset = (u: User) => {
@@ -105,6 +107,14 @@ export default function AnnuaireUtilisateursPage() {
           <option value="true">Actif</option>
           <option value="false">Désactivé</option>
         </Select>
+        <label className="flex items-center gap-2 text-sm text-slate-600 px-3.5 py-2.5 rounded-xl border border-slate-200 bg-white cursor-pointer">
+          <input
+            type="checkbox" checked={enLigneSeulement}
+            onChange={(e) => setEnLigneSeulement(e.target.checked)}
+            className="rounded border-slate-300 accent-emerald-600"
+          />
+          🟢 En ligne seulement
+        </label>
       </div>
 
       {loading ? (
@@ -125,6 +135,12 @@ export default function AnnuaireUtilisateursPage() {
                   <Badge color={u.is_active ? "green" : "slate"}>{u.is_active ? "Actif" : "Désactivé"}</Badge>
                 </td>
                 <td className="px-4 py-3 text-slate-500 text-xs">
+                  {u.en_ligne && (
+                    <span className="inline-flex items-center gap-1 text-emerald-600 font-semibold mr-2" title="En ligne actuellement">
+                      <span className="h-1.5 w-1.5 rounded-full bg-emerald-500 inline-block" />
+                      En ligne
+                    </span>
+                  )}
                   {u.last_login ? new Date(u.last_login).toLocaleString("fr-FR") : "Jamais connecté"}
                 </td>
                 <td className="px-4 py-3">

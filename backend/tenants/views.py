@@ -3,7 +3,7 @@ from datetime import date
 
 from django.db.models import Sum
 from django.http import HttpResponse
-from rest_framework import viewsets
+from rest_framework import status, viewsets
 from rest_framework.decorators import action
 from rest_framework.permissions import AllowAny
 from rest_framework.response import Response
@@ -201,12 +201,17 @@ class EcoleViewSet(viewsets.ModelViewSet):
     @action(detail=True, methods=["get"], url_path="utilisateurs")
     def utilisateurs(self, request, pk=None):
         """Liste (lecture seule) des comptes d'une école — supervision par le Super Admin."""
+        from django.utils import timezone
+
         from accounts.models import User
 
         ecole = self.get_object()
         role_labels = dict(User.Role.choices)
+        maintenant = timezone.now()
+        seuil_en_ligne = maintenant - timezone.timedelta(minutes=User.DELAI_EN_LIGNE_MINUTES)
         utilisateurs = ecole.users.order_by("role", "last_name").values(
-            "id", "username", "first_name", "last_name", "role", "is_active", "date_joined", "last_login"
+            "id", "username", "first_name", "last_name", "role", "is_active", "date_joined",
+            "last_login", "derniere_activite",
         )
         data = [
             {
@@ -214,10 +219,64 @@ class EcoleViewSet(viewsets.ModelViewSet):
                 "full_name": f"{u['first_name']} {u['last_name']}".strip() or u["username"],
                 "role": u["role"], "role_display": role_labels.get(u["role"], u["role"]),
                 "is_active": u["is_active"], "date_joined": u["date_joined"], "last_login": u["last_login"],
+                "en_ligne": bool(u["derniere_activite"] and u["derniere_activite"] >= seuil_en_ligne),
             }
             for u in utilisateurs
         ]
         return Response(EcoleUtilisateurSerializer(data, many=True).data)
+
+    @action(detail=True, methods=["post"], url_path="creer-admin")
+    def creer_admin(self, request, pk=None):
+        """Crée un compte Administrateur supplémentaire pour cette école — la création d'une
+        école (EcoleCreateSerializer) n'en crée qu'un seul au départ ; utile ensuite si l'école
+        a besoin d'un second admin, ou pour remplacer un admin dont le compte a été supprimé."""
+        from django.contrib.auth import password_validation
+        from rest_framework.exceptions import ValidationError
+
+        from tenants.quotas import verifier_quota_plan
+
+        ecole = self.get_object()
+        verifier_quota_plan(
+            ecole, "limite_administrateurs",
+            User.objects.filter(ecole=ecole, role=User.Role.ADMIN).count(),
+            "administrateurs",
+        )
+
+        champs_requis = ["username", "first_name", "last_name", "password"]
+        manquants = [c for c in champs_requis if not request.data.get(c)]
+        if manquants:
+            raise ValidationError({c: "Ce champ est requis." for c in manquants})
+
+        username = request.data["username"]
+        email = request.data.get("email", "")
+        # Réutilise les mêmes règles d'unicité (identifiant/email/téléphone) que la création
+        # d'un compte classique (UserCreateSerializer), plutôt que les réimplémenter ici.
+        erreurs = {}
+        if User.objects.filter(username=username).exists():
+            erreurs["username"] = "Cet identifiant est déjà utilisé."
+        if email and User.objects.filter(email=email).exclude(email="").exists():
+            erreurs["email"] = "Cet e-mail est déjà utilisé."
+        if erreurs:
+            raise ValidationError(erreurs)
+        try:
+            password_validation.validate_password(request.data["password"])
+        except Exception as exc:  # noqa: BLE001 — django.core.exceptions.ValidationError, messages déjà en français
+            raise ValidationError({"password": list(getattr(exc, "messages", [str(exc)]))})
+
+        admin = User(
+            username=username, email=email,
+            first_name=request.data["first_name"], last_name=request.data["last_name"],
+            phone=request.data.get("phone", ""), role=User.Role.ADMIN, ecole=ecole,
+        )
+        admin.set_password(request.data["password"])
+        admin.doit_changer_mot_de_passe = True
+        admin.save()
+
+        _journaliser(
+            request, JournalActivite.Action.ECOLE_MODIFIEE, ecole,
+            f"Compte Administrateur « {admin.get_full_name()} » créé pour l'école",
+        )
+        return Response(UserSerializer(admin).data, status=status.HTTP_201_CREATED)
 
     @action(detail=True, methods=["post"], url_path="se-connecter-comme-admin")
     def se_connecter_comme_admin(self, request, pk=None):
@@ -446,6 +505,17 @@ class AnnuaireUtilisateursViewSet(viewsets.ReadOnlyModelViewSet):
     filterset_fields = ["role", "ecole", "is_active"]
     search_fields = ["username", "first_name", "last_name", "email"]
     ordering_fields = ["date_joined", "last_login", "last_name"]
+
+    def get_queryset(self):
+        # `en_ligne` est dérivé de `derniere_activite` (voir User.en_ligne), pas une colonne —
+        # non filtrable par `filterset_fields` (django-filter), d'où ce filtre manuel.
+        qs = super().get_queryset()
+        if self.request.query_params.get("en_ligne") == "true":
+            from django.utils import timezone
+
+            seuil = timezone.now() - timezone.timedelta(minutes=User.DELAI_EN_LIGNE_MINUTES)
+            qs = qs.filter(derniere_activite__gte=seuil)
+        return qs
 
     @action(detail=True, methods=["post"], url_path="reinitialiser-mot-de-passe")
     def reinitialiser_mot_de_passe(self, request, pk=None):

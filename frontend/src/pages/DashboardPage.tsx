@@ -33,6 +33,18 @@ export default function DashboardPage() {
 
   return (
     <div>
+      {(user.ecole_logo || user.ecole_nom) && (
+        <div className="flex items-center gap-3 mb-4">
+          {user.ecole_logo && (
+            <img src={user.ecole_logo} alt={user.ecole_nom || "Logo de l'école"} className="h-12 w-12 rounded-xl object-cover border border-slate-100 shadow-soft shrink-0" />
+          )}
+          <div className="min-w-0">
+            <p className="font-bold text-ink-900 truncate">{user.ecole_nom}</p>
+            {user.ecole_adresse && <p className="text-xs text-slate-400 truncate">{user.ecole_adresse}</p>}
+          </div>
+        </div>
+      )}
+
       <PageHeader title={`Tableau de bord — ${user.role_display}`} description="Vue d'ensemble de votre espace." />
 
       {user.role === "admin" && <AdminDashboard data={data} />}

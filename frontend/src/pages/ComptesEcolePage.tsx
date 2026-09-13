@@ -124,6 +124,26 @@ export default function ComptesEcolePage() {
     }
   };
 
+  // Réservée au personnel (admin, enseignant, comptabilité, surveillance) — les élèves et
+  // parents se suppriment depuis leurs pages dédiées (Élèves...), dont la suppression a des
+  // implications propres (dossier scolaire, frais, notes...) déjà gérées à cet endroit-là.
+  const ROLES_PERSONNEL: Role[] = ["admin", "teacher", "comptabilite", "surveillance"];
+  const [deletingId, setDeletingId] = useState<number | null>(null);
+
+  const handleDelete = async (u: User) => {
+    if (!confirm(`Supprimer définitivement le compte de ${u.full_name || u.username} (${ROLE_LABELS[u.role]}) ? Cette action est irréversible.`)) return;
+    setDeletingId(u.id);
+    try {
+      await usersApi.remove(u.id);
+      toast.success("Compte supprimé.");
+      reload();
+    } catch (err) {
+      toast.error(extractErrorMessage(err));
+    } finally {
+      setDeletingId(null);
+    }
+  };
+
   const handleToggleActif = async (u: User) => {
     setTogglingId(u.id);
     try {
@@ -203,6 +223,12 @@ export default function ComptesEcolePage() {
                   <Badge color={u.is_active ? "green" : "slate"}>{u.is_active ? "Actif" : "Désactivé"}</Badge>
                 </td>
                 <td className="px-4 py-3 text-slate-500 text-xs">
+                  {u.en_ligne && (
+                    <span className="inline-flex items-center gap-1 text-emerald-600 font-semibold mr-2" title="En ligne actuellement">
+                      <span className="h-1.5 w-1.5 rounded-full bg-emerald-500 inline-block" />
+                      En ligne
+                    </span>
+                  )}
                   {u.last_login ? new Date(u.last_login).toLocaleString("fr-FR") : "Jamais connecté"}
                 </td>
                 <td className="px-4 py-3">
@@ -223,6 +249,15 @@ export default function ComptesEcolePage() {
                         className={`text-xs font-semibold hover:underline whitespace-nowrap disabled:opacity-50 ${u.is_active ? "text-rose-600" : "text-emerald-600"}`}
                       >
                         {togglingId === u.id ? "…" : u.is_active ? "🚫 Désactiver" : "✓ Réactiver"}
+                      </button>
+                    )}
+                    {u.id !== moi?.id && ROLES_PERSONNEL.includes(u.role) && (
+                      <button
+                        onClick={() => handleDelete(u)}
+                        disabled={deletingId === u.id}
+                        className="text-xs font-semibold text-rose-600 hover:underline whitespace-nowrap disabled:opacity-50"
+                      >
+                        {deletingId === u.id ? "…" : "🗑️ Supprimer"}
                       </button>
                     )}
                   </div>
@@ -338,6 +373,7 @@ export default function ComptesEcolePage() {
                       <p className="text-xs text-slate-400">
                         {new Date(entree.horodatage).toLocaleString("fr-FR", { dateStyle: "medium", timeStyle: "short" })}
                         {entree.adresse_ip && ` · ${entree.adresse_ip}`}
+                        {entree.appareil && ` · ${entree.appareil}`}
                       </p>
                     </div>
                     <Badge color={CATEGORIE_LABELS[entree.categorie]}>{entree.categorie_display}</Badge>

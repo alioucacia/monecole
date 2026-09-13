@@ -15,9 +15,14 @@ class CategorieDepenseSerializer(serializers.ModelSerializer):
 
 
 class TypeFraisSerializer(serializers.ModelSerializer):
+    periodicite_display = serializers.CharField(source="get_periodicite_display", read_only=True)
+
     class Meta:
         model = TypeFrais
-        fields = ["id", "nom", "montant_standard", "est_mensuel"]
+        fields = ["id", "nom", "montant_standard", "periodicite", "periodicite_display", "est_mensuel"]
+        # Dérivé automatiquement de `periodicite` par `TypeFrais.save()` — lecture seule ici pour
+        # qu'il n'y ait qu'une seule source de vérité côté client (le sélecteur de périodicité).
+        read_only_fields = ["est_mensuel"]
 
 
 class TarifClasseSerializer(serializers.ModelSerializer):

@@ -47,6 +47,16 @@ class User(AbstractUser):
     # ne peut donc jamais avoir deux sessions valides en même temps, la plus récente invalide
     # automatiquement toute session précédente.
     session_id = models.CharField(max_length=64, blank=True, editable=False)
+    # Mise à jour à chaque requête authentifiée (voir PlateformeJWTAuthentication), au plus
+    # une fois toutes les DELAI_MAJ_ACTIVITE minutes pour ne pas écrire en base à chaque appel
+    # API — sert à estimer qui est "en ligne" (voir `en_ligne` ci-dessous) sans infrastructure
+    # temps réel (websockets, présence...), qu'aucune autre partie du projet n'a.
+    derniere_activite = models.DateTimeField(null=True, blank=True, editable=False)
+
+    # Une session est considérée active si une requête authentifiée a eu lieu dans ce délai —
+    # au-delà, l'utilisateur est considéré hors ligne même si son jeton reste valide (JWT
+    # stateless : rien ne prévient le serveur d'une fermeture d'onglet/déconnexion réseau).
+    DELAI_EN_LIGNE_MINUTES = 5
 
     class Meta:
         ordering = ["last_name", "first_name"]
@@ -58,6 +68,13 @@ class User(AbstractUser):
     @property
     def is_superadmin_role(self):
         return self.role == self.Role.SUPERADMIN
+
+    @property
+    def en_ligne(self) -> bool:
+        if not self.derniere_activite:
+            return False
+        from django.utils import timezone
+        return timezone.now() - self.derniere_activite < timezone.timedelta(minutes=self.DELAI_EN_LIGNE_MINUTES)
 
     @property
     def is_admin_role(self):
@@ -114,9 +131,14 @@ class JournalUtilisateur(models.Model):
     horodatage = models.DateTimeField(auto_now_add=True)
     categorie = models.CharField(max_length=20, choices=Categorie.choices)
     description = models.CharField(max_length=255)
-    # Renseignée pour les connexions (voir CustomTokenObtainPairSerializer) ; vide pour les
-    # actions déclenchées côté serveur sans requête explicite associable.
+    # Renseignées pour les connexions et actions déclenchées par une requête (voir
+    # accounts.services.journaliser/_adresse_ip/_resumer_appareil) ; vides pour les actions
+    # déclenchées côté serveur sans requête explicite associable.
     adresse_ip = models.GenericIPAddressField(null=True, blank=True)
+    appareil = models.CharField(
+        max_length=255, blank=True,
+        help_text="Résumé lisible du navigateur/appareil (ex: « Chrome sur Windows »), déduit du User-Agent.",
+    )
 
     class Meta:
         ordering = ["-horodatage"]
