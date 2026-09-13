@@ -112,7 +112,7 @@ ecole-manager/
 
 ## Notes
 
-- Ce projet à développerpar TalyTechnologie (migrations,
+- Ce projet à été développer par TalyTechnologie (migrations,
   seed, build TypeScript et tests API/UI en conditions réelles).
 - Pensez à changer `SECRET_KEY` et les mots de passe de démonstration avant tout
   déploiement en production.
