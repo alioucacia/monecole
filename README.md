@@ -112,7 +112,7 @@ ecole-manager/
 
 ## Notes
 
-- Ce projet a été généré avec l'assistance de Claude Code puis validé (migrations,
+- Ce projet à développerpar TalyTechnologie (migrations,
   seed, build TypeScript et tests API/UI en conditions réelles).
 - Pensez à changer `SECRET_KEY` et les mots de passe de démonstration avant tout
   déploiement en production.
