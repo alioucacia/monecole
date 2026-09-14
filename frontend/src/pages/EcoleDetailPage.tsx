@@ -203,6 +203,11 @@ export default function EcoleDetailPage() {
           <Badge color={STATUT_LABELS[ecole.statut_abonnement]?.color || "slate"}>
             {STATUT_LABELS[ecole.statut_abonnement]?.label || ecole.statut_abonnement}
           </Badge>
+          {ecole.jours_avant_prochaine_echeance !== null && (
+            <span className="text-sm text-slate-500">
+              {ecole.jours_avant_prochaine_echeance}j restant{ecole.jours_avant_prochaine_echeance > 1 ? "s" : ""} ({ecole.periodicite_abonnement_display})
+            </span>
+          )}
           <span className="text-sm text-slate-500">{ecole.email || "—"} · {ecole.telephone || "—"}</span>
           <span className="text-sm text-slate-400">Créée le {new Date(ecole.date_creation).toLocaleDateString("fr-FR")}</span>
         </div>
@@ -256,9 +261,13 @@ export default function EcoleDetailPage() {
               {ecole.plan_nom && (
                 <div className="flex justify-between"><span className="text-slate-500">Plan</span><span className="font-semibold">{ecole.plan_nom}</span></div>
               )}
+              <div className="flex justify-between"><span className="text-slate-500">Périodicité</span><span className="font-semibold">{ecole.periodicite_abonnement_display}</span></div>
               <div className="flex justify-between"><span className="text-slate-500">Montant mensuel</span><span className="font-semibold">{money(ecole.abonnement_mensuel)}</span></div>
               <div className="flex justify-between"><span className="text-slate-500">Jour d'échéance</span><span className="font-semibold">{ecole.jour_echeance}</span></div>
               <div className="flex justify-between"><span className="text-slate-500">Jours de grâce</span><span className="font-semibold">{ecole.jours_grace}</span></div>
+              {ecole.jours_avant_prochaine_echeance !== null && (
+                <div className="flex justify-between"><span className="text-slate-500">Prochaine échéance</span><span className="font-semibold">dans {ecole.jours_avant_prochaine_echeance} jour{ecole.jours_avant_prochaine_echeance > 1 ? "s" : ""}</span></div>
+              )}
               {ecole.dernier_paiement && (
                 <div className="flex justify-between"><span className="text-slate-500">Dernier paiement</span><span className="font-semibold">{new Date(ecole.dernier_paiement.mois).toLocaleDateString("fr-FR", { month: "long", year: "numeric" })}</span></div>
               )}

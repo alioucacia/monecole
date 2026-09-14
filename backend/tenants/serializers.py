@@ -95,6 +95,12 @@ class PaiementEcoleSerializer(serializers.ModelSerializer):
 class EcoleSerializer(serializers.ModelSerializer):
     statut_abonnement = serializers.CharField(read_only=True)
     jours_avant_blocage = serializers.IntegerField(read_only=True)
+    jours_avant_echeance = serializers.IntegerField(read_only=True)
+    # Compte à rebours principal (voir la docstring de `Ecole.jours_avant_prochaine_echeance`),
+    # avec la périodicité effectivement appliquée — c'est ce que le Super Admin voit désormais
+    # pour chaque école dans EcolesPage/EcoleDetailPage, au lieu d'un décompte toujours mensuel.
+    jours_avant_prochaine_echeance = serializers.IntegerField(read_only=True)
+    periodicite_abonnement_display = serializers.CharField(read_only=True)
     nombre_utilisateurs = serializers.SerializerMethodField()
     dernier_paiement = serializers.SerializerMethodField()
     parametres = ParametresEcoleSerializer(read_only=True)
@@ -117,7 +123,9 @@ class EcoleSerializer(serializers.ModelSerializer):
             "entete_ministere_1", "entete_ministere_2", "entete_republique", "entete_devise",
             "plan", "plan_nom", "plan_limite_eleves", "plan_limite_enseignants", "plan_limite_administrateurs",
             "abonnement_mensuel", "jour_echeance", "jours_grace", "actif", "date_creation",
-            "statut_abonnement", "jours_avant_blocage", "nombre_utilisateurs", "dernier_paiement", "parametres",
+            "statut_abonnement", "jours_avant_echeance", "jours_avant_blocage",
+            "jours_avant_prochaine_echeance", "periodicite_abonnement_display",
+            "nombre_utilisateurs", "dernier_paiement", "parametres",
             "couleur_principale", "couleur_secondaire", "fonctionnalites_desactivees",
             "modele_recu", "modele_recu_display", "modele_badge", "modele_badge_display",
             "modele_bulletin", "modele_bulletin_display",
@@ -220,6 +228,12 @@ class MonEcoleSerializer(serializers.ModelSerializer):
     statut_abonnement = serializers.CharField(read_only=True)
     jours_avant_echeance = serializers.IntegerField(read_only=True)
     jours_avant_blocage = serializers.IntegerField(read_only=True)
+    # Compte à rebours principal, valable quel que soit le statut à jour (voir la docstring de
+    # `Ecole.jours_avant_prochaine_echeance`) et périodicité du plan lié (Mensuel/Trimestriel/
+    # Annuel — voir `duree_periode_mois`), affichés tous deux dans le badge d'abonnement
+    # (Layout.tsx AbonnementBadge).
+    jours_avant_prochaine_echeance = serializers.IntegerField(read_only=True)
+    periodicite_abonnement_display = serializers.CharField(read_only=True)
 
     class Meta:
         model = Ecole
@@ -227,7 +241,8 @@ class MonEcoleSerializer(serializers.ModelSerializer):
             "id", "nom", "adresse", "telephone", "email", "logo", "ire", "dpe", "dsee",
             "entete_ministere_1", "entete_ministere_2", "entete_republique", "entete_devise",
             "abonnement_mensuel", "jour_echeance", "jours_grace", "statut_abonnement",
-            "jours_avant_echeance", "jours_avant_blocage", "parametres",
+            "jours_avant_echeance", "jours_avant_blocage", "jours_avant_prochaine_echeance",
+            "periodicite_abonnement_display", "parametres",
             "couleur_principale", "couleur_secondaire", "fonctionnalites_desactivees",
         ]
         # La personnalisation des documents et l'activation des fonctionnalités restent

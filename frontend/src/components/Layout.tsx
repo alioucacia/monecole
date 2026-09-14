@@ -307,29 +307,20 @@ const ABONNEMENT_TONE: Record<string, string> = {
   suspendu: "bg-rose-100 text-rose-700",
 };
 
-/** Jours restants avant la prochaine échéance de paiement, quand le mois en cours est déjà
- * payé (le statut redevient "en_attente" — pas "en retard" — dès le 1er du mois suivant, avec
- * une nouvelle échéance au même jour du mois — voir Ecole.jour_echeance côté backend). Calcul
- * 100% côté client : ne dépend que de la date du jour et du jour d'échéance de l'école. */
-function joursAvantProchaineEcheance(jourEcheance: number): number {
-  const aujourdhui = new Date();
-  const jour = Math.min(jourEcheance, 28);
-  const debutAujourdhui = new Date(aujourdhui.getFullYear(), aujourdhui.getMonth(), aujourdhui.getDate());
-  const prochaine = new Date(aujourdhui.getFullYear(), aujourdhui.getMonth() + 1, jour);
-  return Math.round((prochaine.getTime() - debutAujourdhui.getTime()) / 86400000);
-}
-
-/** Compte à rebours de l'abonnement de l'établissement, affiché à son Administrateur. */
+/** Compte à rebours de l'abonnement de l'établissement, affiché à son Administrateur — la durée
+ * reflète désormais la périodicité réelle du plan (Mensuel/Trimestriel/Annuel, voir
+ * Ecole.jours_avant_prochaine_echeance/periodicite_abonnement_display côté backend) plutôt que
+ * d'être systématiquement plafonnée à un mois. */
 function AbonnementBadge({ ecole }: { ecole: Ecole | null }) {
   if (!ecole) return null;
 
   let texte: string;
   if (ecole.statut_abonnement === "paye") {
-    const j = joursAvantProchaineEcheance(ecole.jour_echeance);
-    texte = `✓ Jours restant ${j}`;
+    const j = ecole.jours_avant_prochaine_echeance;
+    texte = j !== null ? `✓ Jours restant ${j} (${ecole.periodicite_abonnement_display})` : "✓ À jour";
   } else if (ecole.statut_abonnement === "en_attente" && ecole.jours_avant_echeance !== null) {
     const j = ecole.jours_avant_echeance;
-    texte = j > 0 ? `Jours restant ${j}` : "Échéance aujourd'hui";
+    texte = j > 0 ? `Jours restant ${j} (${ecole.periodicite_abonnement_display})` : "Échéance aujourd'hui";
   } else if (ecole.statut_abonnement === "en_retard" && ecole.jours_avant_blocage !== null) {
     const j = ecole.jours_avant_blocage;
     texte = j > 0 ? `⚠️ Blocage dans ${j}j` : "⚠️ Blocage imminent";

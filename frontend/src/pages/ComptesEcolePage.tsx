@@ -124,14 +124,17 @@ export default function ComptesEcolePage() {
     }
   };
 
-  // Réservée au personnel (admin, enseignant, comptabilité, surveillance) — les élèves et
-  // parents se suppriment depuis leurs pages dédiées (Élèves...), dont la suppression a des
-  // implications propres (dossier scolaire, frais, notes...) déjà gérées à cet endroit-là.
-  const ROLES_PERSONNEL: Role[] = ["admin", "teacher", "comptabilite", "surveillance"];
+  // Tous les rôles sauf élève : un élève se supprime depuis sa page dédiée (StudentsPage), qui
+  // affiche le contexte propre à cette suppression (dossier scolaire, frais, notes...) — les
+  // parents, eux, n'ont pas de page de gestion dédiée (ils sont créés en marge d'un élève, mais
+  // gérés comme n'importe quel autre compte ensuite) : c'est ici, et seulement ici, qu'un admin
+  // peut supprimer un compte parent.
+  const ROLES_SUPPRIMABLES_ICI: Role[] = ["admin", "teacher", "comptabilite", "surveillance", "parent"];
   const [deletingId, setDeletingId] = useState<number | null>(null);
 
   const handleDelete = async (u: User) => {
-    if (!confirm(`Supprimer définitivement le compte de ${u.full_name || u.username} (${ROLE_LABELS[u.role]}) ? Cette action est irréversible.`)) return;
+    const avertissementParent = u.role === "parent" ? " (le dossier de ses enfants n'est pas affecté, seul son propre accès au portail l'est)" : "";
+    if (!confirm(`Supprimer définitivement le compte de ${u.full_name || u.username} (${ROLE_LABELS[u.role]})${avertissementParent} ? Cette action est irréversible.`)) return;
     setDeletingId(u.id);
     try {
       await usersApi.remove(u.id);
@@ -251,7 +254,7 @@ export default function ComptesEcolePage() {
                         {togglingId === u.id ? "…" : u.is_active ? "🚫 Désactiver" : "✓ Réactiver"}
                       </button>
                     )}
-                    {u.id !== moi?.id && ROLES_PERSONNEL.includes(u.role) && (
+                    {u.id !== moi?.id && ROLES_SUPPRIMABLES_ICI.includes(u.role) && (
                       <button
                         onClick={() => handleDelete(u)}
                         disabled={deletingId === u.id}

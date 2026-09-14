@@ -53,7 +53,7 @@ class PlanAbonnementViewSet(viewsets.ModelViewSet):
 class EcoleViewSet(viewsets.ModelViewSet):
     """Gestion des établissements — réservée au Super Admin de la plateforme."""
 
-    queryset = Ecole.objects.all().prefetch_related("paiements")
+    queryset = Ecole.objects.all().select_related("plan").prefetch_related("paiements")
     permission_classes = [IsSuperAdmin]
     search_fields = ["nom", "email"]
 
@@ -419,7 +419,7 @@ class MonEcoleView(APIView):
         if request.user.ecole_id is None:
             from rest_framework.exceptions import NotFound
             raise NotFound("Aucun établissement rattaché à ce compte.")
-        return Ecole.objects.select_related("parametres").get(pk=request.user.ecole_id)
+        return Ecole.objects.select_related("parametres", "plan").get(pk=request.user.ecole_id)
 
     def get(self, request):
         return Response(MonEcoleSerializer(self.get_ecole(request)).data)

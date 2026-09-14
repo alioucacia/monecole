@@ -84,6 +84,11 @@ export interface Ecole {
   statut_abonnement: StatutAbonnement;
   jours_avant_echeance: number | null;
   jours_avant_blocage: number | null;
+  // Compte à rebours principal (valable quel que soit le statut à jour, contrairement à
+  // `jours_avant_echeance` — voir Ecole.jours_avant_prochaine_echeance côté backend) et
+  // périodicité effectivement appliquée (Mensuel/Trimestriel/Annuel, selon `plan.periodicite`).
+  jours_avant_prochaine_echeance: number | null;
+  periodicite_abonnement_display: string;
   nombre_utilisateurs: number;
   dernier_paiement: PaiementEcole | null;
   parametres: ParametresEcole | null;

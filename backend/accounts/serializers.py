@@ -63,7 +63,19 @@ class UserSerializer(UniqueLoginFieldsMixin, serializers.ModelSerializer):
             "ecole_couleur_principale", "ecole_couleur_secondaire", "ecole_fonctionnalites_desactivees",
             "ecole_logo", "ecole_adresse", "en_ligne",
         ]
-        read_only_fields = ["id", "date_joined", "last_login", "ecole", "doit_changer_mot_de_passe"]
+        # CRITIQUE : `role` doit rester en lecture seule ici. `UserSerializer` sert à la fois à
+        # `UserViewSet` (réservé à IsAdmin — qui ne l'utilise de toute façon que pour
+        # nom/email/téléphone/adresse/is_active, jamais pour changer un rôle, voir
+        # ComptesEcolePage.tsx) et à `MeView` (accessible à TOUT utilisateur connecté, pour
+        # éditer son propre profil — voir accounts.views.MeView.patch). Sans ce verrou,
+        # n'importe quel compte (élève inclus) pouvait s'auto-promouvoir en envoyant simplement
+        # `PATCH /api/auth/me/ {"role": "superadmin"}` — vérifié en conditions réelles avant ce
+        # correctif : élévation de privilèges totale, faille de contrôle d'accès la plus critique
+        # possible sur cette application. (`is_active` reste modifiable : c'est le bascule
+        # activer/désactiver un compte utilisé par l'admin dans ComptesEcolePage — un
+        # utilisateur ne peut de toute façon pas se réactiver lui-même une fois désactivé,
+        # puisque son jeton cesse alors d'être accepté, voir SimpleJWT.)
+        read_only_fields = ["id", "date_joined", "last_login", "ecole", "doit_changer_mot_de_passe", "role"]
 
     def validate_photo(self, value):
         return valider_taille_fichier(value, TAILLE_MAX_IMAGE, EXTENSIONS_IMAGE)
@@ -86,6 +98,20 @@ class UserCreateSerializer(UniqueLoginFieldsMixin, serializers.ModelSerializer):
             "id", "username", "email", "first_name", "last_name", "password",
             "role", "phone", "address", "date_of_birth",
         ]
+
+    def validate_role(self, value):
+        # CRITIQUE : ce serializer sert à `UserViewSet.create`, réservé à IsAdmin — c'est-à-dire
+        # l'administrateur d'UNE SEULE école, qui ne doit jamais pouvoir créer un compte
+        # Super Admin (accès à TOUTE la plateforme, toutes les écoles). Sans ce verrou,
+        # `POST /api/auth/users/ {"role": "superadmin", ...}` créait bel et bien un compte
+        # Super Admin pleinement fonctionnel — vérifié en conditions réelles avant ce correctif.
+        # La création d'un Super Admin reste possible, mais uniquement via
+        # `SuperAdminAccountViewSet` (permission_classes = [IsSuperAdmin]).
+        if value == User.Role.SUPERADMIN:
+            raise serializers.ValidationError(
+                "Impossible de créer un compte Super Administrateur depuis cet endpoint."
+            )
+        return value
 
     def create(self, validated_data):
         password = validated_data.pop("password")

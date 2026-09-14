@@ -178,17 +178,57 @@ class Ecole(models.Model):
         return self.paiements.filter(mois=mois).first()
 
     @property
+    def duree_periode_mois(self) -> int:
+        """Nombre de mois couverts par UN paiement d'abonnement — dérivé de la périodicité du
+        plan lié (voir `PlanAbonnement.periodicite`) : 1 pour Mensuel, 3 pour Trimestriel, 12
+        pour Annuel. Par défaut Mensuel (1) si aucun plan n'est lié (`Ecole.plan` reste par
+        ailleurs purement informatif pour le tarif, voir sa docstring — c'est le seul endroit où
+        sa périodicité a un effet réel, sur le compte à rebours de l'abonnement)."""
+        if self.plan_id and self.plan.periodicite == PlanAbonnement.Periodicite.TRIMESTRIEL:
+            return 3
+        if self.plan_id and self.plan.periodicite == PlanAbonnement.Periodicite.ANNUEL:
+            return 12
+        return 1
+
+    @property
+    def periodicite_abonnement_display(self) -> str:
+        """Libellé de la périodicité effectivement appliquée au compte à rebours (voir
+        `duree_periode_mois`) — toujours définie, même sans plan lié (« Mensuel » par défaut)."""
+        return {1: "Mensuel", 3: "Trimestriel", 12: "Annuel"}[self.duree_periode_mois]
+
+    def _mois_echeance_courante(self) -> date:
+        """Premier jour du mois où le PROCHAIN paiement devient dû. Généralise le « mois en
+        cours » vérifié par le système d'origine (toujours mensuel, un paiement attendu chaque
+        mois) à une fenêtre de 1/3/12 mois selon `duree_periode_mois` : un paiement enregistré
+        avec `mois=M` couvre M, M+1, ..., M+(N-1) — le mois suivant, M+N, est celui où
+        l'échéance suivante tombe. Sans aucun paiement enregistré (école neuve), retombe sur le
+        mois en cours — identique au comportement historique dans ce cas précis."""
+        dernier = self.paiements.order_by("-mois").first()
+        if not dernier:
+            return date.today().replace(day=1)
+        mois_index = dernier.mois.month - 1 + self.duree_periode_mois  # 0-indexé, pour l'arithmétique modulo 12
+        return date(dernier.mois.year + mois_index // 12, mois_index % 12 + 1, 1)
+
+    def _date_echeance_courante(self) -> date:
+        """Date calendaire exacte de la prochaine échéance : le jour `jour_echeance` du mois
+        renvoyé par `_mois_echeance_courante`."""
+        return self._mois_echeance_courante().replace(day=min(self.jour_echeance, 28))
+
+    @property
     def statut_abonnement(self) -> str:
         """'suspendu' | 'paye' | 'en_attente' | 'en_retard' | 'bloque'."""
         if not self.actif:
             return "suspendu"
         today = date.today()
-        if self.paiement_du_mois(today):
+        mois_echeance = self._mois_echeance_courante()
+        if today < mois_echeance:
+            # Encore dans un mois entièrement couvert par le dernier paiement — à jour, quelle
+            # que soit la périodicité (1/3/12 mois).
             return "paye"
-        jour_echeance = min(self.jour_echeance, 28)
-        if today.day <= jour_echeance:
+        date_echeance = mois_echeance.replace(day=min(self.jour_echeance, 28))
+        if today <= date_echeance:
             return "en_attente"
-        jours_retard = today.day - jour_echeance
+        jours_retard = (today - date_echeance).days
         if jours_retard <= self.jours_grace:
             return "en_retard"
         return "bloque"
@@ -204,22 +244,32 @@ class Ecole(models.Model):
         None si l'école n'est pas en situation de retard (à jour, bloquée ou suspendue)."""
         if self.statut_abonnement != "en_retard":
             return None
-        today = date.today()
-        jour_echeance = min(self.jour_echeance, 28)
-        jours_retard = today.day - jour_echeance
+        jours_retard = (date.today() - self._date_echeance_courante()).days
         return max(self.jours_grace - jours_retard, 0)
 
     @property
     def jours_avant_echeance(self) -> int | None:
-        """Jours restants avant l'échéance de paiement du mois — permet à l'admin de
-        l'école de voir le compte à rebours se décrémenter avant d'être en retard.
-        None si le mois est déjà payé, ou si l'échéance est déjà dépassée (voir alors
-        `jours_avant_blocage`)."""
+        """Jours restants avant l'échéance de paiement de la période en cours — permet à
+        l'admin de l'école de voir le compte à rebours se décrémenter avant d'être en retard.
+        None si la période est déjà payée d'avance, ou si l'échéance est déjà dépassée (voir
+        alors `jours_avant_blocage`)."""
         if self.statut_abonnement != "en_attente":
             return None
-        today = date.today()
-        jour_echeance = min(self.jour_echeance, 28)
-        return jour_echeance - today.day
+        return (self._date_echeance_courante() - date.today()).days
+
+    @property
+    def jours_avant_prochaine_echeance(self) -> int | None:
+        """Jours restants avant la PROCHAINE échéance, quel que soit le statut actuel —
+        contrairement à `jours_avant_echeance` (qui vaut `None` dès que la période est déjà
+        payée d'avance), c'est cette valeur qu'affiche le compte à rebours principal vu par
+        l'administrateur de l'école ET par le Super Admin (voir `AbonnementBadge` côté
+        frontend, EcolesPage/EcoleDetailPage) : pour un plan Trimestriel/Annuel payé d'avance,
+        il doit pouvoir dépasser 30 jours (jusqu'à ~90/365) plutôt que d'être plafonné à un mois
+        comme avant l'introduction de la périodicité. `None` uniquement si le compte est déjà
+        bloqué ou suspendu (l'échéance est alors dépassée, un décompte n'a plus de sens)."""
+        if self.statut_abonnement in ("bloque", "suspendu"):
+            return None
+        return (self._date_echeance_courante() - date.today()).days
 
 
 class PaiementEcole(models.Model):

@@ -346,6 +346,13 @@ export default function EcolesPage() {
                 <Badge color={STATUT_LABELS[ecole.statut_abonnement]?.color || "slate"}>
                   {STATUT_LABELS[ecole.statut_abonnement]?.label || ecole.statut_abonnement}
                 </Badge>
+                {/* Compte à rebours principal, dont la durée reflète la périodicité réelle du
+                    plan (Mensuel/Trimestriel/Annuel) — voir Ecole.jours_avant_prochaine_echeance. */}
+                {ecole.jours_avant_prochaine_echeance !== null && (
+                  <p className="text-[11px] text-slate-400 mt-0.5">
+                    {ecole.jours_avant_prochaine_echeance}j restant{ecole.jours_avant_prochaine_echeance > 1 ? "s" : ""} · {ecole.periodicite_abonnement_display}
+                  </p>
+                )}
               </td>
               <td className="px-4 py-3 text-slate-500">{ecole.nombre_utilisateurs}</td>
               <td className="px-4 py-3">

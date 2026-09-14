@@ -5,7 +5,6 @@ import { extractErrorMessage } from "../api/client";
 import { plateformeBrandingApi } from "../api/services";
 import { Button, Input } from "../components/ui";
 import { useAuth } from "../context/AuthContext";
-import { useToast } from "../context/ToastContext";
 
 // const DEMO_ACCOUNTS = [
 //   { role: "Admin", username: "admin", password: "admin123" },
@@ -66,11 +65,11 @@ function SchoolIllustration({ className = "" }: { className?: string }) {
 
 export default function LoginPage() {
   const { user, login } = useAuth();
-  const toast = useToast();
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
   const [rememberMe, setRememberMe] = useState(true);
   const [shake, setShake] = useState(false);
+  const [formError, setFormError] = useState("");
   const [loading, setLoading] = useState(false);
   const [nomPlateforme, setNomPlateforme] = useState("Taly-School");
   const [logoPlateforme, setLogoPlateforme] = useState<string | null>(null);
@@ -78,6 +77,12 @@ export default function LoginPage() {
   // ainsi d'afficher une fraction de seconde le formulaire de connexion avant de basculer sur
   // l'écran de maintenance (ou l'inverse), le temps que l'appel réseau aboutisse.
   const [maintenance, setMaintenance] = useState<{ active: boolean; message: string } | undefined>(undefined);
+  // Le Super Admin reste autorisé à se connecter pendant la maintenance (déjà géré côté serveur —
+  // voir CustomTokenObtainPairSerializer.validate/PlateformeJWTAuthentication) : ce lien discret
+  // lui permet d'atteindre le formulaire malgré l'écran de maintenance qui le masque par défaut
+  // pour tout le monde. Un identifiant/mot de passe qui ne sont PAS ceux d'un Super Admin restent
+  // bloqués par le serveur, avec le même message de maintenance affiché en erreur.
+  const [formuleForcee, setFormuleForcee] = useState(false);
 
   useEffect(() => {
     plateformeBrandingApi.get().then(({ data }) => {
@@ -89,7 +94,7 @@ export default function LoginPage() {
 
   if (user) return <Navigate to="/" replace />;
 
-  if (maintenance?.active) {
+  if (maintenance?.active && !formuleForcee) {
     return (
       <div className="min-h-screen flex items-center justify-center px-4 gradient-surface relative overflow-hidden">
         <div className="pointer-events-none absolute -top-32 -left-24 h-96 w-96 rounded-full bg-accent-400/30 blur-3xl" />
@@ -110,6 +115,14 @@ export default function LoginPage() {
               {maintenance.message || "Nous effectuons une mise à jour. Merci de réessayer dans quelques instants."}
             </p>
           </div>
+
+          <button
+            type="button"
+            onClick={() => setFormuleForcee(true)}
+            className="mt-6 text-xs text-white/50 hover:text-white/80 hover:underline transition"
+          >
+            Connexion Super Administrateur
+          </button>
         </div>
       </div>
     );
@@ -117,11 +130,33 @@ export default function LoginPage() {
 
   const handleSubmit = async (e: FormEvent) => {
     e.preventDefault();
+    setFormError("");
+
+    // Validation des champs obligatoires faite ici, en JS — volontairement PAS via l'attribut
+    // HTML `required` (infobulle native du navigateur, pas de contrôle sur son apparence ni son
+    // placement) : `.trim()` rejette aussi un champ qui ne contient que des espaces, que
+    // `required` laisse passer tel quel. Le message s'affiche en bas du formulaire, comme les
+    // erreurs de connexion elles-mêmes ci-dessous.
+    const usernameTrim = username.trim();
+    const passwordTrim = password.trim();
+    if (!usernameTrim || !passwordTrim) {
+      setFormError(
+        !usernameTrim && !passwordTrim
+          ? "Veuillez renseigner votre nom d'utilisateur et votre mot de passe."
+          : !usernameTrim
+          ? "Veuillez renseigner votre nom d'utilisateur, e-mail ou téléphone."
+          : "Veuillez renseigner votre mot de passe."
+      );
+      setShake(true);
+      setTimeout(() => setShake(false), 500);
+      return;
+    }
+
     setLoading(true);
     try {
       await login(username, password, rememberMe);
     } catch (err) {
-      toast.error(extractErrorMessage(err) || "Identifiants incorrects.");
+      setFormError(extractErrorMessage(err) || "Identifiants incorrects.");
       setShake(true);
       setTimeout(() => setShake(false), 500);
     } finally {
@@ -173,11 +208,15 @@ export default function LoginPage() {
               label="Nom d'utilisateur, e-mail ou téléphone"
               placeholder="Nom d'utilisateur, e-mail ou téléphone"
               value={username}
-              onChange={(e) => setUsername(e.target.value)}
-              required
+              onChange={(e) => { setUsername(e.target.value); if (formError) setFormError(""); }}
               autoFocus
             />
-            <Input label="Mot de passe" type="password" value={password} onChange={(e) => setPassword(e.target.value)} required />
+            <Input
+              label="Mot de passe"
+              type="password"
+              value={password}
+              onChange={(e) => { setPassword(e.target.value); if (formError) setFormError(""); }}
+            />
             <div className="flex items-center justify-between">
               <label className="flex items-center gap-2 text-sm text-slate-600 cursor-pointer">
                 <input
@@ -195,6 +234,15 @@ export default function LoginPage() {
             <Button type="submit" className="w-full" disabled={loading}>
               {loading ? "Connexion…" : "Se connecter"}
             </Button>
+
+            {/* Message d'erreur en bas du formulaire — champ obligatoire manquant ou échec de
+                connexion, calculés dynamiquement dans handleSubmit (pas l'attribut HTML
+                `required`, dont l'infobulle native n'est ni stylable ni repositionnable). */}
+            {formError && (
+              <p className="text-sm text-rose-600 bg-rose-50 border border-rose-100 rounded-xl px-3.5 py-2.5 text-center">
+                {formError}
+              </p>
+            )}
           </form>
         </div>
       </div>
