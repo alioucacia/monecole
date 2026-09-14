@@ -229,7 +229,7 @@ export default function EcolesPage() {
         title="Établissements"
         description="Gestion des écoles clientes de la plateforme et de leurs abonnements."
         actions={
-          <div className="flex gap-2">
+          <div className="flex flex-wrap gap-2">
             <Button variant="secondary" onClick={handleExport} disabled={exporting}>{exporting ? "Export…" : "📤 Exporter CSV"}</Button>
             {stats && stats.ecoles_a_surveiller.length > 0 && (
               <Button variant="secondary" onClick={handleRelancer} disabled={relancing}>

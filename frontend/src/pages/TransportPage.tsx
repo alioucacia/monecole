@@ -185,7 +185,7 @@ export default function TransportPage() {
         title="Transport scolaire"
         description="Gestion des lignes de bus et des affectations des élèves."
         actions={isAdmin ? (
-          <div className="flex gap-2">
+          <div className="flex flex-wrap gap-2">
             <Button variant="secondary" onClick={() => openAffectationModal()}>+ Affecter un élève</Button>
             <Button onClick={openCreateTrajet}>+ Nouveau trajet</Button>
           </div>

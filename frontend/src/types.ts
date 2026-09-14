@@ -640,6 +640,9 @@ export interface Paiement {
   mode_paiement: "especes" | "cheque" | "virement" | "mobile_money";
   reference: string;
   mois: string | null;
+  /** Tranche couverte (frais de périodicité Tranche uniquement) — pendant de `mois`. */
+  periode: number | null;
+  periode_nom: string | null;
   enregistre_par: number | null;
   enregistre_par_nom: string | null;
 }
@@ -743,6 +746,7 @@ export interface Frais {
   type_frais: number;
   type_frais_nom: string;
   type_frais_est_mensuel: boolean;
+  type_frais_periodicite: PeriodiciteFrais;
   annee_scolaire: number;
   montant: string;
   // Montant réellement dû après application de la catégorie de paiement/réduction fidélité de

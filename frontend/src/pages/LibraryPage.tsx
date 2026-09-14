@@ -159,7 +159,7 @@ export default function LibraryPage() {
         title="Bibliothèque"
         description="Catalogue des livres et suivi des emprunts."
         actions={
-          <div className="flex gap-2">
+          <div className="flex flex-wrap gap-2">
             {canLend && <Button variant="secondary" onClick={() => openEmpruntModal()}>+ Nouvel emprunt</Button>}
             {isAdmin && <Button onClick={openCreateLivre}>+ Nouveau livre</Button>}
           </div>

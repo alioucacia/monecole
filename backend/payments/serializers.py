@@ -41,29 +41,55 @@ class TarifClasseSerializer(serializers.ModelSerializer):
 
 class PaiementSerializer(serializers.ModelSerializer):
     enregistre_par_nom = serializers.CharField(source="enregistre_par.get_full_name", read_only=True, default=None)
+    periode_nom = serializers.CharField(source="periode.nom", read_only=True, default=None)
 
     class Meta:
         model = Paiement
-        fields = ["id", "frais", "montant", "date_paiement", "mode_paiement", "reference", "mois", "enregistre_par", "enregistre_par_nom"]
+        fields = [
+            "id", "frais", "montant", "date_paiement", "mode_paiement", "reference", "mois",
+            "periode", "periode_nom", "enregistre_par", "enregistre_par_nom",
+        ]
         read_only_fields = ["date_paiement", "enregistre_par"]
+
+    def _deja_verse(self, frais, **filtres) -> Decimal:
+        qs = Paiement.objects.filter(frais=frais, **filtres)
+        if self.instance:
+            qs = qs.exclude(pk=self.instance.pk)
+        return qs.aggregate(total=Sum("montant"))["total"] or Decimal("0")
 
     def validate(self, attrs):
         frais = attrs.get("frais", getattr(self.instance, "frais", None))
+        if not frais:
+            return attrs
         mois = attrs.get("mois", getattr(self.instance, "mois", None))
-        # Seuls les frais mensuels (scolarité...) sont suivis mois par mois — un frais ponctuel
-        # (cantine, transport, inscription...) n'a pas cette notion, rien à vérifier ici.
-        if not (frais and mois and frais.type_frais.est_mensuel):
+        periode = attrs.get("periode", getattr(self.instance, "periode", None))
+        if periode and periode.annee_scolaire_id != frais.annee_scolaire_id:
+            raise serializers.ValidationError({"periode": "Cette tranche n'appartient pas à l'année scolaire de ce frais."})
+
+        # 1) Mensuel : un mois déjà intégralement payé pour ce frais ne peut plus recevoir de
+        #    versement supplémentaire (le montant dû tient compte de la réduction — voir
+        #    Frais.montant_du).
+        if mois and frais.type_frais.est_mensuel:
+            if frais.montant_du > 0 and self._deja_verse(frais, mois=mois) >= frais.montant_du:
+                raise serializers.ValidationError({
+                    "mois": f"Le mois {mois.strftime('%m/%Y')} est déjà intégralement payé pour ce frais."
+                })
             return attrs
 
-        deja_verses = Paiement.objects.filter(frais=frais, mois=mois)
-        if self.instance:
-            deja_verses = deja_verses.exclude(pk=self.instance.pk)
-        total_deja_verse = deja_verses.aggregate(total=Sum("montant"))["total"] or Decimal("0")
-        montant_du_ce_mois = frais.montant_du
-        if montant_du_ce_mois > 0 and total_deja_verse >= montant_du_ce_mois:
-            raise serializers.ValidationError({
-                "mois": f"Le mois {mois.strftime('%m/%Y')} est déjà intégralement payé pour ce frais."
-            })
+        # 2) Tranche (frais de périodicité "trimestriel") : même garde-fou, par tranche plutôt
+        #    que par mois — `Frais.montant` représente le montant D'UNE tranche (comme il
+        #    représente celui D'UN mois pour un frais mensuel), pas le total de l'année.
+        if periode and frais.type_frais.periodicite == TypeFrais.Periodicite.TRIMESTRIEL:
+            if frais.montant_du > 0 and self._deja_verse(frais, periode=periode) >= frais.montant_du:
+                raise serializers.ValidationError({
+                    "periode": f"{periode.nom} est déjà intégralement payée pour ce frais."
+                })
+            return attrs
+
+        # 3) Tout le reste (annuel, autre, ou un paiement sans mois/tranche précisé·e) : le frais
+        #    dans son ensemble ne doit pas recevoir de paiement au-delà de son solde restant.
+        if frais.solde <= 0:
+            raise serializers.ValidationError({"montant": "Ce frais est déjà intégralement payé."})
         return attrs
 
 
@@ -96,6 +122,7 @@ class FraisSerializer(serializers.ModelSerializer):
     eleve_nom = serializers.CharField(source="eleve.user.get_full_name", read_only=True)
     type_frais_nom = serializers.CharField(source="type_frais.nom", read_only=True)
     type_frais_est_mensuel = serializers.BooleanField(source="type_frais.est_mensuel", read_only=True)
+    type_frais_periodicite = serializers.CharField(source="type_frais.periodicite", read_only=True)
     # Montant réellement dû après application de la catégorie de paiement/réduction fidélité de
     # l'élève (voir Frais.montant_du) — distinct de `montant`, qui reste le tarif standard.
     montant_du = serializers.DecimalField(max_digits=10, decimal_places=2, read_only=True)
@@ -107,6 +134,7 @@ class FraisSerializer(serializers.ModelSerializer):
     class Meta:
         model = Frais
         fields = [
-            "id", "eleve", "eleve_nom", "type_frais", "type_frais_nom", "type_frais_est_mensuel", "annee_scolaire",
+            "id", "eleve", "eleve_nom", "type_frais", "type_frais_nom", "type_frais_est_mensuel",
+            "type_frais_periodicite", "annee_scolaire",
             "montant", "montant_du", "date_echeance", "montant_paye", "solde", "statut", "paiements",
         ]

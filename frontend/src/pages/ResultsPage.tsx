@@ -114,7 +114,7 @@ export default function ResultsPage() {
         title="Résultats"
         description="Classement complet d'une classe pour une période ou l'année entière."
         actions={data ? (
-          <div className="flex items-center gap-2">
+          <div className="flex flex-wrap items-center gap-2">
             <Button variant="secondary" onClick={handleExport} disabled={exporting}>{exporting ? "Export…" : "📤 Exporter CSV"}</Button>
             <Button variant="secondary" onClick={handleExportPdf} disabled={exportingPdf}>{exportingPdf ? "Export…" : "🖨️ Exporter PDF"}</Button>
             <Select value={rangMax} onChange={(e) => setRangMax(Number(e.target.value))} className="!w-auto">

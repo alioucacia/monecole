@@ -44,12 +44,14 @@ function echeanceDuMois(annee: AnneeScolaire, mois: string): string {
   const anneeCalendaire = Number(mois) >= moisDebut ? anneeDebut : anneeDebut + 1;
   return `${anneeCalendaire}-${mois}-01`;
 }
-const emptyPaiementForm = { montant: "", mode_paiement: "especes", reference: "", mois: "" };
+const emptyPaiementForm = { montant: "", mode_paiement: "especes", reference: "", mois: "", periode: "" };
 const emptyTypeForm = { nom: "", montant_standard: "", periodicite: "autre" as PeriodiciteFrais };
 
 const PERIODICITE_LABELS: Record<PeriodiciteFrais, string> = {
-  mensuel: "Mensuel", trimestriel: "Trimestriel", annuel: "Annuel", autre: "Autre / ponctuel",
+  mensuel: "Mensuel", trimestriel: "Tranche", annuel: "Annuel", autre: "Autre / ponctuel",
 };
+
+const ORDINAUX = ["1ère", "2ème", "3ème", "4ème", "5ème", "6ème"];
 
 /** "2026-09" (valeur d'un <input type="month">) → "2026-09-01" attendu par l'API. */
 function moisInputVersDate(moisInput: string) {
@@ -86,6 +88,16 @@ function statutMoisPourFrais(frais: Frais, mois: string): "paye" | "partiel" | "
   return paye >= Number(frais.montant_du) ? "paye" : "partiel";
 }
 
+/** Même logique que `statutMoisPourFrais`, pour une tranche (frais de périodicité Tranche) —
+ * `frais.montant_du` représente le montant D'UNE tranche, comme pour un mois. */
+function statutPeriodePourFrais(frais: Frais, periodeId: number): "paye" | "partiel" | "libre" {
+  const paye = frais.paiements
+    .filter((p) => p.periode === periodeId)
+    .reduce((sum, p) => sum + Number(p.montant), 0);
+  if (paye <= 0) return "libre";
+  return paye >= Number(frais.montant_du) ? "paye" : "partiel";
+}
+
 export default function PaymentsPage() {
   const toast = useToast();
   const { user } = useAuth();
@@ -110,6 +122,10 @@ export default function PaymentsPage() {
   // liste déroulante "Trimestre d'échéance" d'un type de frais Trimestriel (voir périodicité).
   const [periodesAnnee, setPeriodesAnnee] = useState<Periode[]>([]);
 
+  // Tranches proposées dans la modale "Encaisser" pour un frais de périodicité Tranche —
+  // rechargées à l'ouverture (voir openPaiementModal), distinctes de `periodesAnnee` ci-dessus
+  // (celle-ci suit l'année scolaire du frais encaissé, pas celle du formulaire "Nouveau frais").
+  const [periodesPaiement, setPeriodesPaiement] = useState<Periode[]>([]);
   const [paiementTarget, setPaiementTarget] = useState<Frais | null>(null);
   const [paiementForm, setPaiementForm] = useState(emptyPaiementForm);
   const [paiementError, setPaiementError] = useState("");
@@ -279,6 +295,9 @@ export default function PaymentsPage() {
     setPaiementTarget(frais);
     setPaiementForm({ ...emptyPaiementForm, montant: frais.solde });
     setPaiementError("");
+    if (frais.type_frais_periodicite === "trimestriel") {
+      periodesApi.list({ annee_scolaire: frais.annee_scolaire }).then(({ data }) => setPeriodesPaiement(unwrapList(data)));
+    }
   };
 
   const handlePaiementSubmit = async (e: FormEvent) => {
@@ -287,10 +306,11 @@ export default function PaymentsPage() {
     setPaiementSaving(true);
     setPaiementError("");
     try {
-      const { mois, ...reste } = paiementForm;
+      const { mois, periode, ...reste } = paiementForm;
       await paiementsApi.create({
         frais: paiementTarget.id, ...reste,
         mois: paiementTarget.type_frais_est_mensuel ? moisInputVersDate(mois) || null : null,
+        periode: paiementTarget.type_frais_periodicite === "trimestriel" ? Number(periode) || null : null,
       });
       setPaiementTarget(null);
       reload();
@@ -370,7 +390,7 @@ export default function PaymentsPage() {
         title="Paiements"
         description={peutGerer ? "Suivi des frais scolaires et des paiements." : "Vos frais scolaires et paiements."}
         actions={peutGerer ? (
-          <div className="flex gap-2">
+          <div className="flex flex-wrap gap-2">
             <Button variant="secondary" onClick={handleExport} disabled={exporting}>{exporting ? "Export…" : "📤 Exporter CSV"}</Button>
             <Button variant="secondary" onClick={handleExportFiches} disabled={exportingFiches}>
               {exportingFiches ? "Génération…" : "🧾 Fiches de paiement"}
@@ -379,7 +399,7 @@ export default function PaymentsPage() {
               {notifying ? "Envoi…" : "📣 Relancer les impayés"}
             </Button>
             <Link to="/paiements/impayes-par-classe">
-              <Button variant="secondary">🏫 Impayés par classe</Button>
+              <Button variant="secondary">🏫 Situation par classe</Button>
             </Link>
             <Link to="/paiements/suivi-mensuel">
               <Button variant="secondary">📅 Suivi mensuel</Button>
@@ -557,7 +577,7 @@ export default function PaymentsPage() {
             </Select>
           )}
           {typeFraisSelectionne?.periodicite === "trimestriel" && (
-            <Select label="Trimestre d'échéance" required value={fraisForm.trimestre_echeance} onChange={(e) => {
+            <Select label="Tranche d'échéance" required value={fraisForm.trimestre_echeance} onChange={(e) => {
               const periode = periodesAnnee.find((p) => p.id === Number(e.target.value));
               setFraisForm({
                 ...fraisForm, trimestre_echeance: e.target.value,
@@ -565,9 +585,13 @@ export default function PaymentsPage() {
               });
             }}>
               <option value="">
-                {periodesAnnee.length === 0 ? "— Aucun trimestre configuré pour cette année —" : "— Choisir un trimestre —"}
+                {periodesAnnee.length === 0 ? "— Aucune tranche configurée pour cette année —" : "— Choisir une tranche —"}
               </option>
-              {periodesAnnee.map((p) => <option key={p.id} value={p.id}>{p.nom}</option>)}
+              {periodesAnnee.map((p, i) => (
+                <option key={p.id} value={p.id}>
+                  {ORDINAUX[i] || `${i + 1}ème`} Tranche{fraisForm.montant ? ` — ${Number(fraisForm.montant).toLocaleString("fr-FR")} GNF` : ""}
+                </option>
+              ))}
             </Select>
           )}
           {typeFraisSelectionne?.periodicite === "annuel" && (
@@ -629,6 +653,27 @@ export default function PaymentsPage() {
                   Ce frais est mensuel — choisissez le mois payé pour alimenter le{" "}
                   <Link to="/paiements/suivi-mensuel" className="text-brand-600 hover:underline">suivi mensuel</Link>.
                 </p>
+              </div>
+            )}
+            {paiementTarget.type_frais_periodicite === "trimestriel" && (
+              <div>
+                <Select
+                  label="Tranche payée (optionnel)"
+                  value={paiementForm.periode}
+                  onChange={(e) => setPaiementForm({ ...paiementForm, periode: e.target.value })}
+                >
+                  <option value="">— Aucune tranche précise —</option>
+                  {periodesPaiement.map((p, i) => {
+                    const statut = statutPeriodePourFrais(paiementTarget, p.id);
+                    return (
+                      <option key={p.id} value={p.id} disabled={statut === "paye"}>
+                        {ORDINAUX[i] || `${i + 1}ème`} Tranche
+                        {statut === "paye" ? " — déjà payée" : statut === "partiel" ? " — partiellement payée" : ""}
+                      </option>
+                    );
+                  })}
+                </Select>
+                <p className="text-xs text-slate-400 mt-1">Ce frais est facturé par tranche — précisez laquelle ce versement couvre.</p>
               </div>
             )}
             <Input label="Référence (optionnel)" value={paiementForm.reference} onChange={(e) => setPaiementForm({ ...paiementForm, reference: e.target.value })} />

@@ -321,7 +321,7 @@ export default function StudentDetailPage() {
           title={`${eleve.user.first_name} ${eleve.user.last_name}`}
           description={`${eleve.matricule} · ${eleve.classe_nom || "Classe non assignée"}`}
           actions={
-            <div className="flex items-center gap-2">
+            <div className="flex flex-wrap items-center gap-2">
               <Link to="/eleves" className="text-sm text-brand-600 font-medium hover:underline mr-2">← Retour</Link>
               {isAdmin && (
                 <Button variant="secondary" onClick={() => navigate("/eleves", { state: { editEleveId: eleve.id } })}>

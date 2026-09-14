@@ -126,7 +126,7 @@ export default function ClassesPage() {
         description="Structure des classes et affectations pédagogiques."
         actions={
           isAdmin ? (
-            <div className="flex gap-2">
+            <div className="flex flex-wrap gap-2">
               <Button variant="secondary" onClick={handleDevinerCycles} disabled={devinant}>
                 {devinant ? "Affectation…" : "🪄 Deviner les niveaux"}
               </Button>

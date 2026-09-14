@@ -13,7 +13,9 @@ from people.models import EleveProfile
 class TypeFrais(models.Model):
     class Periodicite(models.TextChoices):
         MENSUEL = "mensuel", "Mensuel"
-        TRIMESTRIEL = "trimestriel", "Trimestriel"
+        # Valeur DB inchangée ("trimestriel") pour ne pas migrer les données déjà en place —
+        # seul le libellé affiché change ("Tranche" plutôt que "Trimestriel", demande explicite).
+        TRIMESTRIEL = "trimestriel", "Tranche"
         ANNUEL = "annuel", "Annuel"
         AUTRE = "autre", "Autre / ponctuel"
 
@@ -152,6 +154,14 @@ class Paiement(models.Model):
     mois = models.DateField(
         null=True, blank=True,
         help_text="Mois de scolarité couvert par ce paiement (uniquement pour un frais mensuel) — premier jour du mois",
+    )
+    # Pendant de `mois` ci-dessus, pour un frais de périodicité Tranche (trimestriel) : quelle
+    # tranche ce paiement couvre — réutilise les mêmes Periode (Trimestre 1/2/3...) que les
+    # bulletins plutôt que d'inventer un second découpage de l'année. Permet le même
+    # garde-fou anti-double-paiement que pour le mois (voir PaiementSerializer.validate).
+    periode = models.ForeignKey(
+        "grades.Periode", on_delete=models.SET_NULL, null=True, blank=True, related_name="paiements",
+        help_text="Tranche couverte par ce paiement (uniquement pour un frais de périodicité Tranche)",
     )
 
     class Meta:

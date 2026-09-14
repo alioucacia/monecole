@@ -666,7 +666,9 @@ class FraisViewSet(viewsets.ModelViewSet):
     @action(detail=False, methods=["get"], url_path="impayes-par-classe")
     def impayes_par_classe(self, request):
         """Regroupe par classe tous les élèves ayant un solde restant à payer (respecte les
-        mêmes filtres que la liste, ex: ?annee_scolaire=…)."""
+        mêmes filtres que la liste, ex: ?annee_scolaire=…) — et, à côté, ceux qui sont À JOUR
+        (au moins un frais, tout réglé) : le comptable/l'administrateur voient les deux d'un
+        coup d'œil plutôt que devoir déduire les « bons payeurs » par soustraction."""
         queryset = self.filter_queryset(self.get_queryset()).select_related("eleve__user", "eleve__classe", "type_frais")
 
         par_eleve: dict[int, dict] = {}
@@ -680,28 +682,35 @@ class FraisViewSet(viewsets.ModelViewSet):
         par_classe: dict[int, dict] = {}
         for data in par_eleve.values():
             solde = data["du"] - data["paye"]
-            if solde <= 0:
-                continue
             eleve = data["eleve"]
             classe = eleve.classe
             classe_id = classe.id if classe else 0
             groupe = par_classe.setdefault(classe_id, {
                 "classe_id": classe_id if classe else None,
                 "classe_nom": classe.nom if classe else "Sans classe",
-                "eleves": [],
+                "eleves": [], "eleves_a_jour": [],
             })
-            groupe["eleves"].append({
+            fiche = {
                 "eleve_id": eleve.id, "matricule": eleve.matricule,
                 "nom_complet": eleve.user.get_full_name(), "du": data["du"],
                 "paye": data["paye"], "solde": solde,
-            })
+            }
+            if solde > 0:
+                groupe["eleves"].append(fiche)
+            else:
+                groupe["eleves_a_jour"].append(fiche)
 
         resultat = []
         for groupe in par_classe.values():
             groupe["eleves"].sort(key=lambda e: e["nom_complet"])
+            groupe["eleves_a_jour"].sort(key=lambda e: e["nom_complet"])
             groupe["nb_impayes"] = len(groupe["eleves"])
+            groupe["nb_a_jour"] = len(groupe["eleves_a_jour"])
             groupe["total_solde"] = sum((e["solde"] for e in groupe["eleves"]), Decimal("0"))
             resultat.append(groupe)
+        # Une classe entièrement à jour (aucun impayé) reste incluse — comme avant, on n'exclut
+        # que les classes sans aucun frais suivi du tout (ni impayé, ni à jour).
+        resultat = [g for g in resultat if g["nb_impayes"] or g["nb_a_jour"]]
         resultat.sort(key=lambda g: g["classe_nom"])
         return Response(resultat)
 

@@ -20,15 +20,19 @@ export function StatCard({
   label, value, icon, accent = "brand",
 }: { label: string; value: ReactNode; icon?: ReactNode; accent?: "brand" | "green" | "amber" | "rose" | "teal" }) {
   return (
-    <Card className="flex items-center gap-4 group">
+    <Card className="flex items-center gap-3 sm:gap-4 group">
       {icon && (
-        <div className={`h-12 w-12 shrink-0 rounded-xl2 flex items-center justify-center text-xl shadow-soft transition-transform duration-300 group-hover:scale-110 group-hover:rotate-3 ${ACCENT_TILES[accent]}`}>
+        <div className={`h-10 w-10 sm:h-12 sm:w-12 shrink-0 rounded-xl2 flex items-center justify-center text-lg sm:text-xl shadow-soft transition-transform duration-300 group-hover:scale-110 group-hover:rotate-3 ${ACCENT_TILES[accent]}`}>
           {icon}
         </div>
       )}
+      {/* `break-words` : un montant formaté ("1 251 000 GNF") contient des espaces insécables
+          (Number.toLocaleString("fr-FR")) sur lesquels le texte ne peut pas se couper — sans
+          quoi une carte étroite (mobile, grille 2 colonnes) le laissait déborder/rogné plutôt
+          que de passer à la ligne suivante. */}
       <div className="min-w-0">
         <p className="text-xs font-semibold uppercase tracking-wide text-slate-400">{label}</p>
-        <p className="text-2xl font-extrabold text-ink-900 tracking-tight">{value}</p>
+        <p className="text-lg sm:text-2xl font-extrabold text-ink-900 tracking-tight break-words">{value}</p>
       </div>
     </Card>
   );
@@ -193,7 +197,10 @@ export function PageHeader({ title, description, actions }: { title: string; des
         <h1 className="text-3xl font-extrabold text-ink-900 tracking-tight">{title}</h1>
         {description && <p className="text-slate-500 mt-1.5">{description}</p>}
       </div>
-      {actions && <div className="flex items-center gap-2">{actions}</div>}
+      {/* `flex-wrap` : certaines pages passent 3-4 boutons dans `actions` (ex: Paiements) — sans
+          ça, ils étaient tous forcés sur une seule ligne qui débordait hors de l'écran en
+          mobile (défilement horizontal peu visible plutôt que de passer à la ligne). */}
+      {actions && <div className="flex items-center flex-wrap gap-2">{actions}</div>}
     </div>
   );
 }

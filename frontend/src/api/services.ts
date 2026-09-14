@@ -465,9 +465,11 @@ export const fraisApi = {
   previewProformaPdf: (eleveId: number, filename: string, anneeScolaireId?: number) =>
     fetchBlob("/payments/frais/proforma/", { eleve: eleveId, annee_scolaire: anneeScolaireId }, filename),
   impayesParClasse: (params?: Record<string, unknown>) =>
-    api.get<{ classe_id: number | null; classe_nom: string; nb_impayes: number; total_solde: string; eleves: { eleve_id: number; matricule: string; nom_complet: string; du: string; paye: string; solde: string }[] }[]>(
-      "/payments/frais/impayes-par-classe/", { params }
-    ),
+    api.get<{
+      classe_id: number | null; classe_nom: string; nb_impayes: number; nb_a_jour: number; total_solde: string;
+      eleves: { eleve_id: number; matricule: string; nom_complet: string; du: string; paye: string; solde: string }[];
+      eleves_a_jour: { eleve_id: number; matricule: string; nom_complet: string; du: string; paye: string; solde: string }[];
+    }[]>("/payments/frais/impayes-par-classe/", { params }),
   notifierImpayes: () => api.post<{ notifies: number }>("/payments/frais/notifier-impayes/"),
   /** Rapport de suivi des paiements de scolarité (PDF), mois par mois — un élève à la fois. */
   suiviMensuelPdf: (eleveId: number, filename: string, anneeScolaireId?: number) =>
@@ -475,7 +477,7 @@ export const fraisApi = {
 };
 
 export const paiementsApi = {
-  create: (data: { frais: number; montant: string; mode_paiement: string; reference?: string; mois?: string | null }) =>
+  create: (data: { frais: number; montant: string; mode_paiement: string; reference?: string; mois?: string | null; periode?: number | null }) =>
     api.post<Paiement>("/payments/paiements/", data),
   // Réservé à l'administrateur côté backend (voir PaiementViewSet.get_permissions) : un paiement
   // supprimé par erreur fausserait l'historique et le suivi mensuel de l'élève.

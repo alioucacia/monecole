@@ -182,7 +182,7 @@ export default function CantinePage() {
         title="Cantine scolaire"
         description="Gestion des formules de repas et des inscriptions des élèves."
         actions={isAdmin ? (
-          <div className="flex gap-2">
+          <div className="flex flex-wrap gap-2">
             <Button variant="secondary" onClick={() => openInscriptionModal()}>+ Inscrire un élève</Button>
             <Button onClick={openCreateFormule}>+ Nouvelle formule</Button>
           </div>
