@@ -246,10 +246,11 @@ export const elevesApi = {
   remove: (id: number) => api.delete(`/people/eleves/${id}/`),
   exportCsv: (params?: Record<string, unknown>) => downloadFile("/people/eleves/export/", params || {}, "eleves.csv"),
   exportPdf: (params?: Record<string, unknown>) => downloadFile("/people/eleves/export-pdf/", params || {}, "eleves.pdf"),
-  reinscription: (data: {
-    eleves: number[]; classe_destination: number; type_frais?: number | null;
-    montant_frais?: string | null; date_echeance_frais?: string | null;
-  }) => api.post<{ reinscrits: number; frais_crees: number; classe_destination: string }>("/people/eleves/reinscription/", data),
+  // Le frais de réinscription (s'il y en a un) est désormais résolu et créé automatiquement côté
+  // serveur, à son tarif réglé pour `classe_destination` (voir TypeFrais.usage + TarifClasse) —
+  // plus besoin de choisir un type de frais ni de saisir un montant ici.
+  reinscription: (data: { eleves: number[]; classe_destination: number; date_echeance_frais?: string | null }) =>
+    api.post<{ reinscrits: number; frais_crees: number; classe_destination: string }>("/people/eleves/reinscription/", data),
   marquerNonReinscrit: (id: number, motif?: string) =>
     api.post<EleveProfile>(`/people/eleves/${id}/marquer-non-reinscrit/`, { motif: motif || "" }),
   reactiver: (id: number) => api.post<EleveProfile>(`/people/eleves/${id}/reactiver/`),
@@ -428,6 +429,12 @@ export const typesFraisApi = {
   create: (data: Partial<TypeFrais>) => api.post<TypeFrais>("/payments/types-frais/", data),
   update: (id: number, data: Partial<TypeFrais>) => api.patch<TypeFrais>(`/payments/types-frais/${id}/`, data),
   remove: (id: number) => api.delete(`/payments/types-frais/${id}/`),
+  /** Résout en un appel le montant d'inscription/réinscription réglé pour une classe (combine
+   * TypeFrais.usage + TarifClasse) — voir TypeFraisViewSet.tarif_par_usage côté backend. */
+  tarifParUsage: (usage: "inscription" | "reinscription", classe: number) =>
+    api.get<{ type_frais: number | null; type_frais_nom: string | null; montant: string | null; montant_specifique_classe?: boolean }>(
+      "/payments/types-frais/tarif-par-usage/", { params: { usage, classe } },
+    ),
 };
 
 /** Paramétrage du montant de chaque type de frais par classe/année scolaire. */

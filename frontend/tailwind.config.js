@@ -61,11 +61,25 @@ export default {
           "20%, 60%": { transform: "translateX(-6px)" },
           "40%, 80%": { transform: "translateX(6px)" },
         },
+        "pulse-soft": {
+          "0%, 100%": { transform: "scale(1)", opacity: "1" },
+          "50%": { transform: "scale(1.15)", opacity: "0.85" },
+        },
+        "wiggle": {
+          "0%, 100%": { transform: "rotate(0deg)" },
+          "25%": { transform: "rotate(-8deg)" },
+          "75%": { transform: "rotate(8deg)" },
+        },
       },
       animation: {
         "fade-in-up": "fade-in-up 0.4s ease-out both",
         "pop-in": "pop-in 0.3s cubic-bezier(0.34, 1.56, 0.64, 1) both",
         shake: "shake 0.4s ease-in-out",
+        // Badges/pastilles de notification (nombre à relancer, cloche non lue...) — un pouls
+        // discret et continu pour attirer l'œil sans être agressif comme `animate-ping`/`pulse`
+        // de Tailwind (qui font disparaître complètement l'élément à chaque cycle).
+        "pulse-soft": "pulse-soft 2s ease-in-out infinite",
+        wiggle: "wiggle 0.5s ease-in-out",
       },
     },
   },

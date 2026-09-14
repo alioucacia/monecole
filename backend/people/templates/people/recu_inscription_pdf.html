@@ -6,6 +6,8 @@
     @page { size: A4; margin: 1.4cm; }
     body { font-family: Helvetica, Arial, sans-serif; color: #1e1b2e; font-size: 11px; }
 
+    .ecole-header .logo { width: 13mm; height: 13mm; object-fit: contain; float: left; margin-right: 4mm; }
+
     table.masthead { width: 100%; margin-bottom: 4px; }
     .masthead td { vertical-align: middle; text-align: center; }
     .republique { font-size: 15px; font-weight: bold; color: #1e1b2e; margin: 0; }
@@ -107,6 +109,7 @@
     <table class="ecole-header">
         <tr>
             <td class="bloc-nom">
+                {% if ecole_logo_data_uri %}<img class="logo" src="{{ ecole_logo_data_uri }}" />{% endif %}
                 <p class="nom">{{ ecole_nom }}</p>
                 <p class="tagline">Année scolaire {{ annee_scolaire|default:"—" }}</p>
             </td>
@@ -116,6 +119,7 @@
     {% elif modele == 4 %}
     <table class="ecole-header">
         <tr><td>
+            {% if ecole_logo_data_uri %}<img class="logo" src="{{ ecole_logo_data_uri }}" />{% endif %}
             <p class="nom">{{ ecole_nom }} — Fiche d'inscription</p>
             <p class="tagline">Année scolaire {{ annee_scolaire|default:"—" }}</p>
         </td></tr>
@@ -123,6 +127,7 @@
     {% else %}
     <table class="ecole-header">
         <tr><td>
+            {% if ecole_logo_data_uri %}<img class="logo" src="{{ ecole_logo_data_uri }}" />{% endif %}
             <p class="nom">{{ ecole_nom }}</p>
             <p class="tagline">Fiche d'inscription — Année scolaire {{ annee_scolaire|default:"—" }}</p>
         </td></tr>

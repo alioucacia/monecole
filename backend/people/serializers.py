@@ -218,13 +218,13 @@ class EleveProfileWriteSerializer(serializers.ModelSerializer):
 
 
 class ReinscriptionSerializer(serializers.Serializer):
-    """Passage en masse d'élèves vers une nouvelle classe (année suivante),
-    avec création optionnelle d'un frais de réinscription pour chacun."""
+    """Passage en masse d'élèves vers une nouvelle classe (année suivante). Le frais de
+    réinscription (s'il y en a un) est créé automatiquement pour chacun, à son montant réglé pour
+    la classe de destination — voir `payments.TypeFrais.Usage.REINSCRIPTION` et `TarifClasse` —
+    sans plus rien à choisir/saisir manuellement (voir `EleveProfileViewSet.reinscription`)."""
 
     eleves = serializers.ListField(child=serializers.IntegerField(), allow_empty=False)
     classe_destination = serializers.IntegerField()
-    type_frais = serializers.IntegerField(required=False, allow_null=True)
-    montant_frais = serializers.DecimalField(max_digits=10, decimal_places=2, required=False, allow_null=True)
     date_echeance_frais = serializers.DateField(required=False, allow_null=True)
 
 

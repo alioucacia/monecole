@@ -154,7 +154,7 @@ export interface ParametresPlateforme {
 
 /** Sous-ensemble public de `ParametresPlateforme` (nom + logo) — lisible sans authentification,
  * affiché partout dans l'app (page de connexion, barre latérale...). */
-export type PlateformeBranding = Pick<ParametresPlateforme, "nom_plateforme" | "logo">;
+export type PlateformeBranding = Pick<ParametresPlateforme, "nom_plateforme" | "logo" | "maintenance_active" | "maintenance_message">;
 
 export interface SupervisionData {
   taille_base_donnees_octets: number;
@@ -608,6 +608,11 @@ export interface JustificatifAbsence {
 
 export type PeriodiciteFrais = "mensuel" | "trimestriel" | "annuel" | "autre";
 
+/** Marque ce type de frais comme LE frais d'inscription/réinscription de l'école (au plus un de
+ * chaque) — permet de retrouver son montant par classe (voir TarifClasse) sans le resaisir à la
+ * création d'un élève ou à la réinscription. */
+export type UsageFrais = "standard" | "inscription" | "reinscription";
+
 export interface TypeFrais {
   id: number;
   nom: string;
@@ -616,6 +621,8 @@ export interface TypeFrais {
   periodicite_display: string;
   /** Dérivé de `periodicite` côté backend (== "mensuel") — lecture seule. */
   est_mensuel: boolean;
+  usage: UsageFrais;
+  usage_display: string;
 }
 
 /** Montant paramétré d'un type de frais pour une classe donnée, sur une année scolaire — sert de

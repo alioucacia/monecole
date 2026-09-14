@@ -54,8 +54,23 @@ export function PdfInlineViewer({
   if (!objectUrl) return null;
 
   return (
-    <div className="rounded-2xl2 border border-slate-100 shadow-card overflow-hidden bg-slate-100" style={{ height }}>
-      <iframe src={objectUrl} title="Aperçu du document" className="w-full h-full border-0" />
+    <div>
+      {/* La plupart des navigateurs mobiles (Chrome Android, Safari iOS...) n'embarquent pas de
+          lecteur PDF exploitable dans un <iframe> — contrairement aux navigateurs de bureau, qui
+          l'affichent nativement — et rendent silencieusement un cadre vide, sans la moindre
+          erreur. Ce lien reste donc le seul moyen fiable de consulter le bulletin sur mobile : il
+          ouvre le PDF dans le lecteur natif du téléphone/de l'app, en plein écran. */}
+      <a
+        href={objectUrl}
+        target="_blank"
+        rel="noreferrer"
+        className="no-print mb-3 inline-flex items-center gap-1.5 text-sm font-semibold text-brand-600 hover:underline"
+      >
+        🔗 Ouvrir dans un nouvel onglet (recommandé sur mobile)
+      </a>
+      <div className="rounded-2xl2 border border-slate-100 shadow-card overflow-hidden bg-slate-100" style={{ height }}>
+        <iframe src={objectUrl} title="Aperçu du document" className="w-full h-full border-0" />
+      </div>
     </div>
   );
 }

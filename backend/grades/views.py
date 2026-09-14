@@ -720,6 +720,10 @@ class ResultatsPdfView(APIView):
             "moyenne_classe": moyenne_classe,
             "taux_reussite": taux_reussite,
             "ecole_nom": request.user.ecole.nom if request.user.ecole_id else "Taly-School",
+            "ecole_logo_data_uri": (
+                _image_data_uri(request.user.ecole.logo, _mm_px(16, 16), mode="contain")
+                if request.user.ecole_id and request.user.ecole.logo else None
+            ),
         })
         buffer = BytesIO()
         pisa.CreatePDF(html, dest=buffer, encoding="utf-8")
@@ -765,6 +769,10 @@ class AttestationHonneurPdfView(APIView):
             "effectif": len(resultats),
             "date_edition": timezone.localdate(),
             "ecole_nom": request.user.ecole.nom if request.user.ecole_id else "Taly-School",
+            "ecole_logo_data_uri": (
+                _image_data_uri(request.user.ecole.logo, _mm_px(18, 18), mode="contain")
+                if request.user.ecole_id and request.user.ecole.logo else None
+            ),
         })
         buffer = BytesIO()
         pisa.CreatePDF(html, dest=buffer, encoding="utf-8")

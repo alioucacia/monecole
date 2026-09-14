@@ -19,6 +19,11 @@ class TypeFrais(models.Model):
         ANNUEL = "annuel", "Annuel"
         AUTRE = "autre", "Autre / ponctuel"
 
+    class Usage(models.TextChoices):
+        STANDARD = "standard", "Standard"
+        INSCRIPTION = "inscription", "Frais d'inscription (nouvel élève)"
+        REINSCRIPTION = "reinscription", "Frais de réinscription"
+
     ecole = models.ForeignKey("tenants.Ecole", on_delete=models.CASCADE, null=True, related_name="types_frais")
     nom = models.CharField(max_length=100, help_text="Ex: Frais de scolarité, Cantine, Transport")
     montant_standard = models.DecimalField(max_digits=10, decimal_places=2)
@@ -35,6 +40,15 @@ class TypeFrais(models.Model):
         default=False,
         help_text="Frais récurrent chaque mois (ex: scolarité mensuelle) — active le suivi mois par mois de l'élève",
     )
+    # Marque CE type de frais comme LE frais d'inscription (ou de réinscription) de l'école — au
+    # plus un de chaque par école, à la discrétion de l'admin (rien n'empêche techniquement d'en
+    # marquer deux, seul le premier trouvé est utilisé). Permet de le retrouver de façon fiable
+    # (StudentsPage à la création d'un élève, ReinscriptionPage) sans deviner sur le nom (un
+    # `nom__icontains="inscription"` matchait aussi bien "réinscription" que "inscription", voir
+    # people.views.EleveProfileViewSet.recu_inscription) — et surtout, une fois marqué, son
+    # montant par classe se règle avec le mécanisme déjà existant (TarifClasse / "Tarifs par
+    # classe"), qui fonctionne pour n'importe quel TypeFrais sans rien y ajouter.
+    usage = models.CharField(max_length=20, choices=Usage.choices, default=Usage.STANDARD)
 
     class Meta:
         ordering = ["nom"]
@@ -106,14 +120,30 @@ class Frais(models.Model):
         Tant qu'aucun paiement n'a été encaissé sur ce frais, la réduction appliquée est celle
         actuelle de l'élève (`facteur_applique` vaut `None`, recalculée à la volée à chaque appel).
         Dès le PREMIER paiement, `facteur_applique` est figé (voir `PaiementViewSet.perform_create`)
-        à la réduction en vigueur à cet instant — un changement de catégorie de paiement ultérieur
-        n'affecte alors plus ce frais : la réduction ne s'applique jamais à une somme déjà versée.
-        Sans ce gel, changer la catégorie de l'élève après des paiements déjà encaissés recalculait
-        rétroactivement le montant dû — un mois déjà soldé au tarif réduit repassait « impayé/
-        partiel » dès que la réduction était retirée après coup (ou l'inverse en l'accordant)."""
+        à la réduction en vigueur à cet instant, pour ne jamais recalculer rétroactivement un mois
+        déjà soldé (un mois payé à 100% ne doit pas repasser « impayé/partiel » si la réduction de
+        l'élève est retirée après coup).
+
+        MAIS ce gel ne doit bloquer que les DURCISSEMENTS (réduction retirée/diminuée) — jamais un
+        ASSOUPLISSEMENT (nouvelle catégorie plus favorable, ou réduction fidélité tout juste
+        accordée) : un gel figé une bonne fois pour toutes au premier paiement empêchait cette
+        dernière de jamais s'appliquer aux mois suivants de l'année, y compris ceux pas encore
+        payés — c'était le bug initialement signalé ici. Le gel « cliquette » donc uniquement vers
+        le bas : dès qu'un facteur plus favorable que celui figé est observé, il devient le nouveau
+        gel (persisté), et ne remonte plus jamais — un mois soldé pendant une période où la
+        réduction était plus généreuse reste protégé même si elle est ensuite retirée."""
         if not self.type_frais.est_mensuel:
             return self.montant
-        facteur = self.facteur_applique if self.facteur_applique is not None else self.eleve.facteur_mensualite
+        facteur_actuel = self.eleve.facteur_mensualite
+        if self.facteur_applique is None:
+            facteur = facteur_actuel
+        elif facteur_actuel < self.facteur_applique:
+            self.facteur_applique = facteur_actuel
+            if self.pk:
+                type(self).objects.filter(pk=self.pk).update(facteur_applique=facteur_actuel)
+            facteur = facteur_actuel
+        else:
+            facteur = self.facteur_applique
         # `facteur` a 3 décimales (voir facteur_applique/EleveProfile.facteur_mensualite) : sans
         # arrondi, le produit hérite de ces 3 décimales et dépasse les 2 autorisées par
         # Paiement.montant, ce qui rejette avec une erreur de validation tout paiement dont le

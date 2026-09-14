@@ -16,10 +16,11 @@ class CategorieDepenseSerializer(serializers.ModelSerializer):
 
 class TypeFraisSerializer(serializers.ModelSerializer):
     periodicite_display = serializers.CharField(source="get_periodicite_display", read_only=True)
+    usage_display = serializers.CharField(source="get_usage_display", read_only=True)
 
     class Meta:
         model = TypeFrais
-        fields = ["id", "nom", "montant_standard", "periodicite", "periodicite_display", "est_mensuel"]
+        fields = ["id", "nom", "montant_standard", "periodicite", "periodicite_display", "est_mensuel", "usage", "usage_display"]
         # Dérivé automatiquement de `periodicite` par `TypeFrais.save()` — lecture seule ici pour
         # qu'il n'y ait qu'une seule source de vérité côté client (le sélecteur de périodicité).
         read_only_fields = ["est_mensuel"]

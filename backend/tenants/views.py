@@ -383,8 +383,15 @@ class PaiementEcoleViewSet(viewsets.ModelViewSet):
         from django.template.loader import render_to_string
         from xhtml2pdf import pisa
 
+        from people.views import _image_data_uri, _mm_px
+
         paiement = self.get_object()
-        html = render_to_string("tenants/facture_abonnement_pdf.html", {"p": paiement})
+        plateforme = ParametresPlateforme.charger()
+        html = render_to_string("tenants/facture_abonnement_pdf.html", {
+            "p": paiement,
+            "plateforme_nom": plateforme.nom_plateforme,
+            "plateforme_logo_data_uri": _image_data_uri(plateforme.logo, _mm_px(14, 14), mode="contain") if plateforme.logo else None,
+        })
         buffer = BytesIO()
         pisa.CreatePDF(html, dest=buffer, encoding="utf-8")
         response = HttpResponse(buffer.getvalue(), content_type="application/pdf")

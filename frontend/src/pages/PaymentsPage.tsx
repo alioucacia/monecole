@@ -8,7 +8,7 @@ import { CycleSelect } from "../components/CycleSelect";
 import { useAuth } from "../context/AuthContext";
 import { useToast } from "../context/ToastContext";
 import { usePaginated } from "../hooks/usePaginated";
-import type { AnneeScolaire, Classe, Cycle, EleveProfile, Frais, Periode, PeriodiciteFrais, TypeFrais } from "../types";
+import type { AnneeScolaire, Classe, Cycle, EleveProfile, Frais, Periode, PeriodiciteFrais, TypeFrais, UsageFrais } from "../types";
 
 const STATUT_LABELS: Record<string, { label: string; color: "green" | "amber" | "rose" }> = {
   paye: { label: "Payé", color: "green" },
@@ -45,7 +45,13 @@ function echeanceDuMois(annee: AnneeScolaire, mois: string): string {
   return `${anneeCalendaire}-${mois}-01`;
 }
 const emptyPaiementForm = { montant: "", mode_paiement: "especes", reference: "", mois: "", periode: "" };
-const emptyTypeForm = { nom: "", montant_standard: "", periodicite: "autre" as PeriodiciteFrais };
+const emptyTypeForm = { nom: "", montant_standard: "", periodicite: "autre" as PeriodiciteFrais, usage: "standard" as UsageFrais };
+
+const USAGE_LABELS: Record<UsageFrais, string> = {
+  standard: "Standard",
+  inscription: "Frais d'inscription (nouvel élève)",
+  reinscription: "Frais de réinscription",
+};
 
 const PERIODICITE_LABELS: Record<PeriodiciteFrais, string> = {
   mensuel: "Mensuel", trimestriel: "Tranche", annuel: "Annuel", autre: "Autre / ponctuel",
@@ -349,7 +355,7 @@ export default function PaymentsPage() {
 
   const openTypeEdit = (type: TypeFrais) => {
     setTypeEditTarget(type);
-    setTypeForm({ nom: type.nom, montant_standard: type.montant_standard, periodicite: type.periodicite });
+    setTypeForm({ nom: type.nom, montant_standard: type.montant_standard, periodicite: type.periodicite, usage: type.usage });
     setTypeError("");
   };
 
@@ -358,7 +364,7 @@ export default function PaymentsPage() {
     setTypeSaving(true);
     setTypeError("");
     try {
-      const payload = { nom: typeForm.nom, montant_standard: typeForm.montant_standard, periodicite: typeForm.periodicite };
+      const payload = { nom: typeForm.nom, montant_standard: typeForm.montant_standard, periodicite: typeForm.periodicite, usage: typeForm.usage };
       if (typeEditTarget) {
         await typesFraisApi.update(typeEditTarget.id, payload);
       } else {
@@ -693,7 +699,36 @@ export default function PaymentsPage() {
           historiqueTarget.paiements.length === 0 ? (
             <EmptyState title="Aucun paiement sur ce frais" />
           ) : (
-            <Table headers={["Date", "Montant", "Mode", "Mois", "Référence", "Enregistré par", ...(user?.role === "admin" ? [""] : [])]}>
+            <>
+              {historiqueTarget.type_frais_periodicite === "annuel" && (() => {
+                // Un frais Annuel se règle en un seul versement (pas de mois/tranche associé à
+                // chaque paiement, contrairement au Mensuel/Tranche) — pour donner malgré tout un
+                // repère mensuel à l'admin/comptable, le total encaissé est réparti à parts égales
+                // sur les 9 mois de l'année scolaire, un pur calcul d'affichage (aucun `mois` n'est
+                // écrit sur les paiements eux-mêmes, qui restent un seul versement annuel).
+                const annee = annees.find((a) => a.id === historiqueTarget.annee_scolaire);
+                if (!annee) return null;
+                const mois9 = moisDeLAnnee(annee).slice(0, 9);
+                const montantParMois = Number(historiqueTarget.montant_paye) / 9;
+                return (
+                  <div className="mb-5">
+                    <p className="text-sm font-bold text-ink-900 mb-1">Équivalent mensuel (total payé ÷ 9 mois)</p>
+                    <p className="text-xs text-slate-400 mb-3">
+                      Ce frais est Annuel — versé en une fois, sans mois associé. Répartition indicative du total
+                      payé ({money(historiqueTarget.montant_paye)}) sur les 9 mois de l'année scolaire.
+                    </p>
+                    <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
+                      {mois9.map((m) => (
+                        <div key={m} className="rounded-xl border border-slate-100 bg-slate-50 px-3 py-2">
+                          <p className="text-xs text-slate-400 capitalize">{moisLabelLong(m)}</p>
+                          <p className="text-sm font-bold text-ink-900">{money(montantParMois.toFixed(2))}</p>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                );
+              })()}
+              <Table headers={["Date", "Montant", "Mode", "Mois", "Référence", "Enregistré par", ...(user?.role === "admin" ? [""] : [])]}>
               {[...historiqueTarget.paiements]
                 .sort((a, b) => b.date_paiement.localeCompare(a.date_paiement))
                 .map((p) => (
@@ -717,7 +752,8 @@ export default function PaymentsPage() {
                     )}
                   </tr>
                 ))}
-            </Table>
+              </Table>
+            </>
           )
         )}
       </Modal>
@@ -725,13 +761,16 @@ export default function PaymentsPage() {
       <Modal open={typesModalOpen} onClose={() => setTypesModalOpen(false)} title="Types de frais">
         <div className="space-y-4">
           {types.length > 0 && (
-            <Table headers={["Nom", "Montant standard", "Périodicité", ""]}>
+            <Table headers={["Nom", "Montant standard", "Périodicité", "Usage", ""]}>
               {types.map((t) => (
                 <tr key={t.id}>
                   <td className="px-4 py-2.5">{t.nom}</td>
                   <td className="px-4 py-2.5">{money(t.montant_standard)}</td>
                   <td className="px-4 py-2.5">
                     {t.periodicite === "autre" ? <span className="text-slate-400">Autre / ponctuel</span> : <Badge color="brand">{t.periodicite_display}</Badge>}
+                  </td>
+                  <td className="px-4 py-2.5">
+                    {t.usage === "standard" ? <span className="text-slate-400">—</span> : <Badge color="teal">{t.usage_display}</Badge>}
                   </td>
                   <td className="px-4 py-2.5">
                     <div className="flex gap-3">
@@ -758,6 +797,19 @@ export default function PaymentsPage() {
             <p className="text-xs text-slate-400 -mt-2">
               Détermine l'échéance proposée à la création d'un frais de ce type : un mois de l'année scolaire (Mensuel — active
               aussi le suivi mois par mois), un trimestre (Trimestriel), l'année scolaire elle-même (Annuel), ou une date libre (Autre).
+            </p>
+
+            <Select
+              label="Usage"
+              value={typeForm.usage}
+              onChange={(e) => setTypeForm({ ...typeForm, usage: e.target.value as UsageFrais })}
+            >
+              {(Object.keys(USAGE_LABELS) as UsageFrais[]).map((u) => <option key={u} value={u}>{USAGE_LABELS[u]}</option>)}
+            </Select>
+            <p className="text-xs text-slate-400 -mt-2">
+              Marquez ici LE type de frais d'inscription ou de réinscription de l'établissement (un seul de chaque) : son
+              montant, réglé par classe dans « 💰 Tarifs par classe », est alors proposé/appliqué automatiquement à
+              l'inscription d'un nouvel élève et à la réinscription — sans plus rien à ressaisir à chaque fois.
             </p>
 
             {typeError && <p className="text-sm text-rose-600 bg-rose-50 border border-rose-100 rounded-xl px-3.5 py-2.5">{typeError}</p>}

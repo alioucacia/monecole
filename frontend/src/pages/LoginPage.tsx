@@ -74,15 +74,46 @@ export default function LoginPage() {
   const [loading, setLoading] = useState(false);
   const [nomPlateforme, setNomPlateforme] = useState("Taly-School");
   const [logoPlateforme, setLogoPlateforme] = useState<string | null>(null);
+  // `undefined` tant que la réponse de plateformeBrandingApi n'est pas encore arrivée — on évite
+  // ainsi d'afficher une fraction de seconde le formulaire de connexion avant de basculer sur
+  // l'écran de maintenance (ou l'inverse), le temps que l'appel réseau aboutisse.
+  const [maintenance, setMaintenance] = useState<{ active: boolean; message: string } | undefined>(undefined);
 
   useEffect(() => {
     plateformeBrandingApi.get().then(({ data }) => {
       if (data.nom_plateforme) setNomPlateforme(data.nom_plateforme);
       setLogoPlateforme(data.logo);
-    }).catch(() => {});
+      setMaintenance({ active: data.maintenance_active, message: data.maintenance_message });
+    }).catch(() => setMaintenance({ active: false, message: "" }));
   }, []);
 
   if (user) return <Navigate to="/" replace />;
+
+  if (maintenance?.active) {
+    return (
+      <div className="min-h-screen flex items-center justify-center px-4 gradient-surface relative overflow-hidden">
+        <div className="pointer-events-none absolute -top-32 -left-24 h-96 w-96 rounded-full bg-accent-400/30 blur-3xl" />
+        <div className="pointer-events-none absolute -bottom-40 -right-20 h-[28rem] w-[28rem] rounded-full bg-brand-400/30 blur-3xl" />
+
+        <div className="relative flex flex-col items-center text-center max-w-sm">
+          <div className="h-16 w-16 rounded-2xl bg-white/10 flex items-center justify-center text-3xl mb-6 ring-1 ring-white/20 overflow-hidden backdrop-blur">
+            {logoPlateforme ? <img src={logoPlateforme} alt="" className="h-full w-full object-cover" /> : "🏫"}
+          </div>
+
+          <div className="h-14 w-14 animate-spin rounded-full border-4 border-white/25 border-t-white" />
+
+          {/* Popup (bulle) sous le spinner, avec sa petite pointe vers le haut. */}
+          <div className="relative mt-7 bg-white rounded-2xl shadow-2xl px-6 py-5 animate-pop-in">
+            <div className="absolute -top-2 left-1/2 -translate-x-1/2 h-4 w-4 rotate-45 bg-white" />
+            <p className="relative font-extrabold text-ink-900 mb-1.5">🛠️ {nomPlateforme} est en maintenance</p>
+            <p className="relative text-sm text-slate-500 leading-relaxed">
+              {maintenance.message || "Nous effectuons une mise à jour. Merci de réessayer dans quelques instants."}
+            </p>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   const handleSubmit = async (e: FormEvent) => {
     e.preventDefault();

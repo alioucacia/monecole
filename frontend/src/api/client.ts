@@ -89,9 +89,14 @@ api.interceptors.response.use(
     const errorCode = (error.response?.data as { code?: string } | undefined)?.code;
     const isLoginRequest = originalRequest?.url?.includes("/auth/login");
     if (error.response?.status === 401 && !isLoginRequest && (errorCode === "maintenance" || errorCode === "ecole_inactive" || errorCode === "session_expiree")) {
-      const detail = (error.response?.data as { detail?: string } | undefined)?.detail;
       tokenStorage.clear();
-      emitToast("warning", detail || "L'accès à la plateforme est actuellement bloqué.");
+      // Pas de toast pour "maintenance" : LoginPage affiche déjà, au chargement, un écran de
+      // maintenance dédié (spinner + message) à la place du formulaire — un toast en plus ferait
+      // doublon avec ce même message.
+      if (errorCode !== "maintenance") {
+        const detail = (error.response?.data as { detail?: string } | undefined)?.detail;
+        emitToast("warning", detail || "L'accès à la plateforme est actuellement bloqué.");
+      }
       window.location.href = "/login";
       return Promise.reject(error);
     }

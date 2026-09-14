@@ -141,6 +141,45 @@ class TypeFraisViewSet(viewsets.ModelViewSet):
                 "(historique de paiements). Vous pouvez le renommer à la place."
             )
 
+    @action(detail=False, methods=["get"], url_path="tarif-par-usage")
+    def tarif_par_usage(self, request):
+        """Résout en un seul appel le montant d'inscription ou de réinscription configuré pour
+        une classe — combine `TypeFrais.usage` (lequel des types de frais de l'école EST le frais
+        d'inscription/réinscription, voir ce champ) et `TarifClasse` (son montant POUR CETTE
+        classe) : évite au frontend (StudentsPage à la création d'un élève, ReinscriptionPage) de
+        connaître l'id du type de frais ou de faire deux requêtes. Renvoie systématiquement 200,
+        avec `type_frais`/`montant` à `null` si rien n'est configuré (l'admin n'a pas encore créé
+        ce type de frais, ou pas encore réglé son tarif pour cette classe) — laisser le frontend
+        décider comment l'indiquer plutôt que de renvoyer une erreur pour un cas de configuration
+        parfaitement normal (nouvelle école, pas encore paramétrée)."""
+        from academics.models import Classe
+
+        usage = request.query_params.get("usage")
+        classe_id = request.query_params.get("classe")
+        if usage not in (TypeFrais.Usage.INSCRIPTION, TypeFrais.Usage.REINSCRIPTION):
+            raise ValidationError("Le paramètre 'usage' doit valoir 'inscription' ou 'reinscription'.")
+        if not classe_id:
+            raise ValidationError("Le paramètre 'classe' est requis.")
+        classe = get_object_or_404(Classe, pk=classe_id, annee_scolaire__ecole_id=request.user.ecole_id)
+
+        type_frais = TypeFrais.objects.filter(ecole_id=request.user.ecole_id, usage=usage).first()
+        if not type_frais:
+            return Response({"type_frais": None, "type_frais_nom": None, "montant": None})
+
+        tarif = TarifClasse.objects.filter(
+            ecole_id=request.user.ecole_id, type_frais=type_frais,
+            classe=classe, annee_scolaire_id=classe.annee_scolaire_id,
+        ).first()
+        return Response({
+            "type_frais": type_frais.id,
+            "type_frais_nom": type_frais.nom,
+            # Faute d'un tarif spécifique à cette classe, le tarif standard du type de frais sert
+            # de repli — cohérent avec le reste de l'app (FraisViewSet.generer_pour_classe fait
+            # de même) plutôt que de renvoyer `null` et laisser croire qu'il n'y a rien à payer.
+            "montant": str(tarif.montant) if tarif else str(type_frais.montant_standard),
+            "montant_specifique_classe": tarif is not None,
+        })
+
 
 class TarifClasseViewSet(viewsets.ModelViewSet):
     """Paramétrage, par classe et par année scolaire, du montant de chaque type de frais —

@@ -326,10 +326,10 @@ function AbonnementBadge({ ecole }: { ecole: Ecole | null }) {
   let texte: string;
   if (ecole.statut_abonnement === "paye") {
     const j = joursAvantProchaineEcheance(ecole.jour_echeance);
-    texte = `✓ Il vous reste ${j}j`;
+    texte = `✓ Jours restant ${j}`;
   } else if (ecole.statut_abonnement === "en_attente" && ecole.jours_avant_echeance !== null) {
     const j = ecole.jours_avant_echeance;
-    texte = j > 0 ? `Il vous reste ${j}j` : "Échéance aujourd'hui";
+    texte = j > 0 ? `Jours restant ${j}` : "Échéance aujourd'hui";
   } else if (ecole.statut_abonnement === "en_retard" && ecole.jours_avant_blocage !== null) {
     const j = ecole.jours_avant_blocage;
     texte = j > 0 ? `⚠️ Blocage dans ${j}j` : "⚠️ Blocage imminent";
@@ -527,7 +527,7 @@ export function AppLayout() {
                             } ${
                               isActive
                                 ? "bg-white text-brand-800 shadow-lg"
-                                : "text-white/85 hover:bg-white/10 hover:text-white"
+                                : "text-white/85 hover:bg-white/10 hover:text-white hover:translate-x-1"
                             }`
                           }
                         >
@@ -590,7 +590,13 @@ export function AppLayout() {
       </aside>
 
       <div className="flex-1 flex flex-col overflow-hidden">
-        <header className="h-16 bg-white/80 backdrop-blur-sm border-b border-slate-100 flex items-center justify-between px-3 sm:px-6 no-print">
+        {/* `min-h-16` + `flex-wrap` (au lieu de `h-16` fixe sans wrap) : sur un écran étroit, le
+            sélecteur d'année scolaire (groupe de gauche) et le badge d'abonnement (groupe de
+            droite, ni l'un ni l'autre compressible) ne tenaient plus côte à côte sur une seule
+            ligne de 64px et se chevauchaient au lieu de passer à la ligne — l'en-tête grandit
+            maintenant simplement d'une ligne quand c'est nécessaire, sans effet sur le bureau où
+            tout continue de tenir sur une seule ligne. */}
+        <header className="min-h-16 bg-white/80 backdrop-blur-sm border-b border-slate-100 flex flex-wrap items-center justify-between gap-y-2 py-2 px-3 sm:px-6 no-print">
           <div className="flex items-center gap-2 min-w-0">
             <button
               type="button"

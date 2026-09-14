@@ -9,6 +9,7 @@
     .header td { padding: 12px 16px; color: #ffffff; }
     .header .brand { font-size: 16px; font-weight: bold; }
     .header .subtitle { font-size: 10px; margin-top: 2px; }
+    .header .logo { width: 9mm; height: 9mm; object-fit: contain; vertical-align: middle; margin-right: 2mm; border-radius: 4px; background-color: #ffffff; }
 
     table.carte { width: 100%; border: 2px solid #fde68a; border-radius: 10px; }
     .carte td { padding: 14px; vertical-align: top; }
@@ -29,7 +30,7 @@
 <body>
     <table class="header">
         <tr><td>
-            <div class="brand">🎒 {{ ecole_nom }} — Autorisation de récupération</div>
+            <div class="brand">{% if ecole_logo_data_uri %}<img class="logo" src="{{ ecole_logo_data_uri }}" />{% else %}🎒{% endif %} {{ ecole_nom }} — Autorisation de récupération</div>
             <div class="subtitle">Préscolaire / Maternelle</div>
         </td></tr>
     </table>

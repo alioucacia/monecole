@@ -1,7 +1,7 @@
 import { useEffect, useState, type FormEvent } from "react";
 import { Link, useLocation, useNavigate } from "react-router-dom";
 
-import { classesApi, elevesApi, unwrapList, usersApi } from "../api/services";
+import { classesApi, elevesApi, typesFraisApi, unwrapList, usersApi } from "../api/services";
 import { extractErrorMessage } from "../api/client";
 import { Button, DeleteButton, EditButton, EmptyState, Input, Modal, PageHeader, RowActions, Select, Spinner, Table } from "../components/ui";
 import { ClasseOptions, CycleSelect } from "../components/CycleSelect";
@@ -10,6 +10,10 @@ import { usePaginated } from "../hooks/usePaginated";
 import type { Classe, Cycle, EleveProfile, User } from "../types";
 
 type ParentMode = "aucun" | "existant" | "nouveau";
+
+function money(value: number | string) {
+  return `${Number(value).toLocaleString("fr-FR")} GNF`;
+}
 
 const emptyForm = {
   first_name: "", last_name: "", email: "", matricule: "", classe: "", parent: "",
@@ -43,6 +47,10 @@ export default function StudentsPage() {
   const [importing, setImporting] = useState(false);
   const [importRapport, setImportRapport] = useState<{ crees: number; total_lignes: number; erreurs: { ligne: number; message: string }[] } | null>(null);
   const [importError, setImportError] = useState("");
+  // Frais d'inscription réglé pour la classe choisie (voir TypeFrais.usage + TarifClasse) —
+  // purement informatif ici : le frais lui-même reste créé à la main dans Paiements, comme
+  // avant, ce chiffre sert juste de repère à l'admin au moment d'inscrire l'élève.
+  const [tarifInscription, setTarifInscription] = useState<{ type_frais_nom: string | null; montant: string | null } | null>(null);
 
   const { items, loading, hasNext, hasPrevious, goNext, goPrevious, reload } = usePaginated<EleveProfile>(
     () => elevesApi.list({ search: search || undefined, classe: classeFilter || undefined, cycle: cycleFilter || undefined }),
@@ -55,6 +63,18 @@ export default function StudentsPage() {
       usersApi.list({ role: "parent" }).then(({ data }) => setParents(unwrapList(data)));
     }
   }, [isAdmin]);
+
+  useEffect(() => {
+    // Uniquement pour une nouvelle inscription — un élève déjà inscrit n'a pas à réafficher ce
+    // montant (déjà facturé ou non, ce n'est plus la question au moment d'une simple modification).
+    if (!form.classe || editing) {
+      setTarifInscription(null);
+      return;
+    }
+    typesFraisApi.tarifParUsage("inscription", Number(form.classe))
+      .then(({ data }) => setTarifInscription(data))
+      .catch(() => setTarifInscription(null));
+  }, [form.classe, editing]);
 
   const openCreate = () => {
     setEditing(null);
@@ -293,10 +313,18 @@ export default function StudentsPage() {
             </label>
           )}
           <Input label="Email" type="email" value={form.email} onChange={(e) => setForm({ ...form, email: e.target.value })} />
-          <Select label="Classe" value={form.classe} onChange={(e) => setForm({ ...form, classe: e.target.value })}>
-            <option value="">— Aucune —</option>
-            <ClasseOptions classes={classes} avecPlacesDisponibles />
-          </Select>
+          <div>
+            <Select label="Classe" value={form.classe} onChange={(e) => setForm({ ...form, classe: e.target.value })}>
+              <option value="">— Aucune —</option>
+              <ClasseOptions classes={classes} avecPlacesDisponibles />
+            </Select>
+            {tarifInscription?.type_frais_nom && tarifInscription.montant !== null && (
+              <p className="text-xs text-slate-500 mt-1.5">
+                {tarifInscription.type_frais_nom} pour cette classe : <span className="font-semibold text-ink-900">{money(tarifInscription.montant)}</span>
+                {" "}— à créer dans Paiements une fois l'élève inscrit.
+              </p>
+            )}
+          </div>
           <Select label="Genre" value={form.sexe} onChange={(e) => setForm({ ...form, sexe: e.target.value })}>
             <option value="">— Non précisé —</option>
             <option value="M">Masculin</option>

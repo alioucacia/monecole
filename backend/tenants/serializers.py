@@ -1,5 +1,6 @@
 from rest_framework import serializers
 
+from core.validators import EXTENSIONS_IMAGE, TAILLE_MAX_IMAGE, valider_taille_fichier
 from .features import FONCTIONNALITES
 from .messages_templates import MODELES_MESSAGE
 from .models import Ecole, JournalActivite, ModeleMessage, ParametresEcole, ParametresPlateforme, PaiementEcole, PlanAbonnement
@@ -25,16 +26,25 @@ class ParametresPlateformeSerializer(serializers.ModelSerializer):
             "sms_actif", "maintenance_active", "maintenance_message",
         ]
 
+    def validate_logo(self, fichier):
+        # Sans ceci, un fichier trop volumineux (ou d'un format non pris en charge) remontait tel
+        # quel jusqu'à Pillow — au mieux une erreur 400 correcte, au pire une exception non
+        # rattrapée (ex: image décompressée trop grande) qui finissait en 500 générique côté client.
+        return valider_taille_fichier(fichier, TAILLE_MAX_IMAGE, EXTENSIONS_IMAGE)
+
 
 class PlateformeBrandingSerializer(serializers.ModelSerializer):
-    """Sous-ensemble public de `ParametresPlateforme` (nom + logo uniquement) — affiché partout
-    dans l'app (page de connexion, barre latérale...), donc lisible sans authentification,
-    contrairement au reste des réglages plateforme (support, maintenance...) réservé au Super
-    Admin."""
+    """Sous-ensemble public de `ParametresPlateforme` — affiché partout dans l'app (page de
+    connexion, barre latérale...), donc lisible sans authentification, contrairement au reste des
+    réglages plateforme (support...) réservé au Super Admin. `maintenance_active`/
+    `maintenance_message` y sont ajoutés (pas sensibles — un simple statut + un message destiné
+    aux utilisateurs) pour que la page de connexion puisse afficher un écran de maintenance dédié
+    AVANT même de tenter une connexion, plutôt que de laisser l'utilisateur taper ses identifiants
+    pour découvrir le blocage seulement après coup (voir LoginPage.tsx)."""
 
     class Meta:
         model = ParametresPlateforme
-        fields = ["nom_plateforme", "logo"]
+        fields = ["nom_plateforme", "logo", "maintenance_active", "maintenance_message"]
 
 
 class ParametresEcoleSerializer(serializers.ModelSerializer):
@@ -164,6 +174,9 @@ class EcoleCreateSerializer(serializers.ModelSerializer):
             raise serializers.ValidationError("La seconde année doit suivre directement la première.")
         return value
 
+    def validate_logo(self, fichier):
+        return valider_taille_fichier(fichier, TAILLE_MAX_IMAGE, EXTENSIONS_IMAGE)
+
     def create(self, validated_data):
         from datetime import date
 
@@ -224,6 +237,12 @@ class MonEcoleSerializer(serializers.ModelSerializer):
             "abonnement_mensuel", "jour_echeance", "jours_grace",
             "couleur_principale", "couleur_secondaire", "fonctionnalites_desactivees",
         ]
+
+    def validate_logo(self, fichier):
+        # Sans cette limite, un fichier trop volumineux (ou d'un format non pris en charge par
+        # Pillow) provoquait une erreur 500 générique au lieu d'un message clair — c'est le bug
+        # remonté par l'administrateur en essayant de changer le logo de son école.
+        return valider_taille_fichier(fichier, TAILLE_MAX_IMAGE, EXTENSIONS_IMAGE)
 
     def update(self, instance, validated_data):
         parametres_data = validated_data.pop("parametres", None)

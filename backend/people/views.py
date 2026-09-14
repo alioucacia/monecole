@@ -149,6 +149,10 @@ class EleveProfileViewSet(viewsets.ModelViewSet):
             "classe_nom": classe_nom,
             "date_generation": timezone.now(),
             "ecole_nom": _ecole_nom(request.user),
+            "ecole_logo_data_uri": (
+                _image_data_uri(request.user.ecole.logo, _mm_px(16, 16), mode="contain")
+                if request.user.ecole_id and request.user.ecole.logo else None
+            ),
         })
         buffer = BytesIO()
         pisa.CreatePDF(html, dest=buffer, encoding="utf-8")
@@ -228,7 +232,7 @@ class EleveProfileViewSet(viewsets.ModelViewSet):
     def reinscription(self, request):
         """Réinscrit en masse une sélection d'élèves dans une classe (généralement l'année
         suivante), avec création optionnelle d'un frais de réinscription pour chacun."""
-        from payments.models import Frais, TypeFrais  # import différé pour éviter une dépendance circulaire
+        from payments.models import Frais, TarifClasse, TypeFrais  # import différé pour éviter une dépendance circulaire
 
         serializer = ReinscriptionSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
@@ -255,21 +259,29 @@ class EleveProfileViewSet(viewsets.ModelViewSet):
                 f"place(s) disponible(s) pour {nouveaux_eleves} nouvel(le)s élève(s) à réinscrire."
             )
 
-        type_frais = None
-        if payload.get("type_frais"):
-            type_frais = TypeFrais.objects.filter(pk=payload["type_frais"], ecole_id=request.user.ecole_id).first()
-            if not type_frais:
-                raise ValidationError("Type de frais introuvable dans votre établissement.")
+        # Type de frais marqué comme LE frais de réinscription de l'école (voir
+        # `TypeFrais.Usage.REINSCRIPTION`), et son tarif pour la classe de destination — avec
+        # repli sur le tarif standard du type de frais si aucun tarif spécifique à cette classe
+        # n'a été réglé (même logique que `TypeFraisViewSet.tarif_par_usage`, utilisé côté
+        # frontend pour afficher ce montant avant de lancer la réinscription).
+        type_frais = TypeFrais.objects.filter(ecole_id=request.user.ecole_id, usage=TypeFrais.Usage.REINSCRIPTION).first()
+        montant_frais = None
+        if type_frais:
+            tarif = TarifClasse.objects.filter(
+                ecole_id=request.user.ecole_id, type_frais=type_frais,
+                classe=classe_destination, annee_scolaire_id=classe_destination.annee_scolaire_id,
+            ).first()
+            montant_frais = tarif.montant if tarif else type_frais.montant_standard
 
         frais_crees = 0
         for eleve in eleves:
             eleve.classe = classe_destination
             eleve.save(update_fields=["classe"])
             enregistrer_historique_classe(eleve, classe_destination)
-            if type_frais and payload.get("montant_frais"):
+            if type_frais and montant_frais:
                 Frais.objects.create(
                     eleve=eleve, type_frais=type_frais, annee_scolaire=classe_destination.annee_scolaire,
-                    montant=payload["montant_frais"],
+                    montant=montant_frais,
                     date_echeance=payload.get("date_echeance_frais") or (date.today() + timedelta(days=30)),
                 )
                 frais_crees += 1
@@ -832,6 +844,10 @@ class EleveBadgeViewSet(viewsets.ModelViewSet):
             "photo_data_uri": _image_data_uri(eleve.user.photo, _mm_px(18, 18)),
             "qr_data_uri": _qr_data_uri(_badge_verify_url(badge.qr_token)),
             "ecole_nom": _ecole_nom(request.user),
+            "ecole_logo_data_uri": (
+                _image_data_uri(eleve.user.ecole.logo, _mm_px(14, 14), mode="contain")
+                if eleve.user.ecole_id and eleve.user.ecole.logo else None
+            ),
         })
         buffer = BytesIO()
         pisa.CreatePDF(html, dest=buffer, encoding="utf-8")

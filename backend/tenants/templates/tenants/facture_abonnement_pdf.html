@@ -7,6 +7,7 @@
     body { font-family: Helvetica, Arial, sans-serif; color: #1e1b2e; font-size: 11px; }
     table.header { width: 100%; background-color: #4c1d95; border-radius: 10px; margin-bottom: 18px; }
     .header td { padding: 14px 20px; }
+    .header .logo { width: 11mm; height: 11mm; object-fit: contain; vertical-align: middle; margin-right: 3mm; border-radius: 4px; background-color: #ffffff; }
     .header .brand { color: #ffffff; font-size: 20px; font-weight: bold; }
     .header .subtitle { color: #ddd6fe; font-size: 10px; margin-top: 3px; }
     .header .numero { background-color: #ffffff; color: #4c1d95; border-radius: 6px; padding: 8px 14px; font-size: 11px; font-weight: bold; text-align: center; }
@@ -35,7 +36,7 @@
     <table class="header">
         <tr>
             <td>
-                <div class="brand">Taly-School</div>
+                <div class="brand">{% if plateforme_logo_data_uri %}<img class="logo" src="{{ plateforme_logo_data_uri }}" />{% endif %}{{ plateforme_nom }}</div>
                 <div class="subtitle">Facture d'abonnement — plateforme de gestion scolaire</div>
             </td>
             <td width="140" class="numero">N° {{ p.numero_facture }}</td>

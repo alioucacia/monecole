@@ -4,7 +4,11 @@ import { classesApi, elevesApi, typesFraisApi, unwrapList } from "../api/service
 import { extractErrorMessage } from "../api/client";
 import { Badge, Button, EmptyState, Input, PageHeader, Select, Spinner } from "../components/ui";
 import { ClasseOptions } from "../components/CycleSelect";
-import type { Classe, EleveProfile, TypeFrais } from "../types";
+import type { Classe, EleveProfile } from "../types";
+
+function money(value: number | string) {
+  return `${Number(value).toLocaleString("fr-FR")} GNF`;
+}
 
 export default function ReinscriptionPage() {
   const [classes, setClasses] = useState<Classe[]>([]);
@@ -15,9 +19,12 @@ export default function ReinscriptionPage() {
   const [selected, setSelected] = useState<Record<number, boolean>>({});
   const [loading, setLoading] = useState(false);
 
-  const [types, setTypes] = useState<TypeFrais[]>([]);
-  const [typeFraisId, setTypeFraisId] = useState("");
-  const [montantFrais, setMontantFrais] = useState("");
+  // Montant du frais de réinscription pour `classeDestId`, résolu automatiquement dès qu'une
+  // classe de destination est choisie — voir TypeFrais.usage/TarifClasse et
+  // typesFraisApi.tarifParUsage. Remplace l'ancienne section "Frais de réinscription
+  // (optionnel)" où l'admin devait choisir un type de frais et ressaisir un montant à la main :
+  // le frais est maintenant créé côté serveur avec ce même montant, sans rien à saisir ici.
+  const [tarifReinscription, setTarifReinscription] = useState<{ type_frais_nom: string | null; montant: string | null } | null>(null);
   const [dateEcheance, setDateEcheance] = useState("");
 
   const [processing, setProcessing] = useState(false);
@@ -26,8 +33,17 @@ export default function ReinscriptionPage() {
 
   useEffect(() => {
     classesApi.list({ page_size: 100 }).then(({ data }) => setClasses(unwrapList(data)));
-    typesFraisApi.list().then(({ data }) => setTypes(unwrapList(data)));
   }, []);
+
+  useEffect(() => {
+    if (!classeDestId) {
+      setTarifReinscription(null);
+      return;
+    }
+    typesFraisApi.tarifParUsage("reinscription", Number(classeDestId))
+      .then(({ data }) => setTarifReinscription(data))
+      .catch(() => setTarifReinscription(null));
+  }, [classeDestId]);
 
   const loadEleves = () => {
     if (!classeSourceId) {
@@ -65,8 +81,6 @@ export default function ReinscriptionPage() {
     try {
       const { data } = await elevesApi.reinscription({
         eleves: ids, classe_destination: Number(classeDestId),
-        type_frais: typeFraisId ? Number(typeFraisId) : null,
-        montant_frais: montantFrais || null,
         date_echeance_frais: dateEcheance || null,
       });
       setMessage(`${data.reinscrits} élève(s) réinscrit(s) dans ${data.classe_destination}. ${data.frais_crees} frais de réinscription créé(s).`);
@@ -109,17 +123,31 @@ export default function ReinscriptionPage() {
         </Select>
       </div>
 
-      {classeSourceId && (
+      {classeDestId && (
         <div className="bg-white rounded-2xl border border-slate-100 shadow-soft p-5 mb-6">
-          <p className="text-sm font-bold text-ink-900 mb-3">Frais de réinscription (optionnel)</p>
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-            <Select value={typeFraisId} onChange={(e) => setTypeFraisId(e.target.value)}>
-              <option value="">— Aucun frais —</option>
-              {types.map((t) => <option key={t.id} value={t.id}>{t.nom}</option>)}
-            </Select>
-            <Input placeholder="Montant (GNF)" type="number" min={0} value={montantFrais} onChange={(e) => setMontantFrais(e.target.value)} />
-            <Input type="date" value={dateEcheance} onChange={(e) => setDateEcheance(e.target.value)} />
-          </div>
+          <p className="text-sm font-bold text-ink-900 mb-3">Frais de réinscription</p>
+          {!tarifReinscription || !tarifReinscription.type_frais_nom ? (
+            <p className="text-sm text-amber-700 bg-amber-50 border border-amber-100 rounded-xl px-3.5 py-2.5">
+              Aucun type de frais n'est marqué « Frais de réinscription » dans votre établissement — aucun frais ne
+              sera créé. Paramétrez-le dans <span className="font-semibold">Paiements → ⚙️ Types de frais</span>.
+            </p>
+          ) : (
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 items-end">
+              <div>
+                <p className="text-xs font-semibold uppercase tracking-wide text-slate-400 mb-1">
+                  {tarifReinscription.type_frais_nom} — {classes.find((c) => String(c.id) === classeDestId)?.nom}
+                </p>
+                <p className="text-2xl font-extrabold text-ink-900">
+                  {tarifReinscription.montant !== null ? money(tarifReinscription.montant) : "—"}
+                </p>
+                <p className="text-xs text-slate-400 mt-1">
+                  Créé automatiquement pour chaque élève réinscrit. Le montant se règle par classe dans
+                  Paiements → 💰 Tarifs par classe.
+                </p>
+              </div>
+              <Input label="Date d'échéance (optionnel)" type="date" value={dateEcheance} onChange={(e) => setDateEcheance(e.target.value)} />
+            </div>
+          )}
         </div>
       )}
 

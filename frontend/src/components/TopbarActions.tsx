@@ -95,7 +95,7 @@ export function TopbarActions() {
         >
           <span className="text-lg">✉️</span>
           {nonLus > 0 && (
-            <span className="absolute top-1 right-1 h-4 min-w-[16px] px-1 rounded-full bg-rose-500 text-white text-[10px] font-bold flex items-center justify-center">
+            <span className="absolute top-1 right-1 h-4 min-w-[16px] px-1 rounded-full bg-rose-500 text-white text-[10px] font-bold flex items-center justify-center animate-pulse-soft">
               {nonLus > 9 ? "9+" : nonLus}
             </span>
           )}
@@ -109,8 +109,8 @@ export function TopbarActions() {
             className="relative h-10 w-10 flex items-center justify-center rounded-full text-slate-500 hover:bg-slate-100 hover:text-brand-700 transition"
             title="Notifications"
           >
-            <span className="text-lg">🔔</span>
-            {nouvelleActivite && <span className="absolute top-2 right-2.5 h-2 w-2 rounded-full bg-rose-500" />}
+            <span className={`text-lg inline-block transition-transform ${nouvelleActivite ? "animate-wiggle" : ""}`}>🔔</span>
+            {nouvelleActivite && <span className="absolute top-2 right-2.5 h-2 w-2 rounded-full bg-rose-500 animate-pulse-soft" />}
           </button>
           {notifOuvert && (
             <div className="absolute right-0 mt-2 w-80 bg-white rounded-2xl shadow-2xl border border-slate-100 z-50 overflow-hidden animate-pop-in">
