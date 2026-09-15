@@ -3,9 +3,10 @@ import { Link, useLocation, useNavigate } from "react-router-dom";
 
 import { classesApi, elevesApi, typesFraisApi, unwrapList, usersApi } from "../api/services";
 import { extractErrorMessage } from "../api/client";
-import { Button, DeleteButton, EditButton, EmptyState, Input, Modal, PageHeader, RowActions, Select, Spinner, Table } from "../components/ui";
+import { Badge, Button, DeleteButton, EditButton, EmptyState, Input, Modal, PageHeader, RowActions, Select, Spinner, StatCard, Table } from "../components/ui";
 import { ClasseOptions, CycleSelect } from "../components/CycleSelect";
 import { useAuth } from "../context/AuthContext";
+import { useConfirm } from "../context/ConfirmContext";
 import { usePaginated } from "../hooks/usePaginated";
 import type { Classe, Cycle, EleveProfile, User } from "../types";
 
@@ -29,6 +30,7 @@ export default function StudentsPage() {
   const location = useLocation();
   const navigate = useNavigate();
   const isAdmin = user?.role === "admin";
+  const confirmer = useConfirm();
   const [search, setSearch] = useState("");
   const [classeFilter, setClasseFilter] = useState("");
   const [cycleFilter, setCycleFilter] = useState<Cycle | "">("");
@@ -52,10 +54,26 @@ export default function StudentsPage() {
   // avant, ce chiffre sert juste de repère à l'admin au moment d'inscrire l'élève.
   const [tarifInscription, setTarifInscription] = useState<{ type_frais_nom: string | null; montant: string | null } | null>(null);
 
-  const { items, loading, hasNext, hasPrevious, goNext, goPrevious, reload } = usePaginated<EleveProfile>(
+  const { items, count, loading, hasNext, hasPrevious, goNext, goPrevious, reload } = usePaginated<EleveProfile>(
     () => elevesApi.list({ search: search || undefined, classe: classeFilter || undefined, cycle: cycleFilter || undefined }),
     [search, classeFilter, cycleFilter]
   );
+
+  // Répartition rapide (actifs/inactifs/nouveaux/réinscrits) sur l'ensemble des élèves
+  // correspondant aux filtres actuels — pas seulement la page affichée (`items`), d'où des appels
+  // séparés en `page_size: 1` (seul `count` nous intéresse, pas les résultats eux-mêmes).
+  const [stats, setStats] = useState<{ actifs: number; inactifs: number; reinscrits: number } | null>(null);
+  useEffect(() => {
+    const base = { search: search || undefined, classe: classeFilter || undefined, cycle: cycleFilter || undefined, page_size: 1 };
+    const getCount = (data: { count?: number } | unknown[]) => Array.isArray(data) ? data.length : (data.count ?? 0);
+    Promise.all([
+      elevesApi.list({ ...base, actif: true }),
+      elevesApi.list({ ...base, actif: false }),
+      elevesApi.list({ ...base, statut_inscription: "reinscription" }),
+    ]).then(([actifsRes, inactifsRes, reinscritsRes]) => {
+      setStats({ actifs: getCount(actifsRes.data), inactifs: getCount(inactifsRes.data), reinscrits: getCount(reinscritsRes.data) });
+    }).catch(() => setStats(null));
+  }, [search, classeFilter, cycleFilter]);
 
   useEffect(() => {
     classesApi.list().then(({ data }) => setClasses(unwrapList(data)));
@@ -155,7 +173,7 @@ export default function StudentsPage() {
   };
 
   const handleDelete = async (eleve: EleveProfile) => {
-    if (!confirm(`Supprimer définitivement ${eleve.user.first_name} ${eleve.user.last_name} ?`)) return;
+    if (!(await confirmer(`Supprimer définitivement ${eleve.user.first_name} ${eleve.user.last_name} ?`, { danger: true }))) return;
     await elevesApi.remove(eleve.id);
     reload();
   };
@@ -211,6 +229,13 @@ export default function StudentsPage() {
         ) : undefined}
       />
 
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 mb-6">
+        <StatCard label="Élèves" value={count !== null ? String(count) : "…"} icon="🎓" accent="brand" />
+        <StatCard label="Actifs" value={stats ? String(stats.actifs) : "…"} icon="✅" accent="green" />
+        <StatCard label="Réinscrits" value={stats ? String(stats.reinscrits) : "…"} icon="🔁" accent="teal" />
+        <StatCard label="Inactifs" value={stats ? String(stats.inactifs) : "…"} icon="🚪" accent="rose" />
+      </div>
+
       <div className="flex flex-wrap gap-3 mb-4">
         <Input placeholder="Rechercher un élève…" value={search} onChange={(e) => setSearch(e.target.value)} className="max-w-xs" />
         <CycleSelect
@@ -230,9 +255,9 @@ export default function StudentsPage() {
         <EmptyState title="Aucun élève trouvé" />
       ) : (
         <>
-          <Table headers={["Matricule", "Nom complet", "Classe", "Parent", "Contact", "Actions"]}>
+          <Table headers={["Matricule", "Nom complet", "Classe", "Statut", "Parent", "Contact", "Actions"]}>
             {items.map((eleve) => (
-              <tr key={eleve.id}>
+              <tr key={eleve.id} className={eleve.actif ? undefined : "opacity-60"}>
                 <td className="px-4 py-3 font-mono text-xs text-slate-500">{eleve.matricule}</td>
                 <td className="px-4 py-3 font-medium text-slate-700">
                   <Link to={`/eleves/${eleve.id}`} className="flex items-center gap-2.5 hover:text-brand-700">
@@ -243,11 +268,25 @@ export default function StudentsPage() {
                         {(eleve.user.first_name[0] || "?").toUpperCase()}
                       </div>
                     )}
-                    {eleve.user.first_name} {eleve.user.last_name}
+                    <span>
+                      {eleve.user.first_name} {eleve.user.last_name}
+                      {eleve.user.sexe && <span className="ml-1.5 text-xs text-slate-400">{eleve.user.sexe === "F" ? "♀" : "♂"}</span>}
+                    </span>
                   </Link>
                 </td>
-                <td className="px-4 py-3">{eleve.classe_nom || "—"}</td>
-                <td className="px-4 py-3">{eleve.parent_nom || "—"}</td>
+                <td className="px-4 py-3">{eleve.classe_nom || <span className="text-slate-400">Non assignée</span>}</td>
+                <td className="px-4 py-3">
+                  {!eleve.actif ? (
+                    <Badge color="rose">Inactif</Badge>
+                  ) : eleve.statut_inscription === "reinscription" ? (
+                    <Badge color="teal">Réinscrit</Badge>
+                  ) : eleve.statut_inscription === "transfert" ? (
+                    <Badge color="amber">Transfert</Badge>
+                  ) : (
+                    <Badge color="brand">Nouveau</Badge>
+                  )}
+                </td>
+                <td className="px-4 py-3">{eleve.parent_nom || <span className="text-slate-400">—</span>}</td>
                 <td className="px-4 py-3 text-slate-500">{eleve.user.email || eleve.user.phone || "—"}</td>
                 <td className="px-4 py-3">
                   <RowActions>
@@ -272,7 +311,7 @@ export default function StudentsPage() {
             ))}
           </Table>
           <div className="flex justify-between items-center mt-4 text-sm text-slate-500">
-            <span>Total : {items.length}</span>
+            <span>Total : {count ?? items.length}</span>
             <div className="flex gap-2">
               <Button variant="secondary" disabled={!hasPrevious} onClick={goPrevious}>← Précédent</Button>
               <Button variant="secondary" disabled={!hasNext} onClick={goNext}>Suivant →</Button>

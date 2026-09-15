@@ -3,6 +3,7 @@ import { useState, type FormEvent } from "react";
 import { enseignantsApi } from "../api/services";
 import { extractErrorMessage } from "../api/client";
 import { Button, DeleteButton, EditButton, EmptyState, Input, Modal, PageHeader, RowActions, Select, Spinner, Table } from "../components/ui";
+import { useConfirm } from "../context/ConfirmContext";
 import { usePaginated } from "../hooks/usePaginated";
 import type { EnseignantProfile } from "../types";
 
@@ -12,6 +13,7 @@ const emptyForm = {
 };
 
 export default function TeachersPage() {
+  const confirmer = useConfirm();
   const [search, setSearch] = useState("");
   const [modalOpen, setModalOpen] = useState(false);
   const [editing, setEditing] = useState<EnseignantProfile | null>(null);
@@ -77,7 +79,7 @@ export default function TeachersPage() {
   };
 
   const handleDelete = async (ens: EnseignantProfile) => {
-    if (!confirm(`Supprimer définitivement ${ens.user.first_name} ${ens.user.last_name} ?`)) return;
+    if (!(await confirmer(`Supprimer définitivement ${ens.user.first_name} ${ens.user.last_name} ?`, { danger: true }))) return;
     await enseignantsApi.remove(ens.id);
     reload();
   };

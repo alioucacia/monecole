@@ -91,6 +91,9 @@ export const annuaireUtilisateursApi = {
   list: (params?: Record<string, unknown>) => api.get<Paginated<User> | User[]>("/tenants/annuaire-utilisateurs/", { params }),
   reinitialiserMotDePasse: (id: number) =>
     api.post<{ nouveau_mot_de_passe: string; email_envoye: boolean }>(`/tenants/annuaire-utilisateurs/${id}/reinitialiser-mot-de-passe/`),
+  // Élèves rattachés à un compte parent (voir AnnuaireUtilisateursViewSet.enfants côté
+  // backend) — recherchable par téléphone via `list({ role: "parent", search: "..." })`.
+  enfants: (id: number) => api.get<EleveProfile[]>(`/tenants/annuaire-utilisateurs/${id}/enfants/`),
 };
 
 // ---- Sauvegardes (Super Admin) ----
@@ -123,9 +126,13 @@ export const authApi = {
   confirmPasswordReset: (uid: string, token: string, new_password: string) =>
     api.post<{ detail: string }>("/auth/password-reset-confirm/", { uid, token, new_password }),
   // Chemin alternatif au lien signé ci-dessus (envoyé en même temps, voir
-  // PasswordResetRequestView côté backend) : un code à 6 chiffres plutôt qu'un lien cliquable.
-  confirmPasswordResetOtp: (email: string, code: string, new_password: string) =>
-    api.post<{ detail: string }>("/auth/password-reset-otp-confirm/", { email, code, new_password }),
+  // PasswordResetRequestView côté backend) : un code à 6 chiffres plutôt qu'un lien cliquable,
+  // en deux temps — le code se vérifie seul (écran dédié), le formulaire de nouveau mot de passe
+  // n'apparaît qu'une fois `reset_ticket` obtenu.
+  verifyPasswordResetOtp: (email: string, code: string) =>
+    api.post<{ reset_ticket: string }>("/auth/password-reset-otp-verify/", { email, code }),
+  completePasswordResetOtp: (reset_ticket: string, new_password: string) =>
+    api.post<{ detail: string }>("/auth/password-reset-otp-complete/", { reset_ticket, new_password }),
   demanderVerification: (canal: "email" | "telephone") =>
     api.post<{ detail: string }>("/auth/demander-verification/", { canal }),
   confirmerVerification: (canal: "email" | "telephone", code: string) =>
@@ -136,6 +143,11 @@ export const authApi = {
     form.append("photo", file);
     return api.patch<User>("/auth/me/", form, { headers: { "Content-Type": "multipart/form-data" } });
   },
+  /** Retire la photo de profil (voir SupprimerPhotoView — un PATCH JSON ne peut pas effacer un champ fichier). */
+  supprimerPhoto: () => api.post<User>("/auth/me/photo/"),
+  /** Dernières entrées du journal d'activité du compte connecté (self-service — voir
+   * usersApi.journal, réservé à l'admin sur les comptes de son école). */
+  monActivite: () => api.get<JournalUtilisateurEntry[]>("/auth/me/activite/"),
 };
 
 // ---- Dashboard ----
@@ -268,6 +280,7 @@ export const elevesApi = {
     api.post<EleveProfile>(`/people/eleves/${id}/marquer-non-reinscrit/`, { motif: motif || "" }),
   reactiver: (id: number) => api.post<EleveProfile>(`/people/eleves/${id}/reactiver/`),
   recuInscription: (id: number, filename: string) => downloadFile(`/people/eleves/${id}/recu-inscription/`, {}, filename),
+  ficheReinscription: (id: number, filename: string) => downloadFile(`/people/eleves/${id}/fiche-reinscription/`, {}, filename),
   certificatScolarite: (id: number, filename: string) => downloadFile(`/people/eleves/${id}/certificat-scolarite/`, {}, filename),
   /** Catégorie de prise en charge de la mensualité (Fondation 50%/gratuit/inscription seulement)
    * et réduction fidélité — accessible à la comptabilité sans droit d'édition du reste de la fiche. */

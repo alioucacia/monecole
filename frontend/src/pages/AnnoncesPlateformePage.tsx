@@ -3,6 +3,7 @@ import { useEffect, useState, type FormEvent } from "react";
 import { annoncesPlateformeApi, ecolesApi, unwrapList } from "../api/services";
 import { extractErrorMessage } from "../api/client";
 import { Badge, Button, Card, DeleteButton, EmptyState, Input, Modal, PageHeader, Select, Spinner } from "../components/ui";
+import { useConfirm } from "../context/ConfirmContext";
 import { useToast } from "../context/ToastContext";
 import { usePaginated } from "../hooks/usePaginated";
 import type { Annonce, Ecole } from "../types";
@@ -15,6 +16,7 @@ const emptyForm = { titre: "", contenu: "", cible_role: "all", ecole: "", epingl
 
 export default function AnnoncesPlateformePage() {
   const toast = useToast();
+  const confirmer = useConfirm();
   const [modalOpen, setModalOpen] = useState(false);
   const [form, setForm] = useState(emptyForm);
   const [saving, setSaving] = useState(false);
@@ -47,7 +49,7 @@ export default function AnnoncesPlateformePage() {
   };
 
   const handleDelete = async (annonce: Annonce) => {
-    if (!confirm(`Supprimer l'annonce plateforme "${annonce.titre}" ?`)) return;
+    if (!(await confirmer(`Supprimer l'annonce plateforme "${annonce.titre}" ?`, { danger: true }))) return;
     try {
       await annoncesPlateformeApi.remove(annonce.id);
       reload();

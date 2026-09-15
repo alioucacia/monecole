@@ -4,7 +4,7 @@ import axios from "axios";
 
 import { extractErrorMessage } from "../api/client";
 import { authApi, plateformeBrandingApi } from "../api/services";
-import { Button, Input } from "../components/ui";
+import { Button, Input, OtpBoxInput } from "../components/ui";
 import { useAuth } from "../context/AuthContext";
 
 // const DEMO_ACCOUNTS = [
@@ -236,21 +236,17 @@ export default function LoginPage() {
         <div className="p-8 sm:p-10 flex flex-col justify-center">
           {otpRequis ? (
             <>
-              <h2 className="text-2xl font-extrabold text-ink-900 tracking-tight mb-1">Vérification</h2>
-              <p className="text-slate-500 text-sm mb-6">
+              <h2 className="text-2xl font-extrabold text-ink-900 tracking-tight mb-1 text-center">Vérification</h2>
+              <p className="text-slate-500 text-sm mb-6 text-center">
                 Un code à 6 chiffres a été envoyé par e-mail/SMS au compte « {username} ». Saisissez-le ci-dessous.
               </p>
-              <form onSubmit={handleSubmitOtp} className={`space-y-4 ${shake ? "animate-shake" : ""}`}>
-                <Input
-                  label="Code de vérification"
-                  placeholder="123456"
-                  inputMode="numeric"
-                  maxLength={6}
+              <form onSubmit={handleSubmitOtp} className={`space-y-5 ${shake ? "animate-shake" : ""}`}>
+                <OtpBoxInput
                   value={otpCode}
-                  onChange={(e) => { setOtpCode(e.target.value.replace(/\D/g, "")); if (formError) setFormError(""); }}
+                  onChange={(v) => { setOtpCode(v); if (formError) setFormError(""); }}
                   autoFocus
                 />
-                <Button type="submit" className="w-full" disabled={loading}>
+                <Button type="submit" className="w-full" disabled={loading || otpCode.length !== 6}>
                   {loading ? "Vérification…" : "Confirmer"}
                 </Button>
                 <button

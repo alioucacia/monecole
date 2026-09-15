@@ -3,11 +3,13 @@ import { useEffect, useState, type FormEvent } from "react";
 import { matieresApi, unwrapList } from "../api/services";
 import { extractErrorMessage } from "../api/client";
 import { Button, DeleteButton, EditButton, EmptyState, Input, Modal, PageHeader, RowActions, Spinner, Table } from "../components/ui";
+import { useConfirm } from "../context/ConfirmContext";
 import type { Matiere } from "../types";
 
 const emptyForm = { nom: "", code: "", coefficient: 1, couleur: "#8b5cf6" };
 
 export default function SubjectsPage() {
+  const confirmer = useConfirm();
   const [matieres, setMatieres] = useState<Matiere[]>([]);
   const [loading, setLoading] = useState(true);
   const [modalOpen, setModalOpen] = useState(false);
@@ -54,7 +56,7 @@ export default function SubjectsPage() {
   };
 
   const handleDelete = async (matiere: Matiere) => {
-    if (!confirm(`Supprimer la matière ${matiere.nom} ?`)) return;
+    if (!(await confirmer(`Supprimer la matière ${matiere.nom} ?`, { danger: true }))) return;
     await matieresApi.remove(matiere.id);
     load();
   };

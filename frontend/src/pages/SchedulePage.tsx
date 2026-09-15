@@ -5,6 +5,7 @@ import { extractErrorMessage } from "../api/client";
 import { Button, DeleteButton, EmptyState, Input, Modal, PageHeader, Select, Spinner } from "../components/ui";
 import { CycleSelect } from "../components/CycleSelect";
 import { useAuth } from "../context/AuthContext";
+import { useConfirm } from "../context/ConfirmContext";
 import type { Classe, Creneau, Cycle, Enseignement } from "../types";
 
 const JOURS: { value: string; label: string }[] = [
@@ -16,6 +17,7 @@ const emptyForm = { enseignement: "", jour: "lundi", heure_debut: "08:00", heure
 
 export default function SchedulePage() {
   const { user } = useAuth();
+  const confirmer = useConfirm();
   const isAdmin = user?.role === "admin";
 
   const [classes, setClasses] = useState<Classe[]>([]);
@@ -80,7 +82,7 @@ export default function SchedulePage() {
   };
 
   const handleDelete = async (c: Creneau) => {
-    if (!confirm("Supprimer ce créneau ?")) return;
+    if (!(await confirmer("Supprimer ce créneau ?", { danger: true }))) return;
     await creneauxApi.remove(c.id);
     loadCreneaux();
   };

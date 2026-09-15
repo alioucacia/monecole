@@ -3,33 +3,39 @@ import { Link, useNavigate } from "react-router-dom";
 
 import { authApi } from "../api/services";
 import { extractErrorMessage } from "../api/client";
-import { Button, Input } from "../components/ui";
+import { Button, Input, OtpBoxInput } from "../components/ui";
 import { useToast } from "../context/ToastContext";
+
+type Etape = "email" | "code" | "mot_de_passe" | "termine";
 
 export default function ForgotPasswordPage() {
   const toast = useToast();
   const navigate = useNavigate();
+  const [etape, setEtape] = useState<Etape>("email");
+
   const [email, setEmail] = useState("");
-  const [sent, setSent] = useState(false);
   const [loading, setLoading] = useState(false);
 
-  // Saisie directe du code reçu (voir PasswordResetRequestView côté backend, qui envoie
-  // maintenant un lien ET un code) — évite de dépendre du lien cliquable, qui peut ne pas
-  // aboutir (client mail/navigateur le basculant en HTTPS avant que le site ne soit servi en
-  // HTTPS, voir backend/DEPLOYMENT.md) : on reste directement dans l'app.
+  // Étape "code" — seule sur son propre écran, en carreaux : le formulaire de mot de passe
+  // n'apparaît qu'une fois ce code confirmé (voir PasswordResetOtpVerifyView côté backend, qui
+  // renvoie un `reset_ticket` de courte durée porté jusqu'à l'étape suivante).
   const [otpCode, setOtpCode] = useState("");
+  const [otpLoading, setOtpLoading] = useState(false);
+  const [otpError, setOtpError] = useState("");
+  const [resetTicket, setResetTicket] = useState("");
+
+  // Étape "mot_de_passe" — n'apparaît qu'après un code confirmé.
   const [newPassword, setNewPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
-  const [otpLoading, setOtpLoading] = useState(false);
-  const [otpDone, setOtpDone] = useState(false);
-  const [otpError, setOtpError] = useState("");
+  const [pwdLoading, setPwdLoading] = useState(false);
+  const [pwdError, setPwdError] = useState("");
 
-  const handleSubmit = async (e: FormEvent) => {
+  const handleSubmitEmail = async (e: FormEvent) => {
     e.preventDefault();
     setLoading(true);
     try {
       await authApi.requestPasswordReset(email);
-      setSent(true);
+      setEtape("code");
     } catch (err) {
       toast.error(extractErrorMessage(err) || "Une erreur est survenue.");
     } finally {
@@ -37,22 +43,37 @@ export default function ForgotPasswordPage() {
     }
   };
 
-  const handleSubmitOtp = async (e: FormEvent) => {
+  const handleSubmitCode = async (e: FormEvent) => {
     e.preventDefault();
     setOtpError("");
-    if (newPassword !== confirmPassword) {
-      setOtpError("Les deux mots de passe ne correspondent pas.");
-      return;
-    }
     setOtpLoading(true);
     try {
-      await authApi.confirmPasswordResetOtp(email, otpCode.trim(), newPassword);
-      setOtpDone(true);
-      setTimeout(() => navigate("/login"), 2500);
+      const { data } = await authApi.verifyPasswordResetOtp(email, otpCode);
+      setResetTicket(data.reset_ticket);
+      setEtape("mot_de_passe");
     } catch (err) {
       setOtpError(extractErrorMessage(err) || "Code invalide ou expiré.");
     } finally {
       setOtpLoading(false);
+    }
+  };
+
+  const handleSubmitPassword = async (e: FormEvent) => {
+    e.preventDefault();
+    setPwdError("");
+    if (newPassword !== confirmPassword) {
+      setPwdError("Les deux mots de passe ne correspondent pas.");
+      return;
+    }
+    setPwdLoading(true);
+    try {
+      await authApi.completePasswordResetOtp(resetTicket, newPassword);
+      setEtape("termine");
+      setTimeout(() => navigate("/login"), 2500);
+    } catch (err) {
+      setPwdError(extractErrorMessage(err) || "Une erreur est survenue — recommencez depuis le code reçu.");
+    } finally {
+      setPwdLoading(false);
     }
   };
 
@@ -62,72 +83,90 @@ export default function ForgotPasswordPage() {
       <div className="pointer-events-none absolute -bottom-40 -right-20 h-[28rem] w-[28rem] rounded-full bg-brand-400/30 blur-3xl" />
 
       <div className="relative w-full max-w-md bg-white/95 backdrop-blur rounded-2xl2 shadow-2xl overflow-hidden p-8 sm:p-10">
-        <h2 className="text-2xl font-extrabold text-ink-900 tracking-tight mb-1">Mot de passe oublié</h2>
-        <p className="text-slate-500 text-sm mb-6">
-          Indiquez votre adresse e-mail : si un compte y est associé, un lien ET un code de réinitialisation vous seront envoyés.
-        </p>
-
-        {sent ? (
-          otpDone ? (
-            <p className="text-sm text-emerald-700 bg-emerald-50 border border-emerald-100 rounded-xl px-3.5 py-2.5">
-              Mot de passe réinitialisé avec succès. Redirection vers la connexion…
+        {etape === "email" && (
+          <>
+            <h2 className="text-2xl font-extrabold text-ink-900 tracking-tight mb-1">Mot de passe oublié</h2>
+            <p className="text-slate-500 text-sm mb-6">
+              Indiquez votre adresse e-mail : si un compte y est associé, un lien ET un code de réinitialisation vous seront envoyés.
             </p>
-          ) : (
-            <div className="space-y-5">
-              <p className="text-sm text-emerald-700 bg-emerald-50 border border-emerald-100 rounded-xl px-3.5 py-2.5">
-                Si un compte existe avec cet e-mail, un lien ET un code à 6 chiffres viennent d'être envoyés. Cliquez
-                sur le lien, ou saisissez directement le code ci-dessous.
-              </p>
-
-              <form onSubmit={handleSubmitOtp} className="space-y-4 border-t border-slate-100 pt-5">
-                <p className="text-sm font-semibold text-slate-700">Saisir le code reçu</p>
-                <Input
-                  label="Code à 6 chiffres" placeholder="123456" inputMode="numeric" maxLength={6}
-                  value={otpCode} onChange={(e) => { setOtpCode(e.target.value.replace(/\D/g, "")); setOtpError(""); }}
-                />
-                <Input
-                  label="Nouveau mot de passe" type="password"
-                  value={newPassword} onChange={(e) => { setNewPassword(e.target.value); setOtpError(""); }}
-                />
-                <Input
-                  label="Confirmer le mot de passe" type="password"
-                  value={confirmPassword} onChange={(e) => { setConfirmPassword(e.target.value); setOtpError(""); }}
-                />
-                <Button type="submit" className="w-full" disabled={otpLoading || otpCode.length !== 6}>
-                  {otpLoading ? "Enregistrement…" : "Réinitialiser avec le code"}
-                </Button>
-                {otpError && (
-                  <p className="text-sm text-rose-600 bg-rose-50 border border-rose-100 rounded-xl px-3.5 py-2.5 text-center">
-                    {otpError}
-                  </p>
-                )}
-              </form>
-
+            <form onSubmit={handleSubmitEmail} className="space-y-4">
+              <Input
+                label="Adresse e-mail"
+                type="email"
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                required
+                autoFocus
+              />
+              <Button type="submit" className="w-full" disabled={loading}>
+                {loading ? "Envoi…" : "Envoyer le lien et le code"}
+              </Button>
               <Link to="/login" className="block text-center text-sm font-semibold text-slate-500 hover:text-brand-700">
                 ← Retour à la connexion
               </Link>
-            </div>
-          )
-        ) : (
-          <form onSubmit={handleSubmit} className="space-y-4">
-            <Input
-              label="Adresse e-mail"
-              type="email"
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-              required
-              autoFocus
-            />
-            <Button type="submit" className="w-full" disabled={loading}>
-              {loading ? "Envoi…" : "Envoyer le lien et le code"}
-            </Button>
-            <Link
-              to="/login"
-              className="block text-center text-sm font-semibold text-slate-500 hover:text-brand-700"
-            >
-              ← Retour à la connexion
-            </Link>
-          </form>
+            </form>
+          </>
+        )}
+
+        {etape === "code" && (
+          <>
+            <h2 className="text-2xl font-extrabold text-ink-900 tracking-tight mb-1 text-center">Code de vérification</h2>
+            <p className="text-slate-500 text-sm mb-6 text-center">
+              Saisissez le code à 6 chiffres envoyé à {email} (ou suivez le lien reçu par e-mail).
+            </p>
+            <form onSubmit={handleSubmitCode} className="space-y-5">
+              <OtpBoxInput value={otpCode} onChange={setOtpCode} autoFocus />
+              <Button type="submit" className="w-full" disabled={otpLoading || otpCode.length !== 6}>
+                {otpLoading ? "Vérification…" : "Vérifier le code"}
+              </Button>
+              {otpError && (
+                <p className="text-sm text-rose-600 bg-rose-50 border border-rose-100 rounded-xl px-3.5 py-2.5 text-center">
+                  {otpError}
+                </p>
+              )}
+              <button
+                type="button"
+                onClick={() => { setEtape("email"); setOtpCode(""); setOtpError(""); }}
+                className="block w-full text-center text-sm font-semibold text-slate-500 hover:text-brand-700"
+              >
+                ← Renvoyer à une autre adresse
+              </button>
+            </form>
+          </>
+        )}
+
+        {etape === "mot_de_passe" && (
+          <>
+            <h2 className="text-2xl font-extrabold text-ink-900 tracking-tight mb-1">Nouveau mot de passe</h2>
+            <p className="text-slate-500 text-sm mb-6">Code confirmé — choisissez votre nouveau mot de passe.</p>
+            <form onSubmit={handleSubmitPassword} className="space-y-4">
+              <Input
+                label="Nouveau mot de passe" type="password" required autoFocus
+                value={newPassword} onChange={(e) => { setNewPassword(e.target.value); setPwdError(""); }}
+              />
+              <Input
+                label="Confirmer le mot de passe" type="password" required
+                value={confirmPassword} onChange={(e) => { setConfirmPassword(e.target.value); setPwdError(""); }}
+              />
+              <Button type="submit" className="w-full" disabled={pwdLoading}>
+                {pwdLoading ? "Enregistrement…" : "Réinitialiser le mot de passe"}
+              </Button>
+              {pwdError && (
+                <p className="text-sm text-rose-600 bg-rose-50 border border-rose-100 rounded-xl px-3.5 py-2.5 text-center">
+                  {pwdError}
+                </p>
+              )}
+            </form>
+          </>
+        )}
+
+        {etape === "termine" && (
+          <>
+            <h2 className="text-2xl font-extrabold text-ink-900 tracking-tight mb-1">Nouveau mot de passe</h2>
+            <p className="text-sm text-emerald-700 bg-emerald-50 border border-emerald-100 rounded-xl px-3.5 py-2.5 mt-4">
+              Mot de passe réinitialisé avec succès. Redirection vers la connexion…
+            </p>
+          </>
         )}
       </div>
     </div>

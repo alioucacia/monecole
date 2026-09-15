@@ -52,33 +52,33 @@
     .titre { text-align: center; font-size: 15px; font-weight: bold; text-decoration: underline; margin-bottom: 16px; text-transform: uppercase; }
     {% endif %}
 
-    /* Même technique de cellules d'espacement que recu_inscription_pdf.html/badge_eleve_pdf.html
-       pour le cadre (jamais de padding sur une <td>, jamais de padding CSS sur un <div>
-       enveloppant une <table> — voir les pièges déjà documentés dans ces deux fichiers). */
     table.section { width: 180mm; border: 1px solid #e2e8f0; border-collapse: collapse; margin-bottom: 12px; }
     .section-td { padding: 0; }
-    .section-pad-top { height: 5mm; }
-    .section-pad-bottom { height: 5mm; }
-    .section-pad-side { width: 8mm; }
+    .section-pad-top { height: 3mm; }
+    .section-pad-bottom { height: 2.5mm; }
+    .section-pad-side { width: 5mm; }
+    .section-titre { color: {{ couleur_principale }}; font-style: italic; font-weight: bold; font-size: 10.5px; margin: 0 0 8px 0; }
 
-    .ref-code { font-size: 8.5px; color: #94a3b8; text-align: right; margin: 0 0 6px 0; padding-right: 3mm; }
-
-    table.identite { width: 100%; margin-bottom: 10px; }
-    .identite td { vertical-align: top; padding: 1.5px 0; font-size: 10.5px; text-align: center; }
+    table.contenu { width: 100%; }
+    .contenu td { vertical-align: top; padding: 1.5px 0; font-size: 10.5px; }
     .label { color: #374151; }
     .valeur { font-weight: bold; color: #1e1b2e; }
     .valeur-highlight { font-weight: bold; color: {{ couleur_secondaire }}; }
 
-    .certif-titre { text-align: center; font-size: 13px; font-weight: bold; text-transform: uppercase; letter-spacing: 1px; color: {{ couleur_principale }}; margin: 4px 0 14px 0; }
-    .certif-texte { font-size: 11.5px; line-height: 2; color: #1e1b2e; text-align: center; margin: 0 0 14px 0; }
-    .certif-texte strong { color: {{ couleur_secondaire }}; }
+    .photo { width: 24mm; height: 28mm; border: 1px solid #e2e8f0; text-align: center; }
+    .photo img { width: 24mm; height: 28mm; object-fit: cover; }
+    .avatar { width: 24mm; height: 24mm; background-color: {{ couleur_principale }}; color: #ffffff;
+        font-size: 22px; font-weight: bold; text-align: center; vertical-align: middle; }
 
-    table.signatures { width: 100%; margin-top: 40px; }
+    table.lignes { width: 100%; border-collapse: collapse; margin-top: 4px; }
+    table.lignes th { background-color: {{ couleur_principale }}; color: #ffffff; padding: 6px; text-align: left; font-size: 9px; text-transform: uppercase; border: 1px solid {{ couleur_principale }}; }
+    table.lignes td { padding: 6px; border: 1px solid #eee; font-size: 10.5px; }
+    .right { text-align: right; }
+
+    table.signatures { width: 100%; margin-top: 34px; }
     .signatures td { text-align: center; font-size: 10px; color: #374151; font-weight: bold; }
-    .signatures .ligne { border-top: 1px solid #9ca3af; margin: 20px 30mm 0 30mm; padding-top: 4px; }
-    .date-lieu { text-align: right; font-style: italic; font-size: 10px; color: #4b5563; margin: 10px 0 0 0; padding-right: 3mm; }
-
-    .footer { margin-top: 30px; width: 100%; text-align: center; font-size: 8.5px; color: #94a3b8; padding-top: 8px; border-top: 1px dashed #cbd5e1; }
+    .signatures .ligne { border-top: 1px solid #9ca3af; margin: 16px 14mm 0 14mm; padding-top: 4px; }
+    .date-lieu { text-align: right; font-style: italic; font-size: 10px; color: #4b5563; margin-bottom: 4px; }
 </style>
 </head>
 <body>
@@ -109,14 +109,14 @@
                 <p class="nom">{{ ecole_nom }}</p>
                 <p class="tagline">Année scolaire {{ annee_scolaire|default:"—" }}</p>
             </td>
-            <td class="bloc-titre"><p class="titre-m2">Certificat de scolarité</p></td>
+            <td class="bloc-titre"><p class="titre-m2">Fiche de réinscription</p></td>
         </tr>
     </table>
     {% elif modele == 4 %}
     <table class="ecole-header">
         <tr><td>
             {% if ecole_logo_data_uri %}<img class="logo" src="{{ ecole_logo_data_uri }}" />{% endif %}
-            <p class="nom">{{ ecole_nom }} — Certificat de scolarité</p>
+            <p class="nom">{{ ecole_nom }} — Fiche de réinscription</p>
             <p class="tagline">Année scolaire {{ annee_scolaire|default:"—" }}</p>
         </td></tr>
     </table>
@@ -125,56 +125,102 @@
         <tr><td>
             {% if ecole_logo_data_uri %}<img class="logo" src="{{ ecole_logo_data_uri }}" />{% endif %}
             <p class="nom">{{ ecole_nom }}</p>
-            <p class="tagline">Certificat de scolarité — Année scolaire {{ annee_scolaire|default:"—" }}</p>
+            <p class="tagline">Fiche de réinscription — Année scolaire {{ annee_scolaire|default:"—" }}</p>
         </td></tr>
     </table>
     {% endif %}
 
-    {% if modele != 2 and modele != 4 %}<p class="titre">Certificat de scolarité</p>{% endif %}
-    <p class="ref-code">Réf. {{ eleve.matricule }}-{{ annee_scolaire|default:"AN" }}</p>
+    {% if modele != 2 and modele != 4 %}<p class="titre">Fiche de réinscription</p>{% endif %}
 
     <table class="section" cellspacing="0" cellpadding="0">
         <tr><td class="section-td section-pad-top" colspan="3">&nbsp;</td></tr>
         <tr>
             <td class="section-td section-pad-side">&nbsp;</td>
             <td class="section-td">
-                {% if modele == 2 or modele == 4 %}<p class="certif-titre">Certificat de scolarité</p>{% endif %}
-
-                <table class="identite">
+                <p class="section-titre">Informations de l'élève</p>
+                <table class="contenu">
                     <tr>
-                        <td width="50%"><span class="label">Matricule : </span><span class="valeur-highlight">{{ eleve.matricule }}</span></td>
-                        <td width="50%"><span class="label">Classe : </span><span class="valeur">{{ classe_eleve.nom|default:"Non assignée" }}</span></td>
+                        <td style="width: 26mm;">
+                            {% if photo_data_uri %}
+                            <div class="photo"><img src="{{ photo_data_uri }}" /></div>
+                            {% else %}
+                            <div class="avatar">{{ eleve.user.first_name|first|upper }}{{ eleve.user.last_name|first|upper }}</div>
+                            {% endif %}
+                        </td>
+                        <td style="width: 5mm;">&nbsp;</td>
+                        <td>
+                            <table class="contenu">
+                                <tr><td class="label" width="35%">Matricule :</td><td class="valeur-highlight">{{ eleve.matricule }}</td></tr>
+                                <tr><td class="label">Prénom(s) :</td><td class="valeur">{{ eleve.user.first_name|upper }}</td></tr>
+                                <tr><td class="label">Nom :</td><td class="valeur">{{ eleve.user.last_name|upper }}</td></tr>
+                                <tr><td class="label">Genre :</td><td class="valeur">{% if eleve.user.sexe == "F" %}Féminin{% elif eleve.user.sexe == "M" %}Masculin{% else %}—{% endif %}</td></tr>
+                                <tr><td class="label">Date de naissance :</td><td class="valeur">{{ eleve.user.date_of_birth|date:"d/m/Y"|default:"—" }}</td></tr>
+                                <tr><td class="label">Lieu de naissance :</td><td class="valeur">{{ eleve.lieu_naissance|default:"—" }}</td></tr>
+                            </table>
+                        </td>
                     </tr>
                 </table>
-
-                <p class="certif-texte">
-                    Je soussigné(e), Chef d'établissement de <strong>{{ ecole_nom }}</strong>, certifie que
-                    l'élève <strong>{{ eleve.user.first_name|upper }} {{ eleve.user.last_name|upper }}</strong>,
-                    {% if eleve.user.date_of_birth %}né(e) le <strong>{{ eleve.user.date_of_birth|date:"d/m/Y" }}</strong>{% if eleve.lieu_naissance %} à <strong>{{ eleve.lieu_naissance }}</strong>{% endif %},{% endif %}
-                    est régulièrement inscrit(e) dans notre établissement, en classe de
-                    <strong>{{ classe_eleve.nom|default:"—" }}</strong>, au titre de l'année scolaire
-                    <strong>{{ annee_scolaire|default:"—" }}</strong>.
-                </p>
-                <p class="certif-texte">
-                    En foi de quoi, le présent certificat lui est délivré pour servir et valoir ce que de droit.
-                </p>
             </td>
             <td class="section-td section-pad-side">&nbsp;</td>
         </tr>
         <tr><td class="section-td section-pad-bottom" colspan="3">&nbsp;</td></tr>
     </table>
 
-    <p class="date-lieu">Fait à Conakry, le {{ date_edition|date:"d/m/Y" }}</p>
-
-    <table class="signatures">
+    <table class="section" cellspacing="0" cellpadding="0">
+        <tr><td class="section-td section-pad-top" colspan="3">&nbsp;</td></tr>
         <tr>
-            <td width="100%">
-                <div class="ligne">LE CHEF D'ÉTABLISSEMENT</div>
-                <p style="margin-top:3mm;">Cachet &amp; signature</p>
+            <td class="section-td section-pad-side">&nbsp;</td>
+            <td class="section-td">
+                <p class="section-titre">Réinscription</p>
+                <table class="contenu">
+                    <tr>
+                        <td width="50%">
+                            <table class="contenu">
+                                <tr><td class="label" width="30%">Année scolaire :</td><td class="valeur">{{ annee_scolaire|default:"—" }}</td></tr>
+                                <tr><td class="label">Classe :</td><td class="valeur">{{ classe_eleve.nom|default:"Non assignée" }}</td></tr>
+                            </table>
+                        </td>
+                        <td width="50%">
+                            <table class="contenu">
+                                <tr><td class="label" width="30%">Régime :</td><td class="valeur">{{ eleve.get_regime_display }}</td></tr>
+                                <tr><td class="label">Statut :</td><td class="valeur">{{ eleve.get_statut_inscription_display }}</td></tr>
+                            </table>
+                        </td>
+                    </tr>
+                </table>
             </td>
+            <td class="section-td section-pad-side">&nbsp;</td>
         </tr>
+        <tr><td class="section-td section-pad-bottom" colspan="3">&nbsp;</td></tr>
     </table>
 
-    <p class="footer">Document officiel — {{ ecole_nom }}</p>
+    {% if frais_reinscription %}
+    <table class="lignes">
+        <thead>
+            <tr><th>Frais</th><th class="right">Montant dû</th><th class="right">Payé</th><th class="right">Solde</th></tr>
+        </thead>
+        <tbody>
+            {% for f in frais_reinscription %}
+            <tr>
+                <td>{{ f.type_frais.nom }}</td>
+                <td class="right">{{ f.montant_du }} GNF</td>
+                <td class="right">{{ f.montant_paye }} GNF</td>
+                <td class="right">{{ f.solde }} GNF</td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+    {% endif %}
+
+    <p class="date-lieu">Fait le {{ date_edition|date:"d/m/Y" }}</p>
+    <table class="signatures">
+        <tr>
+            <td width="50%">
+                <div class="ligne">TUTEUR(RICE)</div>
+                {% if eleve.nom_tuteur %}<p style="margin-top:3mm;">{{ eleve.nom_tuteur }}</p>{% endif %}
+            </td>
+            <td width="50%"><div class="ligne">LA DIRECTION</div></td>
+        </tr>
+    </table>
 </body>
 </html>

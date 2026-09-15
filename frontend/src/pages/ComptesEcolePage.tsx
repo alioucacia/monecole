@@ -4,6 +4,7 @@ import { usersApi } from "../api/services";
 import { extractErrorMessage } from "../api/client";
 import { Badge, Button, EmptyState, Input, Modal, PageHeader, Select, Spinner, Table } from "../components/ui";
 import { useAuth } from "../context/AuthContext";
+import { useConfirm } from "../context/ConfirmContext";
 import { useToast } from "../context/ToastContext";
 import { usePaginated } from "../hooks/usePaginated";
 import type { JournalUtilisateurEntry, Role, User } from "../types";
@@ -32,6 +33,7 @@ const HISTORIQUE_REFRESH_MS = 8000;
  * utilisateur de son école, sans passer par chaque page de gestion dédiée. */
 export default function ComptesEcolePage() {
   const toast = useToast();
+  const confirmer = useConfirm();
   const { user: moi } = useAuth();
   const [search, setSearch] = useState("");
   const [roleFilter, setRoleFilter] = useState("");
@@ -134,7 +136,7 @@ export default function ComptesEcolePage() {
 
   const handleDelete = async (u: User) => {
     const avertissementParent = u.role === "parent" ? " (le dossier de ses enfants n'est pas affecté, seul son propre accès au portail l'est)" : "";
-    if (!confirm(`Supprimer définitivement le compte de ${u.full_name || u.username} (${ROLE_LABELS[u.role]})${avertissementParent} ? Cette action est irréversible.`)) return;
+    if (!(await confirmer(`Supprimer définitivement le compte de ${u.full_name || u.username} (${ROLE_LABELS[u.role]})${avertissementParent} ? Cette action est irréversible.`, { danger: true }))) return;
     setDeletingId(u.id);
     try {
       await usersApi.remove(u.id);

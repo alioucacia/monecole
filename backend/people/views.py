@@ -63,7 +63,7 @@ from .serializers import (
 class EleveProfileViewSet(viewsets.ModelViewSet):
     queryset = EleveProfile.objects.select_related("user", "classe", "parent")
     permission_classes = [IsAdminOrReadOnly]
-    filterset_fields = ["classe", "actif"]
+    filterset_fields = ["classe", "actif", "statut_inscription"]
     search_fields = ["user__first_name", "user__last_name", "matricule"]
 
     def get_serializer_class(self):
@@ -176,12 +176,19 @@ class EleveProfileViewSet(viewsets.ModelViewSet):
     def recu_inscription(self, request, pk=None):
         """Fiche d'inscription (PDF), générée automatiquement à la création d'un élève et
         réimprimable à tout moment. Reprend le(s) frais d'inscription déjà enregistré(s), s'il y en a."""
+        from payments.models import TypeFrais  # import différé pour éviter une dépendance circulaire
+
         eleve = self.get_object()
         ecole = eleve.user.ecole
         annee = _annee_active(eleve.user)
+        # `usage=INSCRIPTION` (voir TypeFrais.Usage) d'abord — fiable, réglé explicitement par
+        # l'admin — avec repli sur l'ancien filtre par nom pour les frais créés avant l'ajout de
+        # ce champ. `exclude` sur REINSCRIPTION : sans lui, un "Frais de réinscription" (qui
+        # contient bien la sous-chaîne "inscription") s'affichait à tort ici aussi.
         frais_inscription = list(
             eleve.frais.select_related("type_frais")
-            .filter(type_frais__nom__icontains="inscription")
+            .filter(Q(type_frais__usage=TypeFrais.Usage.INSCRIPTION) | Q(type_frais__nom__icontains="inscription"))
+            .exclude(type_frais__usage=TypeFrais.Usage.REINSCRIPTION)
             .prefetch_related("paiements")
         )
         html = render_to_string("people/recu_inscription_pdf.html", {
@@ -199,6 +206,37 @@ class EleveProfileViewSet(viewsets.ModelViewSet):
         pisa.CreatePDF(html, dest=buffer, encoding="utf-8")
         response = HttpResponse(buffer.getvalue(), content_type="application/pdf")
         response["Content-Disposition"] = f'attachment; filename="recu_inscription_{eleve.matricule}.pdf"'
+        return response
+
+    @action(detail=True, methods=["get"], url_path="fiche-reinscription")
+    def fiche_reinscription(self, request, pk=None):
+        """Fiche de réinscription (PDF) — pendant de `recu_inscription` ci-dessus, pour les frais
+        de réinscription (voir TypeFrais.Usage.REINSCRIPTION) plutôt que d'inscription."""
+        from payments.models import TypeFrais  # import différé pour éviter une dépendance circulaire
+
+        eleve = self.get_object()
+        ecole = eleve.user.ecole
+        annee = _annee_active(eleve.user)
+        frais_reinscription = list(
+            eleve.frais.select_related("type_frais")
+            .filter(type_frais__usage=TypeFrais.Usage.REINSCRIPTION)
+            .prefetch_related("paiements")
+        )
+        html = render_to_string("people/fiche_reinscription_pdf.html", {
+            "eleve": eleve,
+            "classe_eleve": _classe_pour_annee(eleve, annee),
+            "ecole_nom": _ecole_nom(eleve.user),
+            "ecole_logo_data_uri": _image_data_uri(ecole.logo) if ecole else None,
+            "annee_scolaire": annee.libelle if annee else "",
+            "photo_data_uri": _image_data_uri(eleve.user.photo, _mm_px(24, 28)),
+            **_couleurs_ecole(ecole, ecole.modele_fiche_inscription if ecole else 1),
+            "frais_reinscription": frais_reinscription,
+            "date_edition": timezone.localdate(),
+        })
+        buffer = BytesIO()
+        pisa.CreatePDF(html, dest=buffer, encoding="utf-8")
+        response = HttpResponse(buffer.getvalue(), content_type="application/pdf")
+        response["Content-Disposition"] = f'attachment; filename="fiche_reinscription_{eleve.matricule}.pdf"'
         return response
 
     @action(detail=True, methods=["get"], url_path="certificat-scolarite")
@@ -276,7 +314,13 @@ class EleveProfileViewSet(viewsets.ModelViewSet):
         frais_crees = 0
         for eleve in eleves:
             eleve.classe = classe_destination
-            eleve.save(update_fields=["classe"])
+            # Marque explicitement l'élève comme réinscrit (plutôt que de laisser la valeur par
+            # défaut "nouvelle inscription") — c'est ce qui permet à la fois un affichage correct
+            # sur la fiche de réinscription (voir `fiche_reinscription` ci-dessous) et un filtrage
+            # fiable côté frontend ("élèves déjà réinscrits dans telle classe", voir
+            # `filterset_fields` plus haut) sans devoir déduire ce statut d'un autre signal.
+            eleve.statut_inscription = EleveProfile.StatutInscription.REINSCRIPTION
+            eleve.save(update_fields=["classe", "statut_inscription"])
             enregistrer_historique_classe(eleve, classe_destination)
             if type_frais:
                 # `montant` reste le tarif STANDARD (celui de la classe) — c'est `Frais.montant_du`

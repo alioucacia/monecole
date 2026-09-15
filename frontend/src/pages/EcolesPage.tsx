@@ -5,6 +5,7 @@ import { Bar, BarChart, CartesianGrid, Line, LineChart, ResponsiveContainer, Too
 import { ecolesApi, paiementsEcolesApi, plansAbonnementApi, unwrapList } from "../api/services";
 import { extractErrorMessage } from "../api/client";
 import { Badge, Button, Card, EmptyState, Input, Modal, PageHeader, Select, Spinner, StatCard, Table } from "../components/ui";
+import { useConfirm } from "../context/ConfirmContext";
 import { useToast } from "../context/ToastContext";
 import type { Ecole, EcoleStatsGlobales, PlanAbonnement } from "../types";
 
@@ -49,6 +50,7 @@ const emptyPaiementForm = { mois: new Date().toISOString().slice(0, 7), montant:
 
 export default function EcolesPage() {
   const toast = useToast();
+  const confirmer = useConfirm();
   const [ecoles, setEcoles] = useState<Ecole[]>([]);
   const [stats, setStats] = useState<EcoleStatsGlobales | null>(null);
   const [plans, setPlans] = useState<PlanAbonnement[]>([]);
@@ -136,7 +138,7 @@ export default function EcolesPage() {
 
   const handleToggleActif = async (ecole: Ecole) => {
     const verbe = ecole.actif ? "suspendre" : "réactiver";
-    if (!confirm(`Voulez-vous ${verbe} l'accès de "${ecole.nom}" ?`)) return;
+    if (!(await confirmer(`Voulez-vous ${verbe} l'accès de "${ecole.nom}" ?`))) return;
     await ecolesApi.update(ecole.id, { actif: !ecole.actif });
     load();
   };

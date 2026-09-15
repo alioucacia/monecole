@@ -4,6 +4,7 @@ import { elevesApi, empruntsApi, livresApi, unwrapList } from "../api/services";
 import { extractErrorMessage } from "../api/client";
 import { Badge, Button, DeleteButton, EditButton, EmptyState, Input, Modal, PageHeader, RowActions, Select, Spinner, Table } from "../components/ui";
 import { useAuth } from "../context/AuthContext";
+import { useConfirm } from "../context/ConfirmContext";
 import { usePaginated } from "../hooks/usePaginated";
 import type { EleveProfile, Emprunt, Livre } from "../types";
 
@@ -25,6 +26,7 @@ function dateDansNJours(n: number) {
 
 export default function LibraryPage() {
   const { user } = useAuth();
+  const confirmer = useConfirm();
   const isAdmin = user?.role === "admin";
   const canLend = user?.role === "admin" || user?.role === "teacher";
 
@@ -103,7 +105,7 @@ export default function LibraryPage() {
   };
 
   const handleDeleteLivre = async (livre: Livre) => {
-    if (!confirm(`Supprimer le livre "${livre.titre}" ?`)) return;
+    if (!(await confirmer(`Supprimer le livre "${livre.titre}" ?`, { danger: true }))) return;
     await livresApi.remove(livre.id);
     loadLivres();
   };

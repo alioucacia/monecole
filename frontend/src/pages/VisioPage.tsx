@@ -5,6 +5,7 @@ import { reunionsApi, unwrapList } from "../api/services";
 import { extractErrorMessage } from "../api/client";
 import { Badge, Button, EmptyState, Input, Modal, PageHeader, Select, Spinner } from "../components/ui";
 import { useAuth } from "../context/AuthContext";
+import { useConfirm } from "../context/ConfirmContext";
 import { useToast } from "../context/ToastContext";
 import type { Participant, Reunion, Role } from "../types";
 
@@ -42,6 +43,7 @@ function jitsiUrl(salle: string, avecVideo: boolean = true) {
 export default function VisioPage() {
   const { user } = useAuth();
   const toast = useToast();
+  const confirmer = useConfirm();
   const [searchParams, setSearchParams] = useSearchParams();
 
   const [reunions, setReunions] = useState<Reunion[]>([]);
@@ -107,7 +109,7 @@ export default function VisioPage() {
   };
 
   const handleAnnuler = async (r: Reunion) => {
-    if (!confirm(`Annuler « ${r.titre} » ?`)) return;
+    if (!(await confirmer(`Annuler « ${r.titre} » ?`, { danger: true }))) return;
     try {
       await reunionsApi.remove(r.id);
       load();

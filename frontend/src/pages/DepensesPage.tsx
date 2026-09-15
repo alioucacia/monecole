@@ -4,6 +4,7 @@ import { Link } from "react-router-dom";
 import { categoriesDepenseApi, depensesApi, unwrapList } from "../api/services";
 import { extractErrorMessage } from "../api/client";
 import { Button, DeleteButton, EditButton, EmptyState, Input, Modal, PageHeader, RowActions, Select, Spinner, Table } from "../components/ui";
+import { useConfirm } from "../context/ConfirmContext";
 import { usePaginated } from "../hooks/usePaginated";
 import type { CategorieDepense, Depense } from "../types";
 
@@ -24,6 +25,7 @@ const emptyForm = {
 };
 
 export default function DepensesPage() {
+  const confirmer = useConfirm();
   const [categories, setCategories] = useState<CategorieDepense[]>([]);
 
   const [dateDebut, setDateDebut] = useState("");
@@ -99,7 +101,7 @@ export default function DepensesPage() {
   };
 
   const handleDelete = async (depense: Depense) => {
-    if (!confirm(`Supprimer la dépense « ${depense.motif} » (${money(depense.montant)}) ?`)) return;
+    if (!(await confirmer(`Supprimer la dépense « ${depense.motif} » (${money(depense.montant)}) ?`, { danger: true }))) return;
     await depensesApi.remove(depense.id);
     reload();
   };
@@ -136,7 +138,7 @@ export default function DepensesPage() {
   };
 
   const handleSupprimerCategorie = async (categorie: CategorieDepense) => {
-    if (!confirm(`Supprimer la catégorie « ${categorie.nom} » ?`)) return;
+    if (!(await confirmer(`Supprimer la catégorie « ${categorie.nom} » ?`, { danger: true }))) return;
     setCategorieError("");
     try {
       await categoriesDepenseApi.remove(categorie.id);

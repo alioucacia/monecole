@@ -2,10 +2,15 @@ import { useEffect, useRef, useState, type ChangeEvent, type FormEvent } from "r
 
 import { authApi, elevesApi, unwrapList } from "../api/services";
 import { extractErrorMessage } from "../api/client";
-import { Button, Card, Input, PageHeader, Select } from "../components/ui";
+import { Badge, Button, Card, Input, OtpBoxInput, PageHeader, Select } from "../components/ui";
 import { useAuth } from "../context/AuthContext";
+import { useConfirm } from "../context/ConfirmContext";
 import { useToast } from "../context/ToastContext";
-import type { EleveProfile } from "../types";
+import type { EleveProfile, JournalUtilisateurEntry } from "../types";
+
+const CATEGORIE_LABELS: Record<JournalUtilisateurEntry["categorie"], "brand" | "teal" | "amber" | "rose" | "slate"> = {
+  connexion: "slate", compte: "rose", eleve: "amber", enseignant: "teal", note: "brand", paiement: "teal",
+};
 
 function initials(name: string) {
   const parts = name.trim().split(/\s+/).filter(Boolean);
@@ -16,6 +21,7 @@ function initials(name: string) {
 export default function ProfilePage() {
   const { user, refreshUser } = useAuth();
   const toast = useToast();
+  const confirmer = useConfirm();
   const [form, setForm] = useState({
     first_name: user?.first_name || "", last_name: user?.last_name || "",
     email: user?.email || "", phone: user?.phone || "", address: user?.address || "",
@@ -35,6 +41,11 @@ export default function ProfilePage() {
 
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [uploadingPhoto, setUploadingPhoto] = useState(false);
+  const [removingPhoto, setRemovingPhoto] = useState(false);
+
+  // Historique d'activité du compte connecté (self-service) — voir MonActiviteView côté backend.
+  const [activite, setActivite] = useState<JournalUtilisateurEntry[] | null>(null);
+  const [activiteLoading, setActiviteLoading] = useState(true);
 
   // Certificat de scolarité : self-service pour l'élève (son propre dossier) et le parent (un
   // sélecteur si plusieurs enfants) — l'admin le génère plutôt depuis la fiche élève.
@@ -57,6 +68,10 @@ export default function ProfilePage() {
       });
     }
   }, [user]);
+
+  useEffect(() => {
+    authApi.monActivite().then(({ data }) => setActivite(data)).finally(() => setActiviteLoading(false));
+  }, []);
 
   if (!user) return null;
 
@@ -87,6 +102,20 @@ export default function ProfilePage() {
     } finally {
       setUploadingPhoto(false);
       if (fileInputRef.current) fileInputRef.current.value = "";
+    }
+  };
+
+  const handleSupprimerPhoto = async () => {
+    if (!(await confirmer("Retirer votre photo de profil ?"))) return;
+    setRemovingPhoto(true);
+    try {
+      await authApi.supprimerPhoto();
+      await refreshUser();
+      toast.success("Photo de profil retirée.");
+    } catch (err) {
+      toast.error(extractErrorMessage(err));
+    } finally {
+      setRemovingPhoto(false);
     }
   };
 
@@ -179,7 +208,7 @@ export default function ProfilePage() {
               {initials(user.full_name || user.username)}
             </div>
           )}
-          <div>
+          <div className="flex flex-wrap gap-2">
             <input
               ref={fileInputRef}
               type="file"
@@ -190,6 +219,11 @@ export default function ProfilePage() {
             <Button type="button" variant="secondary" onClick={() => fileInputRef.current?.click()} disabled={uploadingPhoto}>
               {uploadingPhoto ? "Envoi…" : "📷 Changer la photo"}
             </Button>
+            {user.photo && (
+              <Button type="button" variant="ghost" onClick={handleSupprimerPhoto} disabled={removingPhoto}>
+                {removingPhoto ? "…" : "🗑️ Retirer"}
+              </Button>
+            )}
           </div>
         </div>
       </Card>
@@ -272,16 +306,14 @@ export default function ProfilePage() {
                   )}
                 </div>
                 {verifCanalOuvert === canal && (
-                  <form onSubmit={handleConfirmerVerification} className="mt-3 flex items-end gap-2">
-                    <Input
-                      label="Code reçu" placeholder="123456" inputMode="numeric" maxLength={6}
-                      value={verifCode} onChange={(e) => setVerifCode(e.target.value.replace(/\D/g, ""))}
-                      className="max-w-[160px]"
-                    />
-                    <Button type="submit" disabled={verifConfirmation || verifCode.length !== 6}>
-                      {verifConfirmation ? "…" : "Confirmer"}
-                    </Button>
-                    <Button type="button" variant="ghost" onClick={() => setVerifCanalOuvert(null)}>Annuler</Button>
+                  <form onSubmit={handleConfirmerVerification} className="mt-3 space-y-3">
+                    <OtpBoxInput value={verifCode} onChange={setVerifCode} autoFocus />
+                    <div className="flex items-center justify-center gap-2">
+                      <Button type="submit" disabled={verifConfirmation || verifCode.length !== 6}>
+                        {verifConfirmation ? "…" : "Confirmer"}
+                      </Button>
+                      <Button type="button" variant="ghost" onClick={() => setVerifCanalOuvert(null)}>Annuler</Button>
+                    </div>
                   </form>
                 )}
               </div>
@@ -300,6 +332,31 @@ export default function ProfilePage() {
             </Button>
           </div>
         </div>
+      </Card>
+
+      <Card className="mt-6">
+        <h3 className="font-bold text-ink-900 mb-1">Mon activité récente</h3>
+        <p className="text-sm text-slate-500 mb-4">Vos dernières connexions et actions sur votre compte.</p>
+        {activiteLoading ? (
+          <p className="text-sm text-slate-400 py-4 text-center">Chargement…</p>
+        ) : !activite || activite.length === 0 ? (
+          <p className="text-sm text-slate-400 py-4 text-center">Aucune activité enregistrée pour l'instant.</p>
+        ) : (
+          <ul className="max-h-80 overflow-y-auto divide-y divide-slate-100 -mx-1">
+            {activite.map((entree) => (
+              <li key={entree.id} className="flex items-start justify-between gap-3 px-1 py-2.5">
+                <div className="min-w-0">
+                  <p className="text-sm text-slate-700">{entree.description}</p>
+                  <p className="text-xs text-slate-400">
+                    {new Date(entree.horodatage).toLocaleString("fr-FR", { dateStyle: "medium", timeStyle: "short" })}
+                    {entree.appareil && ` · ${entree.appareil}`}
+                  </p>
+                </div>
+                <Badge color={CATEGORIE_LABELS[entree.categorie]}>{entree.categorie_display}</Badge>
+              </li>
+            ))}
+          </ul>
+        )}
       </Card>
     </div>
   );

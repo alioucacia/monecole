@@ -3,6 +3,7 @@ import { useEffect, useState, type FormEvent } from "react";
 import { plansAbonnementApi, unwrapList } from "../api/services";
 import { extractErrorMessage } from "../api/client";
 import { Badge, Button, DeleteButton, EditButton, EmptyState, Input, Modal, PageHeader, RowActions, Select, Spinner, Table } from "../components/ui";
+import { useConfirm } from "../context/ConfirmContext";
 import { useToast } from "../context/ToastContext";
 import type { PlanAbonnement } from "../types";
 
@@ -17,6 +18,7 @@ const emptyForm = {
 
 export default function PlansAbonnementPage() {
   const toast = useToast();
+  const confirmer = useConfirm();
   const [plans, setPlans] = useState<PlanAbonnement[]>([]);
   const [loading, setLoading] = useState(true);
   const [modalOpen, setModalOpen] = useState(false);
@@ -75,7 +77,7 @@ export default function PlansAbonnementPage() {
     const avertissement = plan.nombre_ecoles > 0
       ? `${plan.nombre_ecoles} école(s) utilisent actuellement ce plan (elles repasseront en montant personnalisé). `
       : "";
-    if (!confirm(`${avertissement}Supprimer le plan "${plan.nom}" ?`)) return;
+    if (!(await confirmer(`${avertissement}Supprimer le plan "${plan.nom}" ?`, { danger: true }))) return;
     await plansAbonnementApi.remove(plan.id);
     load();
   };

@@ -23,7 +23,8 @@ from .serializers import (
     CustomTokenObtainPairSerializer,
     JournalUtilisateurSerializer,
     PasswordResetConfirmSerializer,
-    PasswordResetOtpConfirmSerializer,
+    PasswordResetOtpCompleteSerializer,
+    PasswordResetOtpVerifySerializer,
     PasswordResetRequestSerializer,
     UserCreateSerializer,
     UserSerializer,
@@ -81,6 +82,35 @@ class MeView(APIView):
         serializer.is_valid(raise_exception=True)
         serializer.save()
         return Response(serializer.data)
+
+
+class MonActiviteView(APIView):
+    """Historique d'activité du compte CONNECTÉ (dernières entrées) — pendant de
+    `ComptesEcoleViewSet.journal` (réservé à l'admin sur les comptes de son école) mais en
+    self-service pour la page Profil, tous rôles confondus : chacun peut voir ses propres
+    connexions/actions, sans droit particulier requis au-delà d'être authentifié."""
+
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+        entrees = request.user.journal_activite.all()[:20]
+        return Response(JournalUtilisateurSerializer(entrees, many=True).data)
+
+
+class SupprimerPhotoView(APIView):
+    """Retire la photo de profil du compte connecté — pendant de `MeView.patch` pour ce seul
+    champ : un fichier uploadé (`ImageField`) ne peut pas être effacé via un simple PATCH JSON
+    (`photo: null` serait ignoré par DRF sur un champ fichier), il faut un endpoint dédié qui
+    appelle explicitement `photo.delete()`."""
+
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request):
+        if request.user.photo:
+            request.user.photo.delete(save=False)
+            request.user.photo = None
+            request.user.save(update_fields=["photo"])
+        return Response(UserSerializer(request.user).data)
 
 
 class ChangePasswordView(APIView):
@@ -160,21 +190,31 @@ class PasswordResetConfirmView(APIView):
         return Response({"detail": "Mot de passe réinitialisé avec succès."})
 
 
-class PasswordResetOtpConfirmView(APIView):
-    """Second chemin de réinitialisation : un code à 6 chiffres (voir
-    PasswordResetRequestView, qui l'envoie en plus du lien) plutôt qu'un lien signé — mêmes
-    garanties de sécurité (code à usage unique, expire en 10 minutes, 5 tentatives max, voir
-    accounts.services.verifier_otp), sans dépendre d'un lien cliquable."""
+_TICKET_SALT = "password-reset-otp-verifie"
+_TICKET_MAX_AGE = 5 * 60  # 5 minutes pour saisir le nouveau mot de passe après la vérification du code
+
+
+class PasswordResetOtpVerifyView(APIView):
+    """1er des deux temps du chemin OTP de réinitialisation (voir PasswordResetRequestView, qui
+    envoie ce code en plus du lien signé habituel) : ne vérifie QUE le code, séparément de la
+    saisie du nouveau mot de passe — l'un se fait en carreaux sur son propre écran, l'autre
+    n'apparaît qu'une fois le code confirmé (voir ForgotPasswordPage.tsx). En cas de succès,
+    renvoie un jeton signé de courte durée (5 minutes) à présenter à
+    `PasswordResetOtpCompleteView` — le code OTP lui-même reste à usage unique (consommé ici,
+    comme pour tout autre usage de `verifier_otp`), ce jeton est ce qui porte la preuve de
+    vérification jusqu'à l'étape suivante."""
 
     permission_classes = [AllowAny]
     throttle_classes = [ScopedRateThrottle]
     throttle_scope = "login"
 
     def post(self, request):
+        from django.core import signing
+
         from .models import CodeOTP
         from .services import verifier_otp
 
-        serializer = PasswordResetOtpConfirmSerializer(data=request.data)
+        serializer = PasswordResetOtpVerifySerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
         email = serializer.validated_data["email"]
 
@@ -184,6 +224,31 @@ class PasswordResetOtpConfirmView(APIView):
         user = User.objects.filter(email__iexact=email, is_active=True).first()
         if not user or not verifier_otp(user, CodeOTP.Objectif.REINITIALISATION, serializer.validated_data["code"]):
             raise ValidationError({"code": "Code invalide ou expiré."})
+
+        ticket = signing.dumps({"user_id": user.id}, salt=_TICKET_SALT)
+        return Response({"reset_ticket": ticket})
+
+
+class PasswordResetOtpCompleteView(APIView):
+    """2e temps : applique le nouveau mot de passe, à partir du jeton renvoyé par
+    `PasswordResetOtpVerifyView` — jamais du code OTP directement (déjà consommé à l'étape
+    précédente)."""
+
+    permission_classes = [AllowAny]
+    throttle_classes = [ScopedRateThrottle]
+    throttle_scope = "login"
+
+    def post(self, request):
+        from django.core import signing
+
+        serializer = PasswordResetOtpCompleteSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+
+        try:
+            payload = signing.loads(serializer.validated_data["reset_ticket"], salt=_TICKET_SALT, max_age=_TICKET_MAX_AGE)
+            user = User.objects.get(pk=payload["user_id"], is_active=True)
+        except (signing.BadSignature, User.DoesNotExist):
+            raise ValidationError({"reset_ticket": "Session de réinitialisation expirée — recommencez depuis le code reçu."})
 
         user.set_password(serializer.validated_data["new_password"])
         user.doit_changer_mot_de_passe = False

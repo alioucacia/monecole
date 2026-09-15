@@ -5,7 +5,7 @@ import { extractErrorMessage } from "../api/client";
 import { Badge, Button, EmptyState, Input, Modal, PageHeader, Select, Spinner, Table } from "../components/ui";
 import { useToast } from "../context/ToastContext";
 import { usePaginated } from "../hooks/usePaginated";
-import type { Ecole, Role, User } from "../types";
+import type { Ecole, EleveProfile, Role, User } from "../types";
 
 const ROLE_LABELS: Record<Role, string> = {
   superadmin: "Super Admin", admin: "Administrateur", teacher: "Enseignant", student: "Élève",
@@ -30,6 +30,12 @@ export default function AnnuaireUtilisateursPage() {
   const [resetting, setResetting] = useState(false);
   const [resetResult, setResetResult] = useState<{ mot_de_passe: string; email_envoye: boolean } | null>(null);
   const [copied, setCopied] = useState(false);
+
+  // Élèves rattachés à un parent (voir AnnuaireUtilisateursViewSet.enfants côté backend) — le
+  // parent se retrouve typiquement via la recherche par téléphone (search_fields inclut "phone").
+  const [enfantsTarget, setEnfantsTarget] = useState<User | null>(null);
+  const [enfants, setEnfants] = useState<EleveProfile[]>([]);
+  const [enfantsLoading, setEnfantsLoading] = useState(false);
 
   useEffect(() => {
     ecolesApi.list({ page_size: 500 }).then(({ data }) => setEcoles(unwrapList(data)));
@@ -67,6 +73,20 @@ export default function AnnuaireUtilisateursPage() {
     }
   };
 
+  const openEnfants = async (u: User) => {
+    setEnfantsTarget(u);
+    setEnfantsLoading(true);
+    try {
+      const { data } = await annuaireUtilisateursApi.enfants(u.id);
+      setEnfants(data);
+    } catch (err) {
+      toast.error(extractErrorMessage(err));
+      setEnfantsTarget(null);
+    } finally {
+      setEnfantsLoading(false);
+    }
+  };
+
   const handleCopy = async () => {
     if (!resetResult) return;
     try {
@@ -87,7 +107,7 @@ export default function AnnuaireUtilisateursPage() {
 
       <div className="flex flex-wrap gap-3 mb-5">
         <Input
-          placeholder="Rechercher un nom, e-mail, identifiant…"
+          placeholder="Rechercher un nom, e-mail, identifiant, téléphone…"
           value={search}
           onChange={(e) => setSearch(e.target.value)}
           className="flex-1 min-w-[220px]"
@@ -144,9 +164,16 @@ export default function AnnuaireUtilisateursPage() {
                   {u.last_login ? new Date(u.last_login).toLocaleString("fr-FR") : "Jamais connecté"}
                 </td>
                 <td className="px-4 py-3">
-                  <button onClick={() => openReset(u)} className="text-xs font-semibold text-brand-600 hover:underline whitespace-nowrap">
-                    🔑 Réinitialiser
-                  </button>
+                  <div className="flex flex-col items-start gap-1">
+                    <button onClick={() => openReset(u)} className="text-xs font-semibold text-brand-600 hover:underline whitespace-nowrap">
+                      🔑 Réinitialiser
+                    </button>
+                    {u.role === "parent" && (
+                      <button onClick={() => openEnfants(u)} className="text-xs font-semibold text-teal-600 hover:underline whitespace-nowrap">
+                        👶 Voir les enfants
+                      </button>
+                    )}
+                  </div>
                 </td>
               </tr>
             ))}
@@ -212,6 +239,30 @@ export default function AnnuaireUtilisateursPage() {
               <Button type="button" onClick={() => setResetTarget(null)}>Fermer</Button>
             </div>
           </div>
+        )}
+      </Modal>
+
+      <Modal
+        open={!!enfantsTarget}
+        onClose={() => setEnfantsTarget(null)}
+        title={`Enfants de ${enfantsTarget?.full_name || enfantsTarget?.username || ""}`}
+      >
+        {enfantsLoading ? (
+          <div className="flex justify-center py-10"><Spinner /></div>
+        ) : enfants.length === 0 ? (
+          <EmptyState title="Aucun élève rattaché" description="Ce compte parent n'est relié à aucun dossier élève." />
+        ) : (
+          <ul className="divide-y divide-slate-100">
+            {enfants.map((el) => (
+              <li key={el.id} className="py-3 flex items-center justify-between gap-3">
+                <div>
+                  <p className="text-sm font-semibold text-slate-700">{el.user.first_name} {el.user.last_name}</p>
+                  <p className="text-xs text-slate-400 font-mono">{el.matricule}</p>
+                </div>
+                <Badge color={el.actif ? "green" : "slate"}>{el.classe_nom || "Sans classe"}</Badge>
+              </li>
+            ))}
+          </ul>
         )}
       </Modal>
     </div>

@@ -4,6 +4,7 @@ import { anneesApi, modelesMessageApi, parametresEcoleApi, periodesApi, unwrapLi
 import { extractErrorMessage } from "../api/client";
 import { Badge, Button, Card, Input, PageHeader, Select, Spinner } from "../components/ui";
 import { useAuth } from "../context/AuthContext";
+import { useConfirm } from "../context/ConfirmContext";
 import { useToast } from "../context/ToastContext";
 import type { AnneeScolaire, Ecole, ModeleMessage, Periode } from "../types";
 
@@ -183,6 +184,8 @@ function ModelesMessageSection() {
 }
 
 export default function ParametresEcolePage() {
+  const toast = useToast();
+  const confirmer = useConfirm();
   const [ecole, setEcole] = useState<Ecole | null>(null);
   const [annees, setAnnees] = useState<AnneeScolaire[]>([]);
   const [loading, setLoading] = useState(true);
@@ -281,12 +284,12 @@ export default function ParametresEcolePage() {
   };
 
   const handleSupprimerPeriode = async (p: Periode) => {
-    if (!confirm(`Supprimer « ${p.nom} » ?`)) return;
+    if (!(await confirmer(`Supprimer « ${p.nom} » ?`, { danger: true }))) return;
     try {
       await periodesApi.remove(p.id);
       loadPeriodes(periodeAnneeId);
     } catch (err) {
-      alert(extractErrorMessage(err));
+      toast.error(extractErrorMessage(err));
     }
   };
 
@@ -317,7 +320,7 @@ export default function ParametresEcolePage() {
   };
 
   const activerAnnee = async (annee: AnneeScolaire) => {
-    if (!confirm(`Définir "${annee.libelle}" comme année scolaire active ? Toute la plateforme basculera sur cette année.`)) return;
+    if (!(await confirmer(`Définir "${annee.libelle}" comme année scolaire active ? Toute la plateforme basculera sur cette année.`))) return;
     await anneesApi.update(annee.id, { active: true });
     load();
   };

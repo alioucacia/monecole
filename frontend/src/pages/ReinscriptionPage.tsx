@@ -4,6 +4,7 @@ import { classesApi, elevesApi, typesFraisApi, unwrapList } from "../api/service
 import { extractErrorMessage } from "../api/client";
 import { Badge, Button, EmptyState, Input, PageHeader, Select, Spinner } from "../components/ui";
 import { ClasseOptions } from "../components/CycleSelect";
+import { usePrompt } from "../context/ConfirmContext";
 import type { Classe, EleveProfile } from "../types";
 
 function money(value: number | string) {
@@ -11,6 +12,7 @@ function money(value: number | string) {
 }
 
 export default function ReinscriptionPage() {
+  const demander = usePrompt();
   const [classes, setClasses] = useState<Classe[]>([]);
   const [classeSourceId, setClasseSourceId] = useState("");
   const [classeDestId, setClasseDestId] = useState("");
@@ -18,6 +20,16 @@ export default function ReinscriptionPage() {
   const [inactifs, setInactifs] = useState<EleveProfile[]>([]);
   const [selected, setSelected] = useState<Record<number, boolean>>({});
   const [loading, setLoading] = useState(false);
+
+  // Recherche des élèves DÉJÀ réinscrits dans une classe (voir EleveProfile.statut_inscription,
+  // mis à "reinscription" par handleReinscrire/l'action serveur `reinscription`) — section
+  // séparée de la réinscription en masse ci-dessus, pour retrouver/imprimer cette liste après coup.
+  const [classeRecherche, setClasseRecherche] = useState("");
+  const [rechercheNom, setRechercheNom] = useState("");
+  const [reinscrits, setReinscrits] = useState<EleveProfile[]>([]);
+  const [loadingReinscrits, setLoadingReinscrits] = useState(false);
+  const [imprimant, setImprimant] = useState(false);
+  const [ficheEnCours, setFicheEnCours] = useState<number | null>(null);
 
   // Montant du frais de réinscription pour `classeDestId`, résolu automatiquement dès qu'une
   // classe de destination est choisie — voir TypeFrais.usage/TarifClasse et
@@ -65,6 +77,40 @@ export default function ReinscriptionPage() {
 
   useEffect(loadEleves, [classeSourceId]);
 
+  const loadReinscrits = () => {
+    if (!classeRecherche) {
+      setReinscrits([]);
+      return;
+    }
+    setLoadingReinscrits(true);
+    elevesApi.list({
+      classe: classeRecherche, statut_inscription: "reinscription",
+      search: rechercheNom || undefined, page_size: 200,
+    })
+      .then(({ data }) => setReinscrits(unwrapList(data)))
+      .finally(() => setLoadingReinscrits(false));
+  };
+
+  useEffect(loadReinscrits, [classeRecherche, rechercheNom]);
+
+  const handleImprimerListe = async () => {
+    setImprimant(true);
+    try {
+      await elevesApi.exportPdf({ classe: classeRecherche, statut_inscription: "reinscription", search: rechercheNom || undefined });
+    } finally {
+      setImprimant(false);
+    }
+  };
+
+  const handleFicheReinscription = async (eleve: EleveProfile) => {
+    setFicheEnCours(eleve.id);
+    try {
+      await elevesApi.ficheReinscription(eleve.id, `fiche_reinscription_${eleve.matricule}.pdf`);
+    } finally {
+      setFicheEnCours(null);
+    }
+  };
+
   const toggleAll = (value: boolean) => {
     setSelected(Object.fromEntries(eleves.map((el) => [el.id, value])));
   };
@@ -93,7 +139,9 @@ export default function ReinscriptionPage() {
   };
 
   const handleNonReinscrit = async (eleve: EleveProfile) => {
-    const motif = prompt(`Motif du départ de ${eleve.user.first_name} ${eleve.user.last_name} (optionnel) :`) || "";
+    const motif = await demander(`Vous pouvez préciser le motif du départ de ${eleve.user.first_name} ${eleve.user.last_name}.`, {
+      title: "Élève non réinscrit", label: "Motif (optionnel)", confirmLabel: "Confirmer",
+    }) || "";
     await elevesApi.marquerNonReinscrit(eleve.id, motif);
     loadEleves();
   };
@@ -179,6 +227,14 @@ export default function ReinscriptionPage() {
                   />
                   <span className="flex-1 text-sm font-medium text-slate-700">{el.user.first_name} {el.user.last_name}</span>
                   <span className="text-xs font-mono text-slate-400">{el.matricule}</span>
+                  {el.statut_inscription === "reinscription" && (
+                    <button
+                      onClick={() => handleFicheReinscription(el)} disabled={ficheEnCours === el.id}
+                      className="text-xs text-brand-600 hover:underline disabled:opacity-50"
+                    >
+                      {ficheEnCours === el.id ? "Génération…" : "🖨️ Fiche"}
+                    </button>
+                  )}
                   <button onClick={() => handleNonReinscrit(el)} className="text-xs text-rose-600 hover:underline">Ne se réinscrit pas</button>
                 </li>
               ))}
@@ -205,6 +261,49 @@ export default function ReinscriptionPage() {
           )}
         </>
       )}
+
+      <div className="mt-10 pt-8 border-t border-slate-100">
+        <p className="text-sm font-bold text-ink-900 mb-1">Élèves déjà réinscrits</p>
+        <p className="text-xs text-slate-400 mb-4">Retrouvez et imprimez la liste des élèves réinscrits dans une classe, ou leur fiche individuelle.</p>
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
+          <Select label="Classe" value={classeRecherche} onChange={(e) => setClasseRecherche(e.target.value)}>
+            <option value="">— Sélectionner —</option>
+            <ClasseOptions classes={classes} label={(c) => `${c.nom} (${c.annee_scolaire_libelle})`} />
+          </Select>
+          <Input label="Rechercher un nom (optionnel)" value={rechercheNom} onChange={(e) => setRechercheNom(e.target.value)} placeholder="Nom ou prénom…" />
+        </div>
+
+        {!classeRecherche ? (
+          <EmptyState title="Sélectionnez une classe" description="La liste des élèves réinscrits s'affichera ici." />
+        ) : loadingReinscrits ? (
+          <div className="flex justify-center py-10"><Spinner /></div>
+        ) : reinscrits.length === 0 ? (
+          <EmptyState title="Aucun élève réinscrit dans cette classe" />
+        ) : (
+          <>
+            <div className="flex items-center justify-between mb-3">
+              <span className="text-xs text-slate-500">{reinscrits.length} élève(s) réinscrit(s)</span>
+              <Button variant="secondary" onClick={handleImprimerListe} disabled={imprimant}>
+                {imprimant ? "Génération…" : "🖨️ Imprimer la liste"}
+              </Button>
+            </div>
+            <ul className="divide-y divide-slate-50 bg-white rounded-2xl border border-slate-100 shadow-soft overflow-hidden">
+              {reinscrits.map((el) => (
+                <li key={el.id} className="flex items-center gap-3 px-4 py-2.5">
+                  <span className="flex-1 text-sm font-medium text-slate-700">{el.user.first_name} {el.user.last_name}</span>
+                  <span className="text-xs font-mono text-slate-400">{el.matricule}</span>
+                  <button
+                    onClick={() => handleFicheReinscription(el)} disabled={ficheEnCours === el.id}
+                    className="text-xs text-brand-600 hover:underline disabled:opacity-50"
+                  >
+                    {ficheEnCours === el.id ? "Génération…" : "🖨️ Fiche de réinscription"}
+                  </button>
+                </li>
+              ))}
+            </ul>
+          </>
+        )}
+      </div>
     </div>
   );
 }

@@ -4,6 +4,7 @@ import { formulesApi, elevesApi, inscriptionsCantineApi, ticketsCantineApi, unwr
 import { extractErrorMessage } from "../api/client";
 import { Badge, Button, DeleteButton, EditButton, EmptyState, Input, Modal, PageHeader, RowActions, Select, Spinner, Table } from "../components/ui";
 import { useAuth } from "../context/AuthContext";
+import { useConfirm } from "../context/ConfirmContext";
 import { usePaginated } from "../hooks/usePaginated";
 import type { EleveProfile, Formule, InscriptionCantine, TicketCantine } from "../types";
 
@@ -19,6 +20,7 @@ const emptyTicketForm = { inscription: "", mois: new Date().toISOString().slice(
 
 export default function CantinePage() {
   const { user } = useAuth();
+  const confirmer = useConfirm();
   const isAdmin = user?.role === "admin";
   const peutGererTickets = user?.role === "admin" || user?.role === "comptabilite";
 
@@ -71,7 +73,7 @@ export default function CantinePage() {
   };
 
   const handleRegenererLien = async (formule: Formule) => {
-    if (!confirm("L'ancien lien agent cessera de fonctionner. Continuer ?")) return;
+    if (!(await confirmer("L'ancien lien agent cessera de fonctionner. Continuer ?"))) return;
     await formulesApi.regenererLienAgent(formule.id);
     loadFormules();
   };
@@ -140,7 +142,7 @@ export default function CantinePage() {
   };
 
   const handleDeleteFormule = async (formule: Formule) => {
-    if (!confirm(`Supprimer la formule "${formule.nom}" ?`)) return;
+    if (!(await confirmer(`Supprimer la formule "${formule.nom}" ?`, { danger: true }))) return;
     await formulesApi.remove(formule.id);
     loadFormules();
   };
@@ -170,7 +172,7 @@ export default function CantinePage() {
   };
 
   const handleRemoveInscription = async (inscription: InscriptionCantine) => {
-    if (!confirm(`Retirer ${inscription.eleve_nom} de cette formule ?`)) return;
+    if (!(await confirmer(`Retirer ${inscription.eleve_nom} de cette formule ?`))) return;
     await inscriptionsCantineApi.remove(inscription.id);
     loadFormules();
     reloadInscriptions();

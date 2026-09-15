@@ -510,7 +510,10 @@ class AnnuaireUtilisateursViewSet(viewsets.ReadOnlyModelViewSet):
     serializer_class = UserSerializer
     permission_classes = [IsSuperAdmin]
     filterset_fields = ["role", "ecole", "is_active"]
-    search_fields = ["username", "first_name", "last_name", "email"]
+    # "phone" : permet au Super Admin de retrouver un parent par son numéro de téléphone (ex:
+    # un parent appelle le support sans connaître son identifiant) — sans ça, seuls
+    # username/prénom/nom/e-mail étaient cherchables.
+    search_fields = ["username", "first_name", "last_name", "email", "phone"]
     ordering_fields = ["date_joined", "last_login", "last_name"]
 
     def get_queryset(self):
@@ -544,3 +547,21 @@ class AnnuaireUtilisateursViewSet(viewsets.ReadOnlyModelViewSet):
         )
 
         return Response(resultat)
+
+    @action(detail=True, methods=["get"], url_path="enfants")
+    def enfants(self, request, pk=None):
+        """Élèves rattachés à ce compte PARENT (voir EleveProfile.parent) — utilisé par le Super
+        Admin pour retrouver, à partir d'un parent (souvent identifié par son numéro de
+        téléphone via le champ de recherche), tous les élèves dont il a la charge, quelle que
+        soit leur classe ou même leur école (un même numéro de parent peut, en théorie, être
+        rattaché à des élèves de plusieurs établissements)."""
+        from rest_framework.exceptions import ValidationError
+
+        from people.models import EleveProfile
+        from people.serializers import EleveProfileSerializer
+
+        parent = self.get_object()
+        if parent.role != User.Role.PARENT:
+            raise ValidationError("Ce compte n'est pas un compte parent.")
+        eleves = EleveProfile.objects.filter(parent=parent).select_related("user", "classe", "classe__annee_scolaire")
+        return Response(EleveProfileSerializer(eleves, many=True).data)

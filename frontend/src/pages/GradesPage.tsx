@@ -5,6 +5,7 @@ import { extractErrorMessage } from "../api/client";
 import { Badge, Button, DeleteButton, EditButton, EmptyState, Input, Modal, PageHeader, RowActions, Select, Spinner, Table } from "../components/ui";
 import { CycleSelect } from "../components/CycleSelect";
 import { useAuth } from "../context/AuthContext";
+import { useConfirm } from "../context/ConfirmContext";
 import { usePaginated } from "../hooks/usePaginated";
 import type { Classe, Cycle, EleveProfile, Enseignement, Note, Periode } from "../types";
 
@@ -19,6 +20,7 @@ const emptyForm = {
 
 export default function GradesPage() {
   const { user } = useAuth();
+  const confirmer = useConfirm();
   const canEdit = user?.role === "admin" || user?.role === "teacher";
 
   const [classes, setClasses] = useState<Classe[]>([]);
@@ -104,7 +106,7 @@ export default function GradesPage() {
   };
 
   const handleDelete = async (note: Note) => {
-    if (!confirm("Supprimer cette note ?")) return;
+    if (!(await confirmer("Supprimer cette note ?", { danger: true }))) return;
     await notesApi.remove(note.id);
     reload();
   };

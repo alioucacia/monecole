@@ -3,6 +3,7 @@ import { useEffect, useState, type FormEvent } from "react";
 import { comptesSuperAdminApi, unwrapList } from "../api/services";
 import { extractErrorMessage } from "../api/client";
 import { useAuth } from "../context/AuthContext";
+import { useConfirm } from "../context/ConfirmContext";
 import { useToast } from "../context/ToastContext";
 import { Badge, Button, EmptyState, Input, Modal, PageHeader, Spinner, Table } from "../components/ui";
 import type { User } from "../types";
@@ -12,6 +13,7 @@ const emptyEditForm = { username: "", first_name: "", last_name: "", email: "", 
 
 export default function SuperAdminAccountsPage() {
   const toast = useToast();
+  const confirmer = useConfirm();
   const { user: moi } = useAuth();
   const [comptes, setComptes] = useState<User[]>([]);
   const [loading, setLoading] = useState(true);
@@ -82,7 +84,7 @@ export default function SuperAdminAccountsPage() {
   };
 
   const handleDelete = async (u: User) => {
-    if (!confirm(`Supprimer définitivement le compte « ${u.full_name || u.username} » ?`)) return;
+    if (!(await confirmer(`Supprimer définitivement le compte « ${u.full_name || u.username} » ?`, { danger: true }))) return;
     try {
       await comptesSuperAdminApi.remove(u.id);
       load();

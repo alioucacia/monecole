@@ -5,6 +5,7 @@ import { extractErrorMessage } from "../api/client";
 import { Badge, Button, Card, DeleteButton, EmptyState, Input, Modal, PageHeader, Select, Spinner } from "../components/ui";
 import { ClasseOptions } from "../components/CycleSelect";
 import { useAuth } from "../context/AuthContext";
+import { useConfirm } from "../context/ConfirmContext";
 import { useToast } from "../context/ToastContext";
 import { usePaginated } from "../hooks/usePaginated";
 import type { Annonce, Classe, ModeleMessage } from "../types";
@@ -30,6 +31,7 @@ const emptyForm = {
 export default function AnnouncementsPage() {
   const { user } = useAuth();
   const toast = useToast();
+  const confirmer = useConfirm();
   const canPost = user?.role === "admin" || user?.role === "teacher";
 
   const [classes, setClasses] = useState<Classe[]>([]);
@@ -88,7 +90,7 @@ export default function AnnouncementsPage() {
   };
 
   const handleDelete = async (annonce: Annonce) => {
-    if (!confirm(`Supprimer l'annonce "${annonce.titre}" ?`)) return;
+    if (!(await confirmer(`Supprimer l'annonce "${annonce.titre}" ?`, { danger: true }))) return;
     await annoncesApi.remove(annonce.id);
     reload();
   };

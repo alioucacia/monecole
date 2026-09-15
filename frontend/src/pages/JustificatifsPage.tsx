@@ -4,6 +4,7 @@ import { elevesApi, justificatifsApi, unwrapList } from "../api/services";
 import { extractErrorMessage } from "../api/client";
 import { Badge, Button, EmptyState, Input, PageHeader, Select, Spinner, Table } from "../components/ui";
 import { useAuth } from "../context/AuthContext";
+import { usePrompt } from "../context/ConfirmContext";
 import type { EleveProfile, JustificatifAbsence } from "../types";
 
 const STATUT_LABELS: Record<string, { label: string; color: "amber" | "green" | "rose" }> = {
@@ -17,6 +18,7 @@ const emptyForm = { eleve: "", date_absence: "", motif: "maladie", description: 
 
 export default function JustificatifsPage() {
   const { user } = useAuth();
+  const demander = usePrompt();
   const peutTraiter = user?.role === "admin" || user?.role === "surveillance";
   const peutSoumettre = user?.role === "student" || user?.role === "parent" || user?.role === "admin" || user?.role === "surveillance";
 
@@ -70,7 +72,10 @@ export default function JustificatifsPage() {
   };
 
   const handleTraiter = async (item: JustificatifAbsence, approuve: boolean) => {
-    const commentaire = prompt(approuve ? "Commentaire (optionnel) :" : "Motif du rejet (optionnel) :") || "";
+    const commentaire = await demander(
+      approuve ? "Vous pouvez ajouter un commentaire à cette approbation." : "Vous pouvez préciser le motif de ce rejet.",
+      { title: approuve ? "Approuver" : "Rejeter", label: "Commentaire (optionnel)", confirmLabel: approuve ? "Approuver" : "Rejeter" }
+    ) || "";
     if (approuve) await justificatifsApi.approuver(item.id, commentaire);
     else await justificatifsApi.rejeter(item.id, commentaire);
     load();

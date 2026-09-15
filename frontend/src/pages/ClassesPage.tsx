@@ -4,6 +4,7 @@ import { anneesApi, classesApi, elevesApi, enseignantsApi, enseignementsApi, mat
 import { extractErrorMessage } from "../api/client";
 import { Badge, Button, DeleteButton, EditButton, EmptyState, Input, Modal, PageHeader, RowActions, Select, Spinner, Table } from "../components/ui";
 import { useAuth } from "../context/AuthContext";
+import { useConfirm } from "../context/ConfirmContext";
 import { useToast } from "../context/ToastContext";
 import { usePaginated } from "../hooks/usePaginated";
 import { CYCLE_LABELS } from "../types";
@@ -32,6 +33,7 @@ function effectifColor(effectif: number, capacite: number): "green" | "amber" | 
 export default function ClassesPage() {
   const { user } = useAuth();
   const toast = useToast();
+  const confirmer = useConfirm();
   const isAdmin = user?.role === "admin";
   const [annees, setAnnees] = useState<AnneeScolaire[]>([]);
   const [teachers, setTeachers] = useState<EnseignantProfile[]>([]);
@@ -114,7 +116,7 @@ export default function ClassesPage() {
   };
 
   const handleDelete = async (classe: Classe) => {
-    if (!confirm(`Supprimer la classe ${classe.nom} ?`)) return;
+    if (!(await confirmer(`Supprimer la classe ${classe.nom} ?`, { danger: true }))) return;
     await classesApi.remove(classe.id);
     reload();
   };

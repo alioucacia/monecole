@@ -4,6 +4,7 @@ import { Link, useNavigate, useParams } from "react-router-dom";
 import { ecolesApi, fonctionnalitesApi, paiementsEcolesApi, unwrapList } from "../api/services";
 import { extractErrorMessage } from "../api/client";
 import { useAuth } from "../context/AuthContext";
+import { usePrompt } from "../context/ConfirmContext";
 import { useToast } from "../context/ToastContext";
 import { Badge, Button, Card, EmptyState, Input, Modal, PageHeader, Spinner, StatCard, Table } from "../components/ui";
 import type { Ecole, EcoleStatsDetail, EcoleUtilisateur, Fonctionnalite, PaiementEcole } from "../types";
@@ -35,6 +36,7 @@ export default function EcoleDetailPage() {
   const navigate = useNavigate();
   const { impersonate } = useAuth();
   const toast = useToast();
+  const demander = usePrompt();
 
   const [ecole, setEcole] = useState<Ecole | null>(null);
   const [stats, setStats] = useState<EcoleStatsDetail | null>(null);
@@ -161,8 +163,9 @@ export default function EcoleDetailPage() {
 
   const handleSupprimer = async () => {
     if (!ecole) return;
-    const saisie = prompt(
-      `Cette action est irréversible et supprimera TOUTES les données de « ${ecole.nom} » (élèves, notes, paiements...).\n\nTapez le nom de l'école pour confirmer :`
+    const saisie = await demander(
+      `Cette action est irréversible et supprimera TOUTES les données de « ${ecole.nom} » (élèves, notes, paiements...).`,
+      { title: "Suppression définitive", label: "Tapez le nom de l'école pour confirmer", placeholder: ecole.nom, confirmLabel: "Supprimer" }
     );
     if (saisie !== ecole.nom) {
       if (saisie !== null) toast.warning("Le nom saisi ne correspond pas — suppression annulée.");

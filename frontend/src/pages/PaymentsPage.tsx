@@ -6,6 +6,7 @@ import { extractErrorMessage } from "../api/client";
 import { Badge, Button, EmptyState, Input, Modal, PageHeader, Select, Spinner, StatCard, Table } from "../components/ui";
 import { CycleSelect } from "../components/CycleSelect";
 import { useAuth } from "../context/AuthContext";
+import { useConfirm } from "../context/ConfirmContext";
 import { useToast } from "../context/ToastContext";
 import { usePaginated } from "../hooks/usePaginated";
 import type { AnneeScolaire, Classe, Cycle, EleveProfile, Frais, Periode, PeriodiciteFrais, TypeFrais, UsageFrais } from "../types";
@@ -106,6 +107,7 @@ function statutPeriodePourFrais(frais: Frais, periodeId: number): "paye" | "part
 
 export default function PaymentsPage() {
   const toast = useToast();
+  const confirmer = useConfirm();
   const { user } = useAuth();
   const peutGerer = user?.role === "admin" || user?.role === "comptabilite";
 
@@ -283,7 +285,7 @@ export default function PaymentsPage() {
   };
 
   const handleDeleteFrais = async (frais: Frais) => {
-    if (!confirm(`Supprimer le frais « ${frais.type_frais_nom} » de ${frais.eleve_nom} ? Cette action est irréversible.`)) return;
+    if (!(await confirmer(`Supprimer le frais « ${frais.type_frais_nom} » de ${frais.eleve_nom} ? Cette action est irréversible.`, { danger: true }))) return;
     setFraisDeletingId(frais.id);
     try {
       await fraisApi.remove(frais.id);
@@ -329,7 +331,7 @@ export default function PaymentsPage() {
   };
 
   const handleDeletePaiement = async (paiement: Frais["paiements"][number]) => {
-    if (!confirm(`Supprimer ce paiement de ${money(paiement.montant)} ? Cette action est irréversible.`)) return;
+    if (!(await confirmer(`Supprimer ce paiement de ${money(paiement.montant)} ? Cette action est irréversible.`, { danger: true }))) return;
     setPaiementDeletingId(paiement.id);
     try {
       await paiementsApi.remove(paiement.id);
@@ -381,7 +383,7 @@ export default function PaymentsPage() {
   };
 
   const handleTypeDelete = async (type: TypeFrais) => {
-    if (!confirm(`Supprimer le type de frais « ${type.nom} » ?`)) return;
+    if (!(await confirmer(`Supprimer le type de frais « ${type.nom} » ?`, { danger: true }))) return;
     try {
       await typesFraisApi.remove(type.id);
       loadTypes();

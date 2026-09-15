@@ -1,3 +1,4 @@
+import { useRef } from "react";
 import type { ButtonHTMLAttributes, InputHTMLAttributes, MouseEvent, ReactNode, SelectHTMLAttributes } from "react";
 
 export function Card({ children, className = "" }: { children: ReactNode; className?: string }) {
@@ -70,15 +71,79 @@ export function Button({
   );
 }
 
-export function Input({ label, className = "", ...props }: InputHTMLAttributes<HTMLInputElement> & { label?: string }) {
+// `required` n'est volontairement JAMAIS transmis à l'élément natif (voir Input/Select/Textarea
+// ci-dessous) : l'infobulle "Veuillez renseigner ce champ" du navigateur n'est ni stylable ni
+// cohérente avec le reste de l'app. Seul l'astérisque visuel reste — le contrôle réel du champ
+// obligatoire se fait en Python (le serializer DRF rejette un champ manquant avec un message
+// explicite, déjà affiché par chaque formulaire via `extractErrorMessage`) ou, quand une page a
+// besoin d'un retour immédiat avant l'appel réseau, en React (voir par ex. LoginPage.tsx).
+export function Input({ label, required, className = "", ...props }: InputHTMLAttributes<HTMLInputElement> & { label?: string }) {
   return (
     <label className="block">
-      {label && <span className="block text-sm font-semibold text-slate-600 mb-1.5">{label}</span>}
+      {label && (
+        <span className="block text-sm font-semibold text-slate-600 mb-1.5">
+          {label}{required && <span className="text-rose-500"> *</span>}
+        </span>
+      )}
       <input
         className={`w-full rounded-xl border border-slate-200 bg-white px-3.5 py-2.5 text-sm text-slate-800 placeholder:text-slate-400 transition focus:outline-none focus:ring-4 focus:ring-brand-500/15 focus:border-brand-400 ${className}`}
         {...props}
       />
     </label>
+  );
+}
+
+/** Saisie d'un code OTP « en carreaux » (une case par chiffre) — plus lisible qu'un simple champ
+ * texte pour un code à 6 chiffres, et le geste (avance automatique, retour arrière, collage du
+ * code entier reçu par SMS/e-mail d'un coup) est plus naturel. Utilisé partout où un OTP se
+ * saisit (connexion 2FA, réinitialisation de mot de passe, vérification e-mail/téléphone). */
+export function OtpBoxInput({
+  value, onChange, length = 6, autoFocus = false, disabled = false,
+}: { value: string; onChange: (v: string) => void; length?: number; autoFocus?: boolean; disabled?: boolean }) {
+  const refs = useRef<(HTMLInputElement | null)[]>([]);
+  const chiffres = Array.from({ length }, (_, i) => value[i] || "");
+
+  const setChiffre = (i: number, saisie: string) => {
+    const chiffre = saisie.replace(/\D/g, "").slice(-1);
+    const suivant = value.split("");
+    suivant[i] = chiffre;
+    onChange(suivant.join("").slice(0, length));
+    if (chiffre && i < length - 1) refs.current[i + 1]?.focus();
+  };
+
+  const handleKeyDown = (i: number, e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (e.key === "Backspace" && !chiffres[i] && i > 0) {
+      refs.current[i - 1]?.focus();
+    }
+  };
+
+  const handlePaste = (e: React.ClipboardEvent<HTMLInputElement>) => {
+    e.preventDefault();
+    const colle = e.clipboardData.getData("text").replace(/\D/g, "").slice(0, length);
+    if (!colle) return;
+    onChange(colle);
+    refs.current[Math.min(colle.length, length - 1)]?.focus();
+  };
+
+  return (
+    <div className="flex items-center justify-center gap-2">
+      {chiffres.map((chiffre, i) => (
+        <input
+          key={i}
+          ref={(el) => { refs.current[i] = el; }}
+          type="text"
+          inputMode="numeric"
+          maxLength={1}
+          value={chiffre}
+          disabled={disabled}
+          autoFocus={autoFocus && i === 0}
+          onChange={(e) => setChiffre(i, e.target.value)}
+          onKeyDown={(e) => handleKeyDown(i, e)}
+          onPaste={handlePaste}
+          className="h-14 w-12 rounded-xl2 border-2 border-slate-200 bg-white text-center text-xl font-extrabold text-ink-900 transition focus:outline-none focus:ring-4 focus:ring-brand-500/15 focus:border-brand-400 disabled:opacity-50"
+        />
+      ))}
+    </div>
   );
 }
 
@@ -137,11 +202,15 @@ export function RowActions({ children, className = "" }: { children: ReactNode; 
 }
 
 export function Select({
-  label, children, className = "", ...props
+  label, required, children, className = "", ...props
 }: SelectHTMLAttributes<HTMLSelectElement> & { label?: string; children: ReactNode }) {
   return (
     <label className="block">
-      {label && <span className="block text-sm font-semibold text-slate-600 mb-1.5">{label}</span>}
+      {label && (
+        <span className="block text-sm font-semibold text-slate-600 mb-1.5">
+          {label}{required && <span className="text-rose-500"> *</span>}
+        </span>
+      )}
       <select
         className={`w-full rounded-xl border border-slate-200 bg-white px-3.5 py-2.5 text-sm text-slate-800 transition focus:outline-none focus:ring-4 focus:ring-brand-500/15 focus:border-brand-400 ${className}`}
         {...props}

@@ -153,16 +153,23 @@ class PasswordResetRequestSerializer(serializers.Serializer):
     email = serializers.EmailField()
 
 
-class PasswordResetOtpConfirmSerializer(serializers.Serializer):
-    """Alternative au lien signé (`PasswordResetConfirmSerializer` ci-dessous) : un code à 6
-    chiffres à saisir directement dans l'app plutôt que de suivre un lien e-mail — utile quand
-    ce lien n'aboutit pas (ex : navigateur/client mail qui bascule le lien en HTTPS alors que le
-    site n'est pas encore servi en HTTPS, voir backend/DEPLOYMENT.md). Même e-mail que la
-    demande (`PasswordResetRequestSerializer`) : pas de uid à transporter, le code est déjà
-    rattaché à l'utilisateur identifié à cet e-mail."""
+class PasswordResetOtpVerifySerializer(serializers.Serializer):
+    """1er temps de l'alternative au lien signé (`PasswordResetConfirmSerializer` ci-dessous) :
+    un code à 6 chiffres à saisir directement dans l'app plutôt que de suivre un lien e-mail —
+    utile quand ce lien n'aboutit pas (ex : navigateur/client mail qui bascule le lien en HTTPS
+    alors que le site n'est pas encore servi en HTTPS, voir backend/DEPLOYMENT.md). Volontairement
+    séparé de la saisie du nouveau mot de passe (voir PasswordResetOtpCompleteSerializer) — le
+    code se confirme en premier, seul, sur son propre écran (voir ForgotPasswordPage.tsx)."""
 
     email = serializers.EmailField()
     code = serializers.CharField(max_length=6, min_length=6)
+
+
+class PasswordResetOtpCompleteSerializer(serializers.Serializer):
+    """2e temps : le jeton renvoyé par PasswordResetOtpVerifyView (pas le code OTP lui-même,
+    déjà consommé) plus le nouveau mot de passe."""
+
+    reset_ticket = serializers.CharField()
     new_password = serializers.CharField(write_only=True, validators=[password_validation.validate_password])
 
 

@@ -4,6 +4,7 @@ import { affectationsTransportApi, elevesApi, ticketsBusApi, trajetsApi, unwrapL
 import { extractErrorMessage } from "../api/client";
 import { Badge, Button, DeleteButton, EditButton, EmptyState, Input, Modal, PageHeader, RowActions, Select, Spinner, Table } from "../components/ui";
 import { useAuth } from "../context/AuthContext";
+import { useConfirm } from "../context/ConfirmContext";
 import { usePaginated } from "../hooks/usePaginated";
 import type { AffectationTransport, EleveProfile, TicketBus, Trajet } from "../types";
 
@@ -20,6 +21,7 @@ const emptyTicketForm = { affectation: "", mois: new Date().toISOString().slice(
 
 export default function TransportPage() {
   const { user } = useAuth();
+  const confirmer = useConfirm();
   const isAdmin = user?.role === "admin";
   const peutGererTickets = user?.role === "admin" || user?.role === "comptabilite";
 
@@ -72,7 +74,7 @@ export default function TransportPage() {
   };
 
   const handleRegenererLien = async (trajet: Trajet) => {
-    if (!confirm("L'ancien lien chauffeur cessera de fonctionner. Continuer ?")) return;
+    if (!(await confirmer("L'ancien lien chauffeur cessera de fonctionner. Continuer ?"))) return;
     await trajetsApi.regenererLienChauffeur(trajet.id);
     loadTrajets();
   };
@@ -142,7 +144,7 @@ export default function TransportPage() {
   };
 
   const handleDeleteTrajet = async (trajet: Trajet) => {
-    if (!confirm(`Supprimer le trajet "${trajet.nom}" ?`)) return;
+    if (!(await confirmer(`Supprimer le trajet "${trajet.nom}" ?`, { danger: true }))) return;
     await trajetsApi.remove(trajet.id);
     loadTrajets();
   };
@@ -173,7 +175,7 @@ export default function TransportPage() {
   };
 
   const handleRemoveAffectation = async (affectation: AffectationTransport) => {
-    if (!confirm(`Retirer ${affectation.eleve_nom} de ce trajet ?`)) return;
+    if (!(await confirmer(`Retirer ${affectation.eleve_nom} de ce trajet ?`))) return;
     await affectationsTransportApi.remove(affectation.id);
     loadTrajets();
     reloadAffectations();

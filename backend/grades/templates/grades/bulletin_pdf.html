@@ -40,6 +40,7 @@
 
     table.masthead { width: 180mm; margin-bottom: 3px; }
     .masthead td { vertical-align: middle; text-align: center; }
+    .masthead-logo { width: 13mm; height: 13mm; object-fit: contain; }
     .republique { font-size: 13px; font-weight: bold; color: {{ b.couleur_principale }}; margin: 0; letter-spacing: 0.5px; }
     .devise { font-size: 9px; font-weight: bold; margin: 1mm 0 0 0; }
     .devise .rouge { color: #d21034; }
@@ -341,7 +342,7 @@
                 <p class="devise">{{ b.entete_devise_html }}</p>
                 <div class="trait"></div>
             </td>
-            <td style="width: 16mm;">&nbsp;</td>
+            <td style="width: 16mm; text-align:right;">{% if b.ecole_logo_data_uri %}<img class="masthead-logo" src="{{ b.ecole_logo_data_uri }}" />{% endif %}</td>
         </tr>
     </table>
 

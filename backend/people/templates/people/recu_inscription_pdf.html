@@ -10,6 +10,7 @@
 
     table.masthead { width: 100%; margin-bottom: 4px; }
     .masthead td { vertical-align: middle; text-align: center; }
+    .masthead-logo { width: 14mm; height: 14mm; object-fit: contain; }
     .republique { font-size: 15px; font-weight: bold; color: #1e1b2e; margin: 0; }
     .devise { font-size: 10px; font-weight: bold; margin: 1mm 0 0 0; }
     .devise .rouge { color: #d21034; }
@@ -101,7 +102,7 @@
                 <p class="devise"><span class="rouge">Travail</span> - <span class="jaune">Justice</span> - <span class="verte">Solidarité</span></p>
                 <div class="trait"></div>
             </td>
-            <td style="width: 16mm;">&nbsp;</td>
+            <td style="width: 16mm; text-align:right;">{% if ecole_logo_data_uri %}<img class="masthead-logo" src="{{ ecole_logo_data_uri }}" />{% endif %}</td>
         </tr>
     </table>
 
@@ -231,13 +232,13 @@
     {% if frais_inscription %}
     <table class="lignes">
         <thead>
-            <tr><th>Frais</th><th class="right">Montant</th><th class="right">Payé</th><th class="right">Solde</th></tr>
+            <tr><th>Frais</th><th class="right">Montant dû</th><th class="right">Payé</th><th class="right">Solde</th></tr>
         </thead>
         <tbody>
             {% for f in frais_inscription %}
             <tr>
                 <td>{{ f.type_frais.nom }}</td>
-                <td class="right">{{ f.montant }} GNF</td>
+                <td class="right">{{ f.montant_du }} GNF</td>
                 <td class="right">{{ f.montant_paye }} GNF</td>
                 <td class="right">{{ f.solde }} GNF</td>
             </tr>

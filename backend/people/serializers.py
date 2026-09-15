@@ -184,6 +184,32 @@ class EleveProfileWriteSerializer(serializers.ModelSerializer):
         eleve = EleveProfile.objects.create(user=user, **validated_data)
         enregistrer_historique_classe(eleve, eleve.classe)
 
+        # Frais d'inscription, créé automatiquement dès l'inscription si l'école a marqué un
+        # type de frais "usage=inscription" (voir TypeFrais.Usage) et que l'élève est affecté à
+        # une classe — même mécanisme que la réinscription (voir
+        # EleveProfileViewSet.reinscription) : `montant` reste le tarif STANDARD de la classe
+        # (réglé dans Paiements → Tarifs par classe), `Frais.montant_du` applique ensuite la
+        # réduction propre à la catégorie de paiement de l'élève. Sans ce frais créé ici, le prix
+        # de l'inscription n'apparaissait ni sur le reçu (imprimé juste après, qui ne liste que
+        # les frais DÉJÀ enregistrés) ni nulle part avant que l'admin ne le saisisse à la main
+        # plus tard dans Paiements.
+        if eleve.classe_id and ecole:
+            from datetime import date, timedelta
+
+            from payments.models import Frais, TarifClasse, TypeFrais
+
+            type_frais = TypeFrais.objects.filter(ecole=ecole, usage=TypeFrais.Usage.INSCRIPTION).first()
+            if type_frais:
+                tarif = TarifClasse.objects.filter(
+                    ecole=ecole, type_frais=type_frais,
+                    classe=eleve.classe, annee_scolaire_id=eleve.classe.annee_scolaire_id,
+                ).first()
+                montant = tarif.montant if tarif else type_frais.montant_standard
+                Frais.objects.create(
+                    eleve=eleve, type_frais=type_frais, annee_scolaire=eleve.classe.annee_scolaire,
+                    montant=montant, date_echeance=date.today() + timedelta(days=30),
+                )
+
         # Envoi automatique des identifiants par e-mail/SMS/messagerie interne — à l'élève, et
         # au parent rattaché (nouveau compte tout juste créé ci-dessus, ou parent déjà existant
         # simplement lié via `validated_data["parent"]`) : voir people/notifications.py pour le
