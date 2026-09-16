@@ -5,7 +5,7 @@ import {
   affectationsTransportApi, anneesApi, bulletinApi, elevesApi, empruntsApi, fraisApi,
   justificatifsApi, notesApi, periodesApi, presencesApi, unwrapList,
 } from "../api/services";
-import { extractErrorMessage } from "../api/client";
+import { extractBlobErrorMessage, extractErrorMessage } from "../api/client";
 import { PdfPreviewModal } from "../components/PdfPreviewModal";
 import { Badge, Button, Card, EmptyState, PageHeader, Select, Spinner, StatCard, Table } from "../components/ui";
 import { useAuth } from "../context/AuthContext";
@@ -170,7 +170,7 @@ export default function StudentDetailPage() {
     try {
       await elevesApi.recuInscription(eleve.id, `recu_inscription_${eleve.matricule}.pdf`);
     } catch (err) {
-      toast.error(extractErrorMessage(err));
+      toast.error(await extractBlobErrorMessage(err));
     } finally {
       setRecuLoading(false);
     }
@@ -182,9 +182,20 @@ export default function StudentDetailPage() {
     try {
       await elevesApi.certificatScolarite(eleve.id, `certificat_scolarite_${eleve.matricule}.pdf`);
     } catch (err) {
-      toast.error(extractErrorMessage(err));
+      toast.error(await extractBlobErrorMessage(err));
     } finally {
       setCertificatLoading(false);
+    }
+  };
+
+  const handleSuiviMensuelPdf = async () => {
+    if (!eleve || !anneeActiveId) return;
+    try {
+      await fraisApi.suiviMensuelPdf(eleve.id, `suivi_mensuel_${eleve.matricule}.pdf`, anneeActiveId);
+    } catch (err) {
+      // Sans ce catch, un échec restait invisible (bouton "mort") — voir le même correctif
+      // sur les fiches de paiement/badges.
+      toast.error(await extractBlobErrorMessage(err));
     }
   };
 
@@ -587,7 +598,7 @@ export default function StudentDetailPage() {
                 <h3 className="font-bold text-ink-900">Mois payés / non payés (scolarité)</h3>
                 {anneeActiveId && suiviMensuel.length > 0 && (
                   <button
-                    onClick={() => fraisApi.suiviMensuelPdf(eleve.id, `suivi_mensuel_${eleve.matricule}.pdf`, anneeActiveId)}
+                    onClick={handleSuiviMensuelPdf}
                     className="text-xs font-semibold text-brand-700 hover:underline"
                   >
                     📄 Rapport de suivi (PDF)

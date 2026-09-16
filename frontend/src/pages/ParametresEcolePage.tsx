@@ -184,6 +184,13 @@ function ModelesMessageSection() {
 }
 
 export default function ParametresEcolePage() {
+  const { user } = useAuth();
+  // Page réservée jusqu'ici à l'admin exclusivement — le Directeur Général (accès lecture
+  // seule, voir TeachersPage.tsx) y accède désormais aussi : tout le contenu du formulaire est
+  // désactivé d'un coup via <fieldset disabled> plutôt que bouton par bouton (page dense, avec
+  // plusieurs sous-formulaires — logo, profil, en-tête bulletin, année scolaire, périodes,
+  // modèles de message).
+  const isAdmin = user?.role === "admin";
   const toast = useToast();
   const confirmer = useConfirm();
   const [ecole, setEcole] = useState<Ecole | null>(null);
@@ -349,9 +356,16 @@ export default function ParametresEcolePage() {
         description="Profil, notation et année scolaire active — propres à votre établissement."
       />
 
+      {!isAdmin && (
+        <p className="text-sm text-slate-500 bg-slate-50 border border-slate-100 rounded-xl px-3.5 py-2.5 mb-4">
+          Accès en lecture seule — la modification des paramètres reste réservée à l'administrateur.
+        </p>
+      )}
+
       {error && <p className="text-sm text-rose-600 bg-rose-50 border border-rose-100 rounded-xl px-3.5 py-2.5 mb-4">{error}</p>}
       {message && <p className="text-sm text-emerald-700 bg-emerald-50 border border-emerald-100 rounded-xl px-3.5 py-2.5 mb-4">{message}</p>}
 
+      <fieldset disabled={!isAdmin} className="border-0 p-0 m-0 min-w-0">
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         <form onSubmit={handleSubmit} className="lg:col-span-2 space-y-6">
           <LogoEcoleSection ecole={ecole} onUpdated={setEcole} />
@@ -577,6 +591,7 @@ export default function ParametresEcolePage() {
       <div className="mt-6">
         <ModelesMessageSection />
       </div>
+      </fieldset>
     </div>
   );
 }

@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 
 import { classesApi, periodesApi, resultatsApi, unwrapList } from "../api/services";
 import type { PeriodeSelection } from "../api/services";
-import { extractErrorMessage } from "../api/client";
+import { extractBlobErrorMessage, extractErrorMessage } from "../api/client";
 import { Badge, Button, EmptyState, PageHeader, Select, Spinner, StatCard, Table } from "../components/ui";
 import { CycleSelect } from "../components/CycleSelect";
 import type { Classe, Cycle, Periode, Resultats } from "../types";
@@ -77,9 +77,12 @@ export default function ResultsPage() {
     const selection = buildSelection();
     if (!classeId || !selection) return;
     setExportingPdf(true);
+    setError("");
     try {
       const classe = classes.find((c) => c.id === Number(classeId));
       await resultatsApi.exportPdf(Number(classeId), selection, `resultats_${classe?.nom || classeId}.pdf`);
+    } catch (err) {
+      setError(await extractBlobErrorMessage(err));
     } finally {
       setExportingPdf(false);
     }
@@ -94,7 +97,7 @@ export default function ResultsPage() {
       const classe = classes.find((c) => c.id === Number(classeId));
       await resultatsApi.attestations(Number(classeId), selection, rangMax, `attestations_${classe?.nom || classeId}.pdf`);
     } catch (err) {
-      setError(extractErrorMessage(err));
+      setError(await extractBlobErrorMessage(err));
     } finally {
       setExportingAttestations(false);
     }

@@ -1,11 +1,12 @@
 import { useEffect, useRef, useState, type ChangeEvent, type FormEvent } from "react";
 
 import { authApi, elevesApi, unwrapList } from "../api/services";
-import { extractErrorMessage } from "../api/client";
+import { extractBlobErrorMessage, extractErrorMessage } from "../api/client";
 import { Badge, Button, Card, Input, OtpBoxInput, PageHeader, Select } from "../components/ui";
 import { useAuth } from "../context/AuthContext";
 import { useConfirm } from "../context/ConfirmContext";
 import { useToast } from "../context/ToastContext";
+import { useCooldown } from "../hooks/useCooldown";
 import type { EleveProfile, JournalUtilisateurEntry } from "../types";
 
 const CATEGORIE_LABELS: Record<JournalUtilisateurEntry["categorie"], "brand" | "teal" | "amber" | "rose" | "slate"> = {
@@ -38,6 +39,9 @@ export default function ProfilePage() {
   const [verifCode, setVerifCode] = useState("");
   const [verifEnvoi, setVerifEnvoi] = useState(false);
   const [verifConfirmation, setVerifConfirmation] = useState(false);
+  // Renvoi du code de vérification — même délai que les autres écrans OTP (un seul canal ouvert
+  // à la fois, voir verifCanalOuvert, donc un seul décompte suffit).
+  const cooldownVerif = useCooldown(60);
 
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [uploadingPhoto, setUploadingPhoto] = useState(false);
@@ -83,7 +87,7 @@ export default function ProfilePage() {
     try {
       await elevesApi.certificatScolarite(Number(eleveChoisiId), "certificat_scolarite.pdf");
     } catch (err) {
-      toast.error(extractErrorMessage(err));
+      toast.error(await extractBlobErrorMessage(err));
     } finally {
       setCertificatLoading(false);
     }
@@ -167,6 +171,7 @@ export default function ProfilePage() {
       toast.success(data.detail);
       setVerifCanalOuvert(canal);
       setVerifCode("");
+      cooldownVerif.relancer();
     } catch (err) {
       toast.error(extractErrorMessage(err));
     } finally {
@@ -327,6 +332,14 @@ export default function ProfilePage() {
                       </Button>
                       <Button type="button" variant="ghost" onClick={() => setVerifCanalOuvert(null)}>Annuler</Button>
                     </div>
+                    <button
+                      type="button"
+                      onClick={() => handleDemanderVerification(canal)}
+                      disabled={!cooldownVerif.pret || verifEnvoi}
+                      className="block w-full text-center text-sm font-semibold text-brand-700 hover:text-brand-800 disabled:text-slate-400 disabled:hover:text-slate-400 disabled:cursor-not-allowed"
+                    >
+                      {cooldownVerif.pret ? "Renvoyer le code" : `Renvoyer le code dans ${cooldownVerif.restant}s`}
+                    </button>
                   </form>
                 )}
               </div>

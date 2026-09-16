@@ -3,6 +3,7 @@ import { useState, type FormEvent } from "react";
 import { enseignantsApi } from "../api/services";
 import { extractErrorMessage } from "../api/client";
 import { Button, DeleteButton, EditButton, EmptyState, Input, Modal, PageHeader, RowActions, Select, Spinner, Table } from "../components/ui";
+import { useAuth } from "../context/AuthContext";
 import { useConfirm } from "../context/ConfirmContext";
 import { usePaginated } from "../hooks/usePaginated";
 import type { EnseignantProfile } from "../types";
@@ -13,6 +14,12 @@ const emptyForm = {
 };
 
 export default function TeachersPage() {
+  const { user } = useAuth();
+  // Le Directeur Général voit cette page (accès lecture seule à toute l'école, voir
+  // accounts.permissions._lecture_seule_directeur côté backend) mais ne doit jamais pouvoir
+  // créer/modifier/supprimer — cette page était jusqu'ici réservée à l'admin exclusivement,
+  // sans avoir besoin de ce garde-fou (aucun autre rôle ne l'atteignait).
+  const isAdmin = user?.role === "admin";
   const confirmer = useConfirm();
   const [search, setSearch] = useState("");
   const [modalOpen, setModalOpen] = useState(false);
@@ -89,7 +96,7 @@ export default function TeachersPage() {
       <PageHeader
         title="Enseignants"
         description="Gestion du corps enseignant."
-        actions={<Button onClick={openCreate}>+ Nouvel enseignant</Button>}
+        actions={isAdmin ? <Button onClick={openCreate}>+ Nouvel enseignant</Button> : undefined}
       />
 
       <Input placeholder="Rechercher un enseignant…" value={search} onChange={(e) => setSearch(e.target.value)} className="max-w-xs mb-4" />
@@ -119,10 +126,12 @@ export default function TeachersPage() {
                 <td className="px-4 py-3">{ens.specialite || "—"}</td>
                 <td className="px-4 py-3 text-slate-500">{ens.user.email || ens.user.phone || "—"}</td>
                 <td className="px-4 py-3">
-                  <RowActions>
-                    <EditButton onClick={() => openEdit(ens)} />
-                    <DeleteButton onClick={() => handleDelete(ens)} />
-                  </RowActions>
+                  {isAdmin && (
+                    <RowActions>
+                      <EditButton onClick={() => openEdit(ens)} />
+                      <DeleteButton onClick={() => handleDelete(ens)} />
+                    </RowActions>
+                  )}
                 </td>
               </tr>
             ))}

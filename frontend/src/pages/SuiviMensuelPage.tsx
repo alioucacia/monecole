@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 
 import { classesApi, fraisApi, unwrapList } from "../api/services";
-import { extractErrorMessage } from "../api/client";
+import { extractBlobErrorMessage, extractErrorMessage } from "../api/client";
 import { Badge, EmptyState, PageHeader, Select, Spinner, Table } from "../components/ui";
 import { CycleSelect } from "../components/CycleSelect";
 import type { Classe, Cycle, SuiviMensuelClasse } from "../types";
@@ -45,6 +45,17 @@ export default function SuiviMensuelPage() {
       .catch((err) => setError(extractErrorMessage(err)))
       .finally(() => setLoading(false));
   }, [classeId]);
+
+  const handleSuiviMensuelPdf = async (eleveId: number, matricule: string) => {
+    setError("");
+    try {
+      await fraisApi.suiviMensuelPdf(eleveId, `suivi_mensuel_${matricule}.pdf`);
+    } catch (err) {
+      // Sans ce catch, un échec restait invisible (bouton "mort") — voir le même correctif
+      // sur les fiches de paiement/badges.
+      setError(await extractBlobErrorMessage(err));
+    }
+  };
 
   // Un élève exonéré de mensualité (Fondation gratuite, inscription seulement) a un tableau `mois`
   // vide — on ne peut donc pas se baser sur le premier élève de la liste pour connaître les
@@ -102,7 +113,7 @@ export default function SuiviMensuelPage() {
                     <td className="px-4 py-2.5 font-medium text-slate-700 whitespace-nowrap">
                       <Link to={`/eleves/${e.eleve_id}`} className="hover:underline">{e.eleve_nom}</Link>
                       <button
-                        onClick={() => fraisApi.suiviMensuelPdf(e.eleve_id, `suivi_mensuel_${e.matricule}.pdf`)}
+                        onClick={() => handleSuiviMensuelPdf(e.eleve_id, e.matricule)}
                         title="Rapport de suivi (PDF)"
                         className="ml-1.5 text-slate-300 hover:text-brand-600 transition"
                       >

@@ -3,12 +3,17 @@ import { useEffect, useState, type FormEvent } from "react";
 import { matieresApi, unwrapList } from "../api/services";
 import { extractErrorMessage } from "../api/client";
 import { Button, DeleteButton, EditButton, EmptyState, Input, Modal, PageHeader, RowActions, Spinner, Table } from "../components/ui";
+import { useAuth } from "../context/AuthContext";
 import { useConfirm } from "../context/ConfirmContext";
 import type { Matiere } from "../types";
 
 const emptyForm = { nom: "", code: "", coefficient: 1, couleur: "#8b5cf6" };
 
 export default function SubjectsPage() {
+  const { user } = useAuth();
+  // Page réservée jusqu'ici à l'admin exclusivement — le Directeur Général (accès lecture
+  // seule, voir TeachersPage.tsx) y accède désormais aussi, d'où ce garde-fou.
+  const isAdmin = user?.role === "admin";
   const confirmer = useConfirm();
   const [matieres, setMatieres] = useState<Matiere[]>([]);
   const [loading, setLoading] = useState(true);
@@ -63,7 +68,7 @@ export default function SubjectsPage() {
 
   return (
     <div>
-      <PageHeader title="Matières" description="Référentiel des matières enseignées." actions={<Button onClick={openCreate}>+ Nouvelle matière</Button>} />
+      <PageHeader title="Matières" description="Référentiel des matières enseignées." actions={isAdmin ? <Button onClick={openCreate}>+ Nouvelle matière</Button> : undefined} />
 
       {loading ? (
         <div className="flex justify-center py-16"><Spinner /></div>
@@ -78,10 +83,12 @@ export default function SubjectsPage() {
               <td className="px-4 py-3 font-mono text-xs text-slate-500">{m.code}</td>
               <td className="px-4 py-3">{m.coefficient}</td>
               <td className="px-4 py-3">
-                <RowActions>
-                  <EditButton onClick={() => openEdit(m)} />
-                  <DeleteButton onClick={() => handleDelete(m)} />
-                </RowActions>
+                {isAdmin && (
+                  <RowActions>
+                    <EditButton onClick={() => openEdit(m)} />
+                    <DeleteButton onClick={() => handleDelete(m)} />
+                  </RowActions>
+                )}
               </td>
             </tr>
           ))}

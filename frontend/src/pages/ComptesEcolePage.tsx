@@ -10,12 +10,12 @@ import { usePaginated } from "../hooks/usePaginated";
 import type { JournalUtilisateurEntry, Role, User } from "../types";
 
 const ROLE_LABELS: Record<Role, string> = {
-  superadmin: "Super Admin", admin: "Administrateur", teacher: "Enseignant", student: "Élève",
+  superadmin: "Super Admin", admin: "Administrateur", directeur: "Directeur Général", teacher: "Enseignant", student: "Élève",
   parent: "Parent", comptabilite: "Comptabilité", surveillance: "Surveillance",
 };
 
 const ROLE_COLORS: Record<Role, "brand" | "teal" | "amber" | "rose" | "slate"> = {
-  superadmin: "brand", admin: "brand", teacher: "teal", student: "amber", parent: "rose",
+  superadmin: "brand", admin: "brand", directeur: "brand", teacher: "teal", student: "amber", parent: "rose",
   comptabilite: "teal", surveillance: "slate",
 };
 
@@ -35,6 +35,10 @@ export default function ComptesEcolePage() {
   const toast = useToast();
   const confirmer = useConfirm();
   const { user: moi } = useAuth();
+  // Page réservée jusqu'ici à l'admin exclusivement — le Directeur Général (accès lecture
+  // seule, voir TeachersPage.tsx) y accède désormais aussi, d'où ce garde-fou sur les actions
+  // d'écriture (l'historique reste lisible par les deux).
+  const isAdmin = moi?.role === "admin";
   const [search, setSearch] = useState("");
   const [roleFilter, setRoleFilter] = useState("");
   const [statutFilter, setStatutFilter] = useState("");
@@ -131,7 +135,7 @@ export default function ComptesEcolePage() {
   // parents, eux, n'ont pas de page de gestion dédiée (ils sont créés en marge d'un élève, mais
   // gérés comme n'importe quel autre compte ensuite) : c'est ici, et seulement ici, qu'un admin
   // peut supprimer un compte parent.
-  const ROLES_SUPPRIMABLES_ICI: Role[] = ["admin", "teacher", "comptabilite", "surveillance", "parent"];
+  const ROLES_SUPPRIMABLES_ICI: Role[] = ["admin", "directeur", "teacher", "comptabilite", "surveillance", "parent"];
   const [deletingId, setDeletingId] = useState<number | null>(null);
 
   const handleDelete = async (u: User) => {
@@ -238,16 +242,20 @@ export default function ComptesEcolePage() {
                 </td>
                 <td className="px-4 py-3">
                   <div className="flex flex-wrap items-center gap-3">
-                    <button onClick={() => openEdit(u)} className="text-xs font-semibold text-brand-600 hover:underline whitespace-nowrap">
-                      ✏️ Modifier
-                    </button>
-                    <button onClick={() => openReset(u)} className="text-xs font-semibold text-brand-600 hover:underline whitespace-nowrap">
-                      🔑 Réinitialiser
-                    </button>
+                    {isAdmin && (
+                      <button onClick={() => openEdit(u)} className="text-xs font-semibold text-brand-600 hover:underline whitespace-nowrap">
+                        ✏️ Modifier
+                      </button>
+                    )}
+                    {isAdmin && (
+                      <button onClick={() => openReset(u)} className="text-xs font-semibold text-brand-600 hover:underline whitespace-nowrap">
+                        🔑 Réinitialiser
+                      </button>
+                    )}
                     <button onClick={() => openHistorique(u)} className="text-xs font-semibold text-brand-600 hover:underline whitespace-nowrap">
                       🕘 Historique
                     </button>
-                    {u.id !== moi?.id && (
+                    {isAdmin && u.id !== moi?.id && (
                       <button
                         onClick={() => handleToggleActif(u)}
                         disabled={togglingId === u.id}
@@ -256,7 +264,7 @@ export default function ComptesEcolePage() {
                         {togglingId === u.id ? "…" : u.is_active ? "🚫 Désactiver" : "✓ Réactiver"}
                       </button>
                     )}
-                    {u.id !== moi?.id && ROLES_SUPPRIMABLES_ICI.includes(u.role) && (
+                    {isAdmin && u.id !== moi?.id && ROLES_SUPPRIMABLES_ICI.includes(u.role) && (
                       <button
                         onClick={() => handleDelete(u)}
                         disabled={deletingId === u.id}

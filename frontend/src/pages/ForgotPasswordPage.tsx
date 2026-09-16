@@ -5,6 +5,7 @@ import { authApi } from "../api/services";
 import { extractErrorMessage } from "../api/client";
 import { Button, Input, OtpBoxInput } from "../components/ui";
 import { useToast } from "../context/ToastContext";
+import { useCooldown } from "../hooks/useCooldown";
 
 type Etape = "email" | "code" | "mot_de_passe" | "termine";
 
@@ -23,6 +24,10 @@ export default function ForgotPasswordPage() {
   const [otpLoading, setOtpLoading] = useState(false);
   const [otpError, setOtpError] = useState("");
   const [resetTicket, setResetTicket] = useState("");
+  // Renvoi du code — même délai que le reste des écrans OTP (voir DELAI_MIN_RENVOI_SECONDES
+  // côté backend). Relancé au premier envoi (handleSubmitEmail) et à chaque renvoi manuel.
+  const cooldownCode = useCooldown(60);
+  const [resendLoading, setResendLoading] = useState(false);
 
   // Étape "mot_de_passe" — n'apparaît qu'après un code confirmé.
   const [newPassword, setNewPassword] = useState("");
@@ -36,10 +41,27 @@ export default function ForgotPasswordPage() {
     try {
       await authApi.requestPasswordReset(email);
       setEtape("code");
+      cooldownCode.relancer();
     } catch (err) {
       toast.error(extractErrorMessage(err) || "Une erreur est survenue.");
     } finally {
       setLoading(false);
+    }
+  };
+
+  const handleResendCode = async () => {
+    if (!cooldownCode.pret) return;
+    cooldownCode.relancer();
+    setOtpError("");
+    setOtpCode("");
+    setResendLoading(true);
+    try {
+      await authApi.requestPasswordReset(email);
+      toast.success("Un nouveau code a été envoyé.");
+    } catch (err) {
+      setOtpError(extractErrorMessage(err) || "Impossible de renvoyer le code.");
+    } finally {
+      setResendLoading(false);
     }
   };
 
@@ -128,7 +150,7 @@ export default function ForgotPasswordPage() {
               Saisissez le code à 6 chiffres envoyé à {email} (ou suivez le lien reçu par e-mail).
             </p>
             <form onSubmit={handleSubmitCode} className="space-y-5">
-              <OtpBoxInput value={otpCode} onChange={setOtpCode} autoFocus disabled={otpLoading} />
+              <OtpBoxInput value={otpCode} onChange={setOtpCode} autoFocus disabled={otpLoading || resendLoading} />
               <Button type="submit" className="w-full" disabled={otpLoading || otpCode.length !== 6}>
                 {otpLoading ? "Vérification…" : "Vérifier le code"}
               </Button>
@@ -137,6 +159,14 @@ export default function ForgotPasswordPage() {
                   {otpError}
                 </p>
               )}
+              <button
+                type="button"
+                onClick={handleResendCode}
+                disabled={!cooldownCode.pret || resendLoading}
+                className="block w-full text-center text-sm font-semibold text-brand-700 hover:text-brand-800 disabled:text-slate-400 disabled:hover:text-slate-400 disabled:cursor-not-allowed"
+              >
+                {cooldownCode.pret ? "Renvoyer le code" : `Renvoyer le code dans ${cooldownCode.restant}s`}
+              </button>
               <button
                 type="button"
                 onClick={() => { setEtape("email"); setOtpCode(""); setOtpError(""); }}

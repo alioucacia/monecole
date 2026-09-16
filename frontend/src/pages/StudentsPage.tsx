@@ -2,11 +2,12 @@ import { useEffect, useState, type FormEvent } from "react";
 import { Link, useLocation, useNavigate } from "react-router-dom";
 
 import { classesApi, elevesApi, typesFraisApi, unwrapList, usersApi } from "../api/services";
-import { extractErrorMessage } from "../api/client";
+import { extractBlobErrorMessage, extractErrorMessage } from "../api/client";
 import { Badge, Button, DeleteButton, EditButton, EmptyState, Input, Modal, PageHeader, RowActions, Select, Spinner, StatCard, Table } from "../components/ui";
 import { ClasseOptions, CycleSelect } from "../components/CycleSelect";
 import { useAuth } from "../context/AuthContext";
 import { useConfirm } from "../context/ConfirmContext";
+import { useToast } from "../context/ToastContext";
 import { usePaginated } from "../hooks/usePaginated";
 import type { Classe, Cycle, EleveProfile, User } from "../types";
 
@@ -31,6 +32,7 @@ export default function StudentsPage() {
   const navigate = useNavigate();
   const isAdmin = user?.role === "admin";
   const confirmer = useConfirm();
+  const toast = useToast();
   const [search, setSearch] = useState("");
   const [classeFilter, setClasseFilter] = useState("");
   const [cycleFilter, setCycleFilter] = useState<Cycle | "">("");
@@ -178,10 +180,22 @@ export default function StudentsPage() {
     reload();
   };
 
+  const handleRecu = async (eleve: EleveProfile) => {
+    try {
+      await elevesApi.recuInscription(eleve.id, `recu_inscription_${eleve.matricule}.pdf`);
+    } catch (err) {
+      // Sans ce catch, un échec restait invisible (bouton "mort") — voir le même correctif
+      // sur les fiches de paiement/badges.
+      toast.error(await extractBlobErrorMessage(err));
+    }
+  };
+
   const handleExport = async () => {
     setExporting(true);
     try {
       await elevesApi.exportCsv({ search: search || undefined, classe: classeFilter || undefined });
+    } catch (err) {
+      toast.error(await extractBlobErrorMessage(err));
     } finally {
       setExporting(false);
     }
@@ -191,6 +205,10 @@ export default function StudentsPage() {
     setExportingPdf(true);
     try {
       await elevesApi.exportPdf({ search: search || undefined, classe: classeFilter || undefined });
+    } catch (err) {
+      // Sans ce catch, un échec restait invisible (bouton "mort") — voir le même correctif
+      // sur les fiches de paiement/badges.
+      toast.error(await extractBlobErrorMessage(err));
     } finally {
       setExportingPdf(false);
     }
@@ -295,7 +313,7 @@ export default function StudentsPage() {
                     </Link>
                     <button
                       className="text-xs font-semibold text-brand-700 hover:underline"
-                      onClick={() => elevesApi.recuInscription(eleve.id, `recu_inscription_${eleve.matricule}.pdf`)}
+                      onClick={() => handleRecu(eleve)}
                     >
                       🧾 Reçu
                     </button>

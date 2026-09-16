@@ -9,6 +9,12 @@ class User(AbstractUser):
     class Role(models.TextChoices):
         SUPERADMIN = "superadmin", "Super Administrateur"
         ADMIN = "admin", "Administrateur"
+        # Rôle de supervision pure, créé PAR un Administrateur (voir UserCreateSerializer) : accès
+        # en LECTURE SEULE à l'ensemble de son école (comme un Administrateur y voit tout), mais
+        # ne peut jamais créer/modifier/supprimer quoi que ce soit — voir
+        # accounts.permissions._lecture_seule_directeur, appliqué aux permissions partagées avec
+        # l'Administrateur (IsAdmin, IsAdminOrTeacher, IsAdminOrComptabilite, IsAdminOrSurveillance).
+        DIRECTEUR = "directeur", "Directeur Général"
         TEACHER = "teacher", "Enseignant"
         STUDENT = "student", "Élève"
         PARENT = "parent", "Parent"
@@ -94,6 +100,10 @@ class User(AbstractUser):
     @property
     def is_admin_role(self):
         return self.role == self.Role.ADMIN
+
+    @property
+    def is_directeur_role(self):
+        return self.role == self.Role.DIRECTEUR
 
     @property
     def is_teacher_role(self):

@@ -2,7 +2,7 @@ import { useEffect, useState, type FormEvent } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 
 import { ecolesApi, fonctionnalitesApi, paiementsEcolesApi, unwrapList } from "../api/services";
-import { extractErrorMessage } from "../api/client";
+import { extractBlobErrorMessage, extractErrorMessage } from "../api/client";
 import { useAuth } from "../context/AuthContext";
 import { usePrompt } from "../context/ConfirmContext";
 import { useToast } from "../context/ToastContext";
@@ -181,6 +181,16 @@ export default function EcoleDetailPage() {
     }
   };
 
+  const handleDownloadFacture = async (paiementId: number, filename: string) => {
+    try {
+      await paiementsEcolesApi.facture(paiementId, filename);
+    } catch (err) {
+      // Sans ce catch, un échec restait invisible (bouton "mort") — voir le même correctif
+      // sur les fiches de paiement/badges.
+      toast.error(await extractBlobErrorMessage(err));
+    }
+  };
+
   if (loading) return <div className="flex justify-center py-20"><Spinner /></div>;
   if (!ecole) return <EmptyState title="École introuvable" />;
 
@@ -352,7 +362,7 @@ export default function EcoleDetailPage() {
                 <td className="px-4 py-3">
                   <button
                     className="text-xs font-semibold text-brand-600 hover:underline"
-                    onClick={() => paiementsEcolesApi.facture(p.id, `facture_${ecole.slug}_${p.mois.slice(0, 7)}.pdf`)}
+                    onClick={() => handleDownloadFacture(p.id, `facture_${ecole.slug}_${p.mois.slice(0, 7)}.pdf`)}
                   >
                     🧾 PDF
                   </button>

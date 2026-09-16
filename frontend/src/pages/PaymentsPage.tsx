@@ -2,7 +2,7 @@ import { useEffect, useState, type FormEvent } from "react";
 import { Link } from "react-router-dom";
 
 import { anneesApi, classesApi, elevesApi, fraisApi, paiementsApi, periodesApi, typesFraisApi, unwrapList } from "../api/services";
-import { extractErrorMessage } from "../api/client";
+import { extractBlobErrorMessage, extractErrorMessage } from "../api/client";
 import { Badge, Button, EmptyState, Input, Modal, PageHeader, Select, Spinner, StatCard, Table } from "../components/ui";
 import { CycleSelect } from "../components/CycleSelect";
 import { useAuth } from "../context/AuthContext";
@@ -28,7 +28,15 @@ function money(value: number | string) {
   return `${Number(value).toLocaleString("fr-FR")} GNF`;
 }
 
-const emptyFraisForm = { eleve: "", type_frais: "", annee_scolaire: "", montant: "", date_echeance: "", mois_echeance: "", trimestre_echeance: "" };
+const emptyFraisForm = {
+  eleve: "", type_frais: "", annee_scolaire: "", montant: "", date_echeance: "", mois_echeance: "", trimestre_echeance: "",
+  // Remise de fidélité de 5% — proposée uniquement pour un type de frais "Annuel" (voir son
+  // affichage conditionnel dans le formulaire ci-dessous), appliquée en réduisant directement
+  // le montant saisi au moment de la création plutôt que via un mécanisme de réduction récurrent
+  // (contrairement à la mensualité/inscription, un frais annuel n'a qu'une seule échéance : pas
+  // besoin d'un facteur recalculé à chaque mois).
+  remise5: false,
+};
 
 const MOIS_NOMS = [
   "Janvier", "Février", "Mars", "Avril", "Mai", "Juin",
@@ -185,7 +193,7 @@ export default function PaymentsPage() {
     try {
       await fraisApi.fichesPaiementPdf(undefined, "fiches_paiement.pdf");
     } catch (err) {
-      toast.error(extractErrorMessage(err));
+      toast.error(await extractBlobErrorMessage(err));
     } finally {
       setExportingFiches(false);
     }
@@ -196,7 +204,7 @@ export default function PaymentsPage() {
     try {
       await fraisApi.fichePaiementPdf(frais.id, `fiche_paiement_${frais.eleve_nom.replace(/\s+/g, "_")}.pdf`);
     } catch (err) {
-      toast.error(extractErrorMessage(err));
+      toast.error(await extractBlobErrorMessage(err));
     } finally {
       setFichePendingId(null);
     }
@@ -209,7 +217,7 @@ export default function PaymentsPage() {
         frais.eleve, `proforma_${frais.eleve_nom.replace(/\s+/g, "_")}.pdf`, frais.annee_scolaire
       );
     } catch (err) {
-      toast.error(extractErrorMessage(err));
+      toast.error(await extractBlobErrorMessage(err));
     } finally {
       setProformaPendingId(null);
     }
@@ -270,9 +278,16 @@ export default function PaymentsPage() {
     setFraisSaving(true);
     setFraisError("");
     try {
+      // La remise n'est appliquée qu'au moment de la création — `montant` stocké reflète alors
+      // directement le tarif déjà réduit (comme une saisie manuelle), sans champ dédié à ajouter
+      // ni recalcul ultérieur.
+      const montantSaisi = Number(fraisForm.montant);
+      const montantFinal = fraisForm.remise5 && typeFraisSelectionne?.periodicite === "annuel"
+        ? Math.round(montantSaisi * 0.95)
+        : montantSaisi;
       await fraisApi.create({
         eleve: Number(fraisForm.eleve), type_frais: Number(fraisForm.type_frais),
-        annee_scolaire: Number(fraisForm.annee_scolaire), montant: fraisForm.montant, date_echeance: fraisForm.date_echeance,
+        annee_scolaire: Number(fraisForm.annee_scolaire), montant: String(montantFinal), date_echeance: fraisForm.date_echeance,
       });
       setFraisModalOpen(false);
       reload();
@@ -567,6 +582,24 @@ export default function PaymentsPage() {
             {annees.map((a) => <option key={a.id} value={a.id}>{a.libelle}</option>)}
           </Select>
           <Input label="Montant (GNF)" type="number" min={0} required value={fraisForm.montant} onChange={(e) => setFraisForm({ ...fraisForm, montant: e.target.value })} />
+
+          {/* Remise de fidélité de 5% — un type de frais Annuel n'a qu'une seule échéance dans
+              l'année, donc rien à cocher/recalculer plus tard : la remise réduit directement le
+              montant du frais créé. */}
+          {typeFraisSelectionne?.periodicite === "annuel" && (
+            <label className="flex items-center gap-2 text-sm text-slate-600 cursor-pointer sm:col-span-2 -mt-2">
+              <input
+                type="checkbox" checked={fraisForm.remise5} className="h-4 w-4 rounded border-slate-300 accent-brand-600"
+                onChange={(e) => setFraisForm({ ...fraisForm, remise5: e.target.checked })}
+              />
+              Appliquer une remise de fidélité de 5% pour cet élève
+              {fraisForm.remise5 && fraisForm.montant && (
+                <span className="text-xs text-slate-400">
+                  ({money(Number(fraisForm.montant))} → {money(Math.round(Number(fraisForm.montant) * 0.95))})
+                </span>
+              )}
+            </label>
+          )}
 
           {/* Échéance : la liste déroulante proposée dépend de la périodicité du type de frais
               choisi ci-dessus — mois de l'année scolaire (Mensuel), trimestres configurés

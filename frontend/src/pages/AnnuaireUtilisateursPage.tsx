@@ -8,12 +8,12 @@ import { usePaginated } from "../hooks/usePaginated";
 import type { Ecole, EleveProfile, Role, User } from "../types";
 
 const ROLE_LABELS: Record<Role, string> = {
-  superadmin: "Super Admin", admin: "Administrateur", teacher: "Enseignant", student: "Élève",
+  superadmin: "Super Admin", admin: "Administrateur", directeur: "Directeur Général", teacher: "Enseignant", student: "Élève",
   parent: "Parent", comptabilite: "Comptabilité", surveillance: "Surveillance",
 };
 
 const ROLE_COLORS: Record<Role, "brand" | "teal" | "amber" | "rose" | "slate"> = {
-  superadmin: "brand", admin: "brand", teacher: "teal", student: "amber", parent: "rose",
+  superadmin: "brand", admin: "brand", directeur: "brand", teacher: "teal", student: "amber", parent: "rose",
   comptabilite: "teal", surveillance: "slate",
 };
 

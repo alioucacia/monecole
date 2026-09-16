@@ -5,6 +5,19 @@ def _role(request):
     return getattr(request.user, "role", None)
 
 
+def _lecture_seule_directeur(request) -> bool:
+    """Le Directeur Général (voir `User.Role.DIRECTEUR`) a un accès EN LECTURE SEULE à
+    l'ensemble de son école — rôle de pure supervision, jamais d'écriture, sur tout ce que
+    l'Administrateur peut voir. Centralisé ici plutôt que dupliqué dans chaque permission
+    ci-dessous : les classes qui appellent cette fonction en tête de `has_permission` héritent
+    automatiquement de cette règle, sans qu'il faille toucher les ViewSets qui les utilisent."""
+    return bool(
+        request.user and request.user.is_authenticated
+        and _role(request) == "directeur"
+        and request.method in SAFE_METHODS
+    )
+
+
 class IsSuperAdmin(BasePermission):
     """Accès réservé au Super Admin de la plateforme (gestion des établissements)."""
 
@@ -13,9 +26,12 @@ class IsSuperAdmin(BasePermission):
 
 
 class IsAdmin(BasePermission):
-    """Accès réservé aux administrateurs."""
+    """Accès réservé aux administrateurs (le Directeur Général y a un accès lecture seule —
+    voir `_lecture_seule_directeur` ci-dessus)."""
 
     def has_permission(self, request, view):
+        if _lecture_seule_directeur(request):
+            return True
         return bool(request.user and request.user.is_authenticated and _role(request) == "admin")
 
 
@@ -46,6 +62,8 @@ class IsSurveillance(BasePermission):
 
 class IsAdminOrTeacher(BasePermission):
     def has_permission(self, request, view):
+        if _lecture_seule_directeur(request):
+            return True
         return bool(
             request.user
             and request.user.is_authenticated
@@ -54,9 +72,12 @@ class IsAdminOrTeacher(BasePermission):
 
 
 class IsAdminOrComptabilite(BasePermission):
-    """Accès réservé à l'administrateur et au service comptabilité (gestion financière)."""
+    """Accès réservé à l'administrateur et au service comptabilité (gestion financière) —
+    le Directeur Général y a un accès lecture seule (voir `_lecture_seule_directeur`)."""
 
     def has_permission(self, request, view):
+        if _lecture_seule_directeur(request):
+            return True
         return bool(
             request.user
             and request.user.is_authenticated
@@ -74,9 +95,12 @@ class IsAdminOrComptabiliteOrReadOnly(BasePermission):
 
 
 class IsAdminOrSurveillance(BasePermission):
-    """Accès réservé à l'administrateur et à la surveillance générale (vie scolaire, discipline)."""
+    """Accès réservé à l'administrateur et à la surveillance générale (vie scolaire, discipline)
+    — le Directeur Général y a un accès lecture seule (voir `_lecture_seule_directeur`)."""
 
     def has_permission(self, request, view):
+        if _lecture_seule_directeur(request):
+            return True
         return bool(
             request.user
             and request.user.is_authenticated

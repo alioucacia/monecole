@@ -8,9 +8,11 @@ import { ConfirmProvider } from "./context/ConfirmContext";
 import { ThemeProvider } from "./context/ThemeContext";
 import { ToastProvider } from "./context/ToastContext";
 import { initPwa } from "./pwa";
+import { initSyncEngine } from "./offline/sync";
 import "./index.css";
 
 initPwa();
+initSyncEngine();
 
 ReactDOM.createRoot(document.getElementById("root")!).render(
   <React.StrictMode>

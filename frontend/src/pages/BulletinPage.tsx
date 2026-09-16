@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 
 import { bulletinApi, classesApi, elevesApi, periodesApi, unwrapList } from "../api/services";
 import type { PeriodeSelection } from "../api/services";
-import { extractErrorMessage } from "../api/client";
+import { extractBlobErrorMessage, extractErrorMessage } from "../api/client";
 import { PdfInlineViewer } from "../components/PdfInlineViewer";
 import { Button, EmptyState, PageHeader, Select, Spinner } from "../components/ui";
 import { CycleSelect } from "../components/CycleSelect";
@@ -79,10 +79,16 @@ export default function BulletinPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [eleveId, periodeValue]);
 
-  const handleDownloadPdf = () => {
+  const handleDownloadPdf = async () => {
     const selection = buildSelection();
     if (!eleveId || !selection || !bulletin) return;
-    bulletinApi.downloadPdf(Number(eleveId), selection, `bulletin_${bulletin.eleve.matricule}.pdf`).catch(() => {});
+    try {
+      await bulletinApi.downloadPdf(Number(eleveId), selection, `bulletin_${bulletin.eleve.matricule}.pdf`);
+    } catch (err) {
+      // Sans ce catch, un échec (ex: bulletin pas encore complet) restait invisible pour
+      // l'utilisateur — le bouton semblait "mort" (voir le même correctif sur les badges).
+      setError(await extractBlobErrorMessage(err));
+    }
   };
 
   const handleSendEmail = async () => {

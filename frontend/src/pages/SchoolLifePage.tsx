@@ -144,9 +144,24 @@ export default function SchoolLifePage() {
     setQrPreview(URL.createObjectURL(data));
   };
 
-  const downloadBadge = (kind: "eleve" | "enseignant", id: number, nom: string) => {
+  const downloadBadge = async (kind: "eleve" | "enseignant", id: number, nom: string) => {
+    // Sans ce try/catch, un échec (403/404/500…) sur un appel qui télécharge un blob restait
+    // une promesse rejetée sans aucun retour visible pour l'utilisateur — le bouton semblait
+    // "mort" alors qu'une erreur survenait bel et bien en arrière-plan.
     const filename = `badge_${nom.replace(/\s+/g, "_")}.pdf`;
-    return kind === "eleve" ? badgesApi.pdf(id, filename) : enseignantBadgesApi.pdf(id, filename);
+    try {
+      await (kind === "eleve" ? badgesApi.pdf(id, filename) : enseignantBadgesApi.pdf(id, filename));
+    } catch (err) {
+      toast.error(await extractBlobErrorMessage(err));
+    }
+  };
+
+  const downloadBadgePvc = async (id: number, nom: string) => {
+    try {
+      await badgesApi.pdfPvc(id, `badge_pvc_${nom.replace(/\s+/g, "_")}.pdf`);
+    } catch (err) {
+      toast.error(await extractBlobErrorMessage(err));
+    }
   };
 
   const handleIssueEleveBadge = async () => {
@@ -340,7 +355,7 @@ export default function SchoolLifePage() {
                 detail={`Élève · émis le ${new Date(badge.emis_le).toLocaleDateString("fr-FR")}`}
                 onShowQr={() => showQr("eleve", badge.id)}
                 onDownload={() => downloadBadge("eleve", badge.id, badge.eleve_nom)}
-                onDownloadPvc={() => badgesApi.pdfPvc(badge.id, `badge_pvc_${badge.eleve_nom.replace(/\s+/g, "_")}.pdf`)}
+                onDownloadPvc={() => downloadBadgePvc(badge.id, badge.eleve_nom)}
                 extraLabel="🎒 Autorisation"
                 onExtra={() =>
                   badgesApi

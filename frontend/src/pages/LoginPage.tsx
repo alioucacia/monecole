@@ -6,6 +6,7 @@ import { extractErrorMessage } from "../api/client";
 import { authApi, plateformeBrandingApi } from "../api/services";
 import { Button, Input, OtpBoxInput } from "../components/ui";
 import { useAuth } from "../context/AuthContext";
+import { useCooldown } from "../hooks/useCooldown";
 
 // const DEMO_ACCOUNTS = [
 //   { role: "Admin", username: "admin", password: "admin123" },
@@ -77,6 +78,11 @@ export default function LoginPage() {
   // qu'à saisir le code reçu par e-mail/SMS pour obtenir le vrai accès.
   const [otpRequis, setOtpRequis] = useState(false);
   const [otpCode, setOtpCode] = useState("");
+  // Renvoi du code — délai aligné sur DELAI_MIN_RENVOI_SECONDES côté backend (accounts/services.py) :
+  // en dessous, generer_otp() ne fait rien de plus (le code déjà envoyé est encore valable), ce
+  // ne serait donc pas un vrai renvoi. `relancer()` est appelé au premier envoi (dans handleSubmit)
+  // et à chaque renvoi manuel (handleResendOtp).
+  const cooldownOtp = useCooldown(60);
   const [nomPlateforme, setNomPlateforme] = useState("Taly-School");
   const [logoPlateforme, setLogoPlateforme] = useState<string | null>(null);
   // `undefined` tant que la réponse de plateformeBrandingApi n'est pas encore arrivée — on évite
@@ -166,6 +172,7 @@ export default function LoginPage() {
         setOtpRequis(true);
         setFormError("");
         setLoading(false);
+        cooldownOtp.relancer();
         return;
       }
       setFormError(extractErrorMessage(err) || "Identifiants incorrects.");
@@ -203,6 +210,25 @@ export default function LoginPage() {
   const handleSubmitOtp = (e: FormEvent) => {
     e.preventDefault();
     submitOtp(otpCode.trim());
+  };
+
+  const handleResendOtp = async () => {
+    if (!cooldownOtp.pret) return;
+    cooldownOtp.relancer();
+    setFormError("");
+    setOtpCode("");
+    try {
+      // Redéclenche l'envoi d'un code (login() renvoie toujours code="otp_requis" tant que le
+      // 2FA reste actif — voir CustomTokenObtainPairSerializer.validate) ; le cas où il aurait
+      // été désactivé entre-temps est couvert en terminant directement la connexion.
+      const { data } = await authApi.login(username, password);
+      completeLogin(data.access, data.refresh, data.user, rememberMe);
+    } catch (err) {
+      if (axios.isAxiosError(err) && err.response?.data && (err.response.data as { code?: string }).code === "otp_requis") {
+        return;
+      }
+      setFormError(extractErrorMessage(err) || "Impossible de renvoyer le code.");
+    }
   };
 
   // Dès que les 6 chiffres sont saisis, on vérifie automatiquement le code — sans attendre un
@@ -267,6 +293,14 @@ export default function LoginPage() {
                 <Button type="submit" className="w-full" disabled={loading || otpCode.length !== 6}>
                   {loading ? "Vérification…" : "Confirmer"}
                 </Button>
+                <button
+                  type="button"
+                  onClick={handleResendOtp}
+                  disabled={!cooldownOtp.pret}
+                  className="block w-full text-center text-sm font-semibold text-brand-700 hover:text-brand-800 disabled:text-slate-400 disabled:hover:text-slate-400 disabled:cursor-not-allowed"
+                >
+                  {cooldownOtp.pret ? "Renvoyer le code" : `Renvoyer le code dans ${cooldownOtp.restant}s`}
+                </button>
                 <button
                   type="button"
                   onClick={() => { setOtpRequis(false); setOtpCode(""); setFormError(""); }}

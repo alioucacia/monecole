@@ -1,9 +1,10 @@
 import { useEffect, useState } from "react";
 
 import { classesApi, elevesApi, typesFraisApi, unwrapList } from "../api/services";
-import { extractErrorMessage } from "../api/client";
+import { extractBlobErrorMessage, extractErrorMessage } from "../api/client";
 import { Badge, Button, EmptyState, Input, PageHeader, Select, Spinner } from "../components/ui";
 import { ClasseOptions } from "../components/CycleSelect";
+import { useAuth } from "../context/AuthContext";
 import { usePrompt } from "../context/ConfirmContext";
 import type { Classe, EleveProfile } from "../types";
 
@@ -12,6 +13,11 @@ function money(value: number | string) {
 }
 
 export default function ReinscriptionPage() {
+  const { user } = useAuth();
+  // Page réservée jusqu'ici à l'admin exclusivement — le Directeur Général (accès lecture
+  // seule, voir TeachersPage.tsx) y accède désormais aussi : il garde la consultation/impression
+  // des élèves déjà réinscrits (section en bas), mais pas la réinscription en masse elle-même.
+  const isAdmin = user?.role === "admin";
   const demander = usePrompt();
   const [classes, setClasses] = useState<Classe[]>([]);
   const [classeSourceId, setClasseSourceId] = useState("");
@@ -95,8 +101,13 @@ export default function ReinscriptionPage() {
 
   const handleImprimerListe = async () => {
     setImprimant(true);
+    setError("");
     try {
       await elevesApi.exportPdf({ classe: classeRecherche, statut_inscription: "reinscription", search: rechercheNom || undefined });
+    } catch (err) {
+      // Sans ce catch, un échec restait invisible (bouton "mort") — voir le même correctif
+      // sur les fiches de paiement/badges.
+      setError(await extractBlobErrorMessage(err));
     } finally {
       setImprimant(false);
     }
@@ -104,8 +115,11 @@ export default function ReinscriptionPage() {
 
   const handleFicheReinscription = async (eleve: EleveProfile) => {
     setFicheEnCours(eleve.id);
+    setError("");
     try {
       await elevesApi.ficheReinscription(eleve.id, `fiche_reinscription_${eleve.matricule}.pdf`);
+    } catch (err) {
+      setError(await extractBlobErrorMessage(err));
     } finally {
       setFicheEnCours(null);
     }
@@ -160,6 +174,14 @@ export default function ReinscriptionPage() {
         description="Passez vos élèves dans la classe supérieure et gérez les départs, d'une année sur l'autre."
       />
 
+      {!isAdmin && (
+        <p className="text-sm text-slate-500 bg-slate-50 border border-slate-100 rounded-xl px-3.5 py-2.5 mb-6">
+          Accès en lecture seule — consultez et imprimez les élèves déjà réinscrits ci-dessous. La réinscription en masse reste réservée à l'administrateur.
+        </p>
+      )}
+
+      {isAdmin && (
+        <>
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
         <Select label="Classe source (élèves à traiter)" value={classeSourceId} onChange={(e) => setClasseSourceId(e.target.value)}>
           <option value="">— Sélectionner —</option>
@@ -259,6 +281,8 @@ export default function ReinscriptionPage() {
               </ul>
             </div>
           )}
+        </>
+      )}
         </>
       )}
 

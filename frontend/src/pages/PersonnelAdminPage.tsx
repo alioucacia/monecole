@@ -3,13 +3,20 @@ import { useEffect, useState, type FormEvent } from "react";
 import { usersApi, unwrapList } from "../api/services";
 import { extractErrorMessage } from "../api/client";
 import { Badge, Button, EmptyState, Input, Modal, PageHeader, Select, Spinner, Table } from "../components/ui";
+import { useAuth } from "../context/AuthContext";
 import type { Role, User } from "../types";
 
-const ROLE_LABELS: Record<string, string> = { comptabilite: "Comptabilité", surveillance: "Surveillance Générale" };
+const ROLE_LABELS: Record<string, string> = {
+  comptabilite: "Comptabilité", surveillance: "Surveillance Générale", directeur: "Directeur Général",
+};
 
 const emptyForm = { username: "", first_name: "", last_name: "", email: "", phone: "", password: "", role: "comptabilite" as Role };
 
 export default function PersonnelAdminPage() {
+  const { user: moi } = useAuth();
+  // Page réservée jusqu'ici à l'admin exclusivement — le Directeur Général (accès lecture
+  // seule, voir TeachersPage.tsx) y accède désormais aussi, d'où ce garde-fou.
+  const isAdmin = moi?.role === "admin";
   const [users, setUsers] = useState<User[]>([]);
   const [loading, setLoading] = useState(true);
   const [modalOpen, setModalOpen] = useState(false);
@@ -22,7 +29,8 @@ export default function PersonnelAdminPage() {
     Promise.all([
       usersApi.list({ role: "comptabilite", page_size: 100 }).then(({ data }) => unwrapList(data)),
       usersApi.list({ role: "surveillance", page_size: 100 }).then(({ data }) => unwrapList(data)),
-    ]).then(([compta, surveillance]) => setUsers([...compta, ...surveillance])).finally(() => setLoading(false));
+      usersApi.list({ role: "directeur", page_size: 100 }).then(({ data }) => unwrapList(data)),
+    ]).then(([compta, surveillance, directeurs]) => setUsers([...compta, ...surveillance, ...directeurs])).finally(() => setLoading(false));
   };
 
   useEffect(load, []);
@@ -57,8 +65,8 @@ export default function PersonnelAdminPage() {
     <div>
       <PageHeader
         title="Personnel administratif"
-        description="Comptes Comptabilité et Surveillance Générale de votre établissement."
-        actions={<Button onClick={openCreate}>+ Nouveau compte</Button>}
+        description="Comptes Comptabilité, Surveillance Générale et Directeur Général de votre établissement."
+        actions={isAdmin ? <Button onClick={openCreate}>+ Nouveau compte</Button> : undefined}
       />
 
       {loading ? (
@@ -75,9 +83,11 @@ export default function PersonnelAdminPage() {
               <td className="px-4 py-3 text-slate-500 text-xs">{u.email || "—"}</td>
               <td className="px-4 py-3"><Badge color={u.is_active ? "green" : "rose"}>{u.is_active ? "Actif" : "Désactivé"}</Badge></td>
               <td className="px-4 py-3">
-                <button onClick={() => handleToggleActif(u)} className={`text-xs font-semibold hover:underline ${u.is_active ? "text-rose-600" : "text-emerald-600"}`}>
-                  {u.is_active ? "Désactiver" : "Réactiver"}
-                </button>
+                {isAdmin && (
+                  <button onClick={() => handleToggleActif(u)} className={`text-xs font-semibold hover:underline ${u.is_active ? "text-rose-600" : "text-emerald-600"}`}>
+                    {u.is_active ? "Désactiver" : "Réactiver"}
+                  </button>
+                )}
               </td>
             </tr>
           ))}
@@ -89,6 +99,7 @@ export default function PersonnelAdminPage() {
           <Select label="Rôle" required value={form.role} onChange={(e) => setForm({ ...form, role: e.target.value as Role })}>
             <option value="comptabilite">Comptabilité</option>
             <option value="surveillance">Surveillance Générale</option>
+            <option value="directeur">Directeur Général</option>
           </Select>
           <div className="grid grid-cols-2 gap-4">
             <Input label="Prénom" required value={form.first_name} onChange={(e) => setForm({ ...form, first_name: e.target.value })} />

@@ -187,7 +187,7 @@ export default function App() {
         <Route
           path="/parametres-ecole"
           element={
-            <ProtectedRoute roles={["admin"]}>
+            <ProtectedRoute roles={["admin", "directeur"]}>
               <ParametresEcolePage />
             </ProtectedRoute>
           }
@@ -195,7 +195,7 @@ export default function App() {
         <Route
           path="/personnel-admin"
           element={
-            <ProtectedRoute roles={["admin"]}>
+            <ProtectedRoute roles={["admin", "directeur"]}>
               <PersonnelAdminPage />
             </ProtectedRoute>
           }
@@ -203,7 +203,7 @@ export default function App() {
         <Route
           path="/comptes-ecole"
           element={
-            <ProtectedRoute roles={["admin"]}>
+            <ProtectedRoute roles={["admin", "directeur"]}>
               <ComptesEcolePage />
             </ProtectedRoute>
           }
@@ -211,7 +211,7 @@ export default function App() {
         <Route
           path="/eleves"
           element={
-            <ProtectedRoute roles={["admin", "teacher", "comptabilite", "surveillance"]}>
+            <ProtectedRoute roles={["admin", "directeur", "teacher", "comptabilite", "surveillance"]}>
               <StudentsPage />
             </ProtectedRoute>
           }
@@ -219,7 +219,7 @@ export default function App() {
         <Route
           path="/eleves/:id"
           element={
-            <ProtectedRoute roles={["admin", "teacher", "comptabilite", "surveillance"]}>
+            <ProtectedRoute roles={["admin", "directeur", "teacher", "comptabilite", "surveillance"]}>
               <StudentDetailPage />
             </ProtectedRoute>
           }
@@ -227,7 +227,7 @@ export default function App() {
         <Route
           path="/reinscription"
           element={
-            <ProtectedRoute roles={["admin"]}>
+            <ProtectedRoute roles={["admin", "directeur"]}>
               <ReinscriptionPage />
             </ProtectedRoute>
           }
@@ -235,7 +235,7 @@ export default function App() {
         <Route
           path="/enseignants"
           element={
-            <ProtectedRoute roles={["admin"]}>
+            <ProtectedRoute roles={["admin", "directeur"]}>
               <TeachersPage />
             </ProtectedRoute>
           }
@@ -243,7 +243,7 @@ export default function App() {
         <Route
           path="/classes"
           element={
-            <ProtectedRoute roles={["admin", "teacher"]}>
+            <ProtectedRoute roles={["admin", "directeur", "teacher"]}>
               <ClassesPage />
             </ProtectedRoute>
           }
@@ -251,7 +251,7 @@ export default function App() {
         <Route
           path="/matieres"
           element={
-            <ProtectedRoute roles={["admin"]}>
+            <ProtectedRoute roles={["admin", "directeur"]}>
               <SubjectsPage />
             </ProtectedRoute>
           }
@@ -277,7 +277,7 @@ export default function App() {
         <Route
           path="/resultats"
           element={
-            <ProtectedRoute roles={["admin", "teacher"]}>
+            <ProtectedRoute roles={["admin", "directeur", "teacher"]}>
               <ResultsPage />
             </ProtectedRoute>
           }
@@ -286,7 +286,7 @@ export default function App() {
         <Route
           path="/justificatifs"
           element={
-            <ProtectedRoute roles={["admin", "student", "parent", "surveillance"]} feature="justificatifs">
+            <ProtectedRoute roles={["admin", "directeur", "student", "parent", "surveillance"]} feature="justificatifs">
               <JustificatifsPage />
             </ProtectedRoute>
           }
@@ -295,7 +295,7 @@ export default function App() {
         <Route
           path="/personnel"
           element={
-            <ProtectedRoute roles={["admin", "teacher", "comptabilite", "surveillance"]}>
+            <ProtectedRoute roles={["admin", "directeur", "teacher", "comptabilite", "surveillance"]}>
               <StaffPage />
             </ProtectedRoute>
           }
@@ -304,7 +304,7 @@ export default function App() {
         <Route
           path="/paiements"
           element={
-            <ProtectedRoute roles={["admin", "student", "parent", "comptabilite"]}>
+            <ProtectedRoute roles={["admin", "directeur", "student", "parent", "comptabilite"]}>
               <PaymentsPage />
             </ProtectedRoute>
           }
@@ -312,7 +312,7 @@ export default function App() {
         <Route
           path="/paiements/impayes-par-classe"
           element={
-            <ProtectedRoute roles={["admin", "comptabilite"]}>
+            <ProtectedRoute roles={["admin", "directeur", "comptabilite"]}>
               <ImpayesParClassePage />
             </ProtectedRoute>
           }
@@ -320,7 +320,7 @@ export default function App() {
         <Route
           path="/paiements/suivi-mensuel"
           element={
-            <ProtectedRoute roles={["admin", "comptabilite"]}>
+            <ProtectedRoute roles={["admin", "directeur", "comptabilite"]}>
               <SuiviMensuelPage />
             </ProtectedRoute>
           }
@@ -328,7 +328,7 @@ export default function App() {
         <Route
           path="/paiements/recherche-matricule"
           element={
-            <ProtectedRoute roles={["admin", "comptabilite"]}>
+            <ProtectedRoute roles={["admin", "directeur", "comptabilite"]}>
               <RechercheMatriculePage />
             </ProtectedRoute>
           }
@@ -336,7 +336,7 @@ export default function App() {
         <Route
           path="/paiements/tarifs-classe"
           element={
-            <ProtectedRoute roles={["admin", "comptabilite"]}>
+            <ProtectedRoute roles={["admin", "directeur", "comptabilite"]}>
               <TarifsClassePage />
             </ProtectedRoute>
           }
@@ -344,7 +344,7 @@ export default function App() {
         <Route
           path="/caisse"
           element={
-            <ProtectedRoute roles={["admin", "comptabilite"]}>
+            <ProtectedRoute roles={["admin", "directeur", "comptabilite"]}>
               <CaissePage />
             </ProtectedRoute>
           }
@@ -352,7 +352,7 @@ export default function App() {
         <Route
           path="/depenses"
           element={
-            <ProtectedRoute roles={["admin", "comptabilite"]}>
+            <ProtectedRoute roles={["admin", "directeur", "comptabilite"]}>
               <DepensesPage />
             </ProtectedRoute>
           }
@@ -368,7 +368,7 @@ export default function App() {
         <Route
           path="/transport"
           element={
-            <ProtectedRoute roles={["admin", "student", "parent", "comptabilite"]} feature="transport">
+            <ProtectedRoute roles={["admin", "directeur", "student", "parent", "comptabilite"]} feature="transport">
               <TransportPage />
             </ProtectedRoute>
           }
@@ -376,7 +376,7 @@ export default function App() {
         <Route
           path="/cantine"
           element={
-            <ProtectedRoute roles={["admin", "student", "parent", "comptabilite"]} feature="cantine">
+            <ProtectedRoute roles={["admin", "directeur", "student", "parent", "comptabilite"]} feature="cantine">
               <CantinePage />
             </ProtectedRoute>
           }

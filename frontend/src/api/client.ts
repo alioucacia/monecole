@@ -1,6 +1,21 @@
 import axios, { AxiosError, type InternalAxiosRequestConfig } from "axios";
 
 import { emitToast } from "../context/ToastContext";
+import { enqueue } from "../offline/queue";
+
+/** Méthodes dont un échec réseau peut être mis en file pour un rejeu automatique plus tard (voir
+ * offline/queue.ts, offline/sync.ts) — jamais GET/HEAD (rien à "réessayer plus tard" pour une
+ * lecture, l'utilisateur relira simplement une fois reconnecté). */
+const METHODES_MISES_EN_FILE = new Set(["post", "patch", "put", "delete"]);
+const LIBELLES_METHODE: Record<string, string> = {
+  post: "Création", patch: "Modification", put: "Modification", delete: "Suppression",
+};
+
+/** `true` si `config.data` est un `FormData` (envoi de fichier — photo, justificatif, import
+ * Excel...) : jamais mis en file, voir la limite documentée dans offline/queue.ts. */
+function estFormData(data: unknown): boolean {
+  return typeof FormData !== "undefined" && data instanceof FormData;
+}
 
 const BASE_URL = import.meta.env.VITE_API_URL || "http://localhost:8000/api";
 
@@ -149,10 +164,44 @@ api.interceptors.response.use(
       }
     }
 
-    // Aucune réponse du tout (serveur injoignable, coupure réseau...) : un cas que
-    // pratiquement aucune page ne gère spécifiquement, donc autant prévenir partout
-    // plutôt que de laisser un formulaire échouer sans un mot d'explication.
+    // Aucune réponse du tout (serveur injoignable, coupure réseau...).
     if (!error.response) {
+      const config = originalRequest as (InternalAxiosRequestConfig & { _skipOfflineQueue?: boolean }) | undefined;
+      const methode = config?.method?.toLowerCase();
+      // Mode hors-ligne (voir offline/queue.ts + offline/sync.ts) : une écriture (création/
+      // modification/suppression) en JSON échouée faute de réseau est mise en file plutôt que
+      // simplement signalée en erreur — elle sera rejouée automatiquement au retour de la
+      // connexion. `_skipOfflineQueue` évite qu'une tentative de REJEU (déjà en file) ne se
+      // remette elle-même en file en cas de nouvel échec réseau pendant la synchronisation.
+      // Les envois de fichiers (FormData) restent de simples échecs, non rattrapables ainsi —
+      // de même que tout ce qui touche à l'authentification (connexion, rafraîchissement de
+      // jeton, réinitialisation de mot de passe, OTP...) : ces actions rendent un résultat
+      // immédiatement nécessaire (un jeton, un code) qu'aucun rejeu différé ne peut fournir —
+      // les mettre en file donnerait l'illusion trompeuse d'une connexion "en attente".
+      const estAuth = config?.url?.includes("/auth/");
+      if (config && methode && METHODES_MISES_EN_FILE.has(methode) && !config._skipOfflineQueue && !estFormData(config.data) && !estAuth) {
+        const item = enqueue({
+          method: methode as "post" | "patch" | "put" | "delete",
+          url: config.url || "",
+          data: config.data,
+          headers: config.headers && typeof (config.headers as { toJSON?: () => Record<string, string> }).toJSON === "function"
+            ? (config.headers as unknown as { toJSON: () => Record<string, string> }).toJSON()
+            : (config.headers as Record<string, string> | undefined),
+          label: `${LIBELLES_METHODE[methode] || methode} — ${config.url}`,
+        });
+        emitToast("warning", "Hors ligne — action enregistrée, elle sera synchronisée automatiquement dès le retour du réseau.");
+        return Promise.resolve({
+          data: {
+            ...(config.data && typeof config.data === "object" ? config.data : {}),
+            id: (config.data as { id?: unknown } | undefined)?.id ?? `offline-${item.id}`,
+            _pending_sync: true,
+          },
+          status: 202,
+          statusText: "Queued (offline)",
+          headers: {},
+          config,
+        });
+      }
       emitToast("error", "Impossible de contacter le serveur. Vérifiez votre connexion.");
     }
 
