@@ -664,20 +664,26 @@ def _ecole_nom(user):
     return user.ecole.nom if user.ecole_id else "Taly-School"
 
 
-def _taille_police_ecole_badge(nom: str) -> float:
+def _taille_police_ecole_badge(nom: str) -> int:
     """Taille de police (en px) du nom de l'école sur la carte élève — réduite pour les noms
     longs afin qu'ils tiennent toujours sur une seule ligne. Un retour à la ligne y est mal géré
     par xhtml2pdf/reportlab dans ce gabarit : la ligne suivante ignore l'indentation de sa
     cellule et chevauche le blason — mieux vaut donc réduire la police que risquer ce rendu
-    cassé (voir _badge_eleve_style.html/_badge_eleve_card.html)."""
+    cassé (voir _badge_eleve_style.html/_badge_eleve_card.html).
+
+    Valeurs ENTIÈRES uniquement (pas de décimale, ex: 11 plutôt que 11.5) : un `font-size`
+    fractionnaire dans un `style=""` inline fait planter le parseur CSS de xhtml2pdf
+    (`TypeError: sequence item 1: expected str instance, tuple found`, confirmé en conditions
+    réelles — les badges élève/PVC ne se généraient plus du tout, pour quasiment toutes les
+    écoles, avant ce correctif)."""
     longueur = len(nom or "")
     if longueur <= 22:
-        return 11.5
+        return 11
     if longueur <= 30:
-        return 9.5
+        return 9
     if longueur <= 40:
         return 8
-    return 6.8
+    return 7
 
 
 def _couleurs_ecole(ecole, modele=1):
