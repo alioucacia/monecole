@@ -10,8 +10,13 @@ services:
       POSTGRES_PASSWORD: ecole_password
     volumes:
       - postgres_data:/var/lib/postgresql/data
+    # 15432 côté hôte (pas 5432) : sur ce poste, 5432 ET la plage 5390-5489 (donc aussi 5433) sont
+    # réservés par Windows/Hyper-V (`netsh interface ipv4 show excludedportrange protocol=tcp`),
+    # Docker Desktop ne peut y publier aucun port — voir backend/.env (DATABASE_URL pointe vers
+    # ce même 15432). Aucun impact à l'intérieur du réseau Docker : le service "backend"
+    # ci-dessous continue de joindre celui-ci via "db:5432" (port interne au conteneur, inchangé).
     ports:
-      - "5432:5432"
+      - "15432:5432"
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U ecole_user -d ecole_db"]
       interval: 5s
