@@ -51,6 +51,7 @@ INSTALLED_APPS = [
     "core",
     "support",
     "sms",
+    'school_messaging',
 ]
 
 MIDDLEWARE = [
@@ -256,10 +257,31 @@ HEURE_LIMITE_PONCTUALITE = time(8, 15)
 # renseigner une clé Anthropic (et installer le paquet "anthropic") pour un vrai chat IA.
 ANTHROPIC_API_KEY = config("ANTHROPIC_API_KEY", default="")
 
-# SMS (people/sms.py) — laisser vide pour des SMS simulés (journalisés en console, comme avant) ;
-# renseigner les 3 variables Twilio pour un envoi réel. Les numéros sont saisis dans ce projet
-# sans indicatif international (ex: "624086668") : TWILIO_INDICATIF_DEFAUT est préfixé avant
-# l'envoi pour obtenir le format E.164 attendu par Twilio (+224624086668 par défaut, Guinée).
+# SMS (people/sms.py) — plusieurs fournisseurs possibles, un seul actif à la fois via
+# SMS_PROVIDER ("nimbasms" / "infobip" / "twilio" / vide). Change de fournisseur = changer
+# cette seule variable (et les identifiants du fournisseur choisi) — aucun code à toucher.
+# Vide (ou fournisseur mal configuré) => SMS simulés, journalisés en console. Les numéros sont
+# saisis dans ce projet sans indicatif international (ex: "624086668") : SMS_INDICATIF_DEFAUT
+# est préfixé avant l'envoi pour obtenir le format international attendu par chaque fournisseur
+# (+224624086668 par défaut, Guinée).
+SMS_PROVIDER = config("SMS_PROVIDER", default="")
+SMS_INDICATIF_DEFAUT = config("SMS_INDICATIF_DEFAUT", default="+224")
+
+# NimbaSMS (nimbasms.com) — SID + jeton secret, visibles depuis le tableau de bord NimbaSMS.
+NIMBASMS_SID = config("NIMBASMS_SID", default="")
+NIMBASMS_SECRET_TOKEN = config("NIMBASMS_SECRET_TOKEN", default="")
+NIMBASMS_SENDER_NAME = config("NIMBASMS_SENDER_NAME", default="Taly School")
+
+# Infobip (infobip.com) — clé API et URL de base PERSONNELLES à votre compte (Infobip attribue
+# une URL du type "xxxxxxx.api.infobip.com" par compte, visible sur la page d'accueil du portail
+# à côté de la clé API — ce n'est pas une URL générique commune à tous les comptes). INFOBIP_SENDER
+# est l'identifiant expéditeur (Sender ID alphanumérique enregistré, ex: "TalySchool") ou un
+# numéro dédié selon votre compte/pays — laissez vide pour utiliser le sender par défaut du compte.
+INFOBIP_API_KEY = config("INFOBIP_API_KEY", default="")
+INFOBIP_BASE_URL = config("INFOBIP_BASE_URL", default="")
+INFOBIP_SENDER = config("INFOBIP_SENDER", default="Taly School")
+
+# Twilio (console.twilio.com) — fournisseur historique, conservé disponible.
 TWILIO_ACCOUNT_SID = config("TWILIO_ACCOUNT_SID", default="")
 TWILIO_AUTH_TOKEN = config("TWILIO_AUTH_TOKEN", default="")
 TWILIO_FROM_NUMBER = config("TWILIO_FROM_NUMBER", default="")

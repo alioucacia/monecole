@@ -174,14 +174,12 @@ export default function ProfilePage() {
     }
   };
 
-  const handleConfirmerVerification = async (e: FormEvent) => {
-    e.preventDefault();
-    if (!verifCanalOuvert) return;
+  const confirmerVerification = async (canal: "email" | "telephone", code: string) => {
     setVerifConfirmation(true);
     try {
-      await authApi.confirmerVerification(verifCanalOuvert, verifCode.trim());
+      await authApi.confirmerVerification(canal, code);
       await refreshUser();
-      toast.success(verifCanalOuvert === "email" ? "E-mail vérifié." : "Téléphone vérifié.");
+      toast.success(canal === "email" ? "E-mail vérifié." : "Téléphone vérifié.");
       setVerifCanalOuvert(null);
       setVerifCode("");
     } catch (err) {
@@ -190,6 +188,21 @@ export default function ProfilePage() {
       setVerifConfirmation(false);
     }
   };
+
+  const handleConfirmerVerification = (e: FormEvent) => {
+    e.preventDefault();
+    if (!verifCanalOuvert) return;
+    confirmerVerification(verifCanalOuvert, verifCode.trim());
+  };
+
+  // Confirmation automatique dès les 6 chiffres saisis, même logique que les autres écrans OTP
+  // (connexion, réinitialisation de mot de passe) — pas besoin de cliquer sur « Confirmer ».
+  useEffect(() => {
+    if (verifCanalOuvert && verifCode.length === 6 && !verifConfirmation) {
+      confirmerVerification(verifCanalOuvert, verifCode.trim());
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [verifCode, verifCanalOuvert]);
 
   return (
     <div className="max-w-2xl">
@@ -307,7 +320,7 @@ export default function ProfilePage() {
                 </div>
                 {verifCanalOuvert === canal && (
                   <form onSubmit={handleConfirmerVerification} className="mt-3 space-y-3">
-                    <OtpBoxInput value={verifCode} onChange={setVerifCode} autoFocus />
+                    <OtpBoxInput value={verifCode} onChange={setVerifCode} autoFocus disabled={verifConfirmation} />
                     <div className="flex items-center justify-center gap-2">
                       <Button type="submit" disabled={verifConfirmation || verifCode.length !== 6}>
                         {verifConfirmation ? "…" : "Confirmer"}

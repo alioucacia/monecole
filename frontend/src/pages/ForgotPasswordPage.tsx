@@ -1,4 +1,4 @@
-import { useState, type FormEvent } from "react";
+import { useEffect, useState, type FormEvent } from "react";
 import { Link, useNavigate } from "react-router-dom";
 
 import { authApi } from "../api/services";
@@ -43,12 +43,11 @@ export default function ForgotPasswordPage() {
     }
   };
 
-  const handleSubmitCode = async (e: FormEvent) => {
-    e.preventDefault();
+  const submitCode = async (code: string) => {
     setOtpError("");
     setOtpLoading(true);
     try {
-      const { data } = await authApi.verifyPasswordResetOtp(email, otpCode);
+      const { data } = await authApi.verifyPasswordResetOtp(email, code);
       setResetTicket(data.reset_ticket);
       setEtape("mot_de_passe");
     } catch (err) {
@@ -57,6 +56,20 @@ export default function ForgotPasswordPage() {
       setOtpLoading(false);
     }
   };
+
+  const handleSubmitCode = (e: FormEvent) => {
+    e.preventDefault();
+    submitCode(otpCode);
+  };
+
+  // Vérification automatique dès les 6 chiffres saisis — passe à l'étape suivante sans attendre
+  // un clic sur « Vérifier le code », même logique que la double authentification à la connexion.
+  useEffect(() => {
+    if (etape === "code" && otpCode.length === 6 && !otpLoading) {
+      submitCode(otpCode);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [otpCode, etape]);
 
   const handleSubmitPassword = async (e: FormEvent) => {
     e.preventDefault();
@@ -115,7 +128,7 @@ export default function ForgotPasswordPage() {
               Saisissez le code à 6 chiffres envoyé à {email} (ou suivez le lien reçu par e-mail).
             </p>
             <form onSubmit={handleSubmitCode} className="space-y-5">
-              <OtpBoxInput value={otpCode} onChange={setOtpCode} autoFocus />
+              <OtpBoxInput value={otpCode} onChange={setOtpCode} autoFocus disabled={otpLoading} />
               <Button type="submit" className="w-full" disabled={otpLoading || otpCode.length !== 6}>
                 {otpLoading ? "Vérification…" : "Vérifier le code"}
               </Button>

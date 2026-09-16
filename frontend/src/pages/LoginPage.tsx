@@ -176,10 +176,9 @@ export default function LoginPage() {
     }
   };
 
-  const handleSubmitOtp = async (e: FormEvent) => {
-    e.preventDefault();
+  const submitOtp = async (code: string) => {
     setFormError("");
-    if (otpCode.trim().length !== 6) {
+    if (code.length !== 6) {
       setFormError("Le code comporte 6 chiffres.");
       setShake(true);
       setTimeout(() => setShake(false), 500);
@@ -187,7 +186,10 @@ export default function LoginPage() {
     }
     setLoading(true);
     try {
-      const { data } = await authApi.verifierOtpConnexion(username, otpCode.trim());
+      const { data } = await authApi.verifierOtpConnexion(username, code);
+      // La redirection vers l'espace de l'utilisateur se fait ensuite automatiquement, sans
+      // action supplémentaire : `completeLogin` met à jour `user` dans le contexte, ce qui fait
+      // passer `if (user) return <Navigate .../>` en tête de ce composant au rendu suivant.
       completeLogin(data.access, data.refresh, data.user, rememberMe);
     } catch (err) {
       setFormError(extractErrorMessage(err) || "Code invalide ou expiré.");
@@ -197,6 +199,21 @@ export default function LoginPage() {
       setLoading(false);
     }
   };
+
+  const handleSubmitOtp = (e: FormEvent) => {
+    e.preventDefault();
+    submitOtp(otpCode.trim());
+  };
+
+  // Dès que les 6 chiffres sont saisis, on vérifie automatiquement le code — sans attendre un
+  // clic sur « Confirmer » — pour que la connexion (et donc la redirection ci-dessus) se
+  // déclenche immédiatement une fois le code valide, comme demandé.
+  useEffect(() => {
+    if (otpRequis && otpCode.trim().length === 6 && !loading) {
+      submitOtp(otpCode.trim());
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [otpCode, otpRequis]);
 
   return (
     <div className="min-h-screen flex items-center justify-center px-4 py-10 gradient-surface relative overflow-hidden">
@@ -245,6 +262,7 @@ export default function LoginPage() {
                   value={otpCode}
                   onChange={(v) => { setOtpCode(v); if (formError) setFormError(""); }}
                   autoFocus
+                  disabled={loading}
                 />
                 <Button type="submit" className="w-full" disabled={loading || otpCode.length !== 6}>
                   {loading ? "Vérification…" : "Confirmer"}
