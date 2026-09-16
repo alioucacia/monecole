@@ -17,7 +17,15 @@ function estFormData(data: unknown): boolean {
   return typeof FormData !== "undefined" && data instanceof FormData;
 }
 
-const BASE_URL = import.meta.env.VITE_API_URL || "http://localhost:8000/api";
+// "/api" (chemin relatif) plutôt qu'un hôte figé : en dev, VITE_API_URL est toujours défini
+// explicitement (voir frontend/.env.local, http://127.0.0.1:8000/api) donc ce repli ne joue
+// aucun rôle localement ; en revanche un build de PRODUCTION qui oublierait de définir
+// VITE_API_URL (voir frontend/.env.production) tombait avant sur "http://localhost:8000/api"
+// — une adresse qui n'existe que sur le poste du développeur, jamais joignable par un vrai
+// visiteur (cause probable des liens/QR codes restés "en local" en prod, vus plus tôt).
+// "/api" reste correct pour N'IMPORTE QUEL domaine, tant que nginx proxy /api/ vers le backend
+// sur ce même domaine (voir /etc/nginx/sites-available/taly-school en production).
+const BASE_URL = import.meta.env.VITE_API_URL || "/api";
 
 export const TOKEN_KEYS = {
   access: "ecole_access_token",

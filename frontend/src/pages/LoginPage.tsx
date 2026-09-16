@@ -104,6 +104,21 @@ export default function LoginPage() {
     }).catch(() => setMaintenance({ active: false, message: "" }));
   }, []);
 
+  // Dès que les 6 chiffres du code OTP sont saisis, on le vérifie automatiquement — sans
+  // attendre un clic sur « Confirmer » — pour que la connexion (et la redirection vers "/" via
+  // `if (user) return <Navigate />` juste en dessous) se déclenche immédiatement une fois le
+  // code valide. CRITIQUE : ce hook doit rester ICI, avant les `return` conditionnels
+  // ci-dessous — placé après (comme précédemment), il n'était plus appelé du tout dès que
+  // `user` devenait vrai (retour anticipé), ce qui violait les Règles des Hooks ("Rendered
+  // fewer hooks than expected") et plantait le composant juste après une connexion réussie —
+  // exactement le bug qui empêchait d'accéder à l'application après authentification.
+  useEffect(() => {
+    if (otpRequis && otpCode.trim().length === 6 && !loading) {
+      submitOtp(otpCode.trim());
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [otpCode, otpRequis]);
+
   if (user) return <Navigate to="/" replace />;
 
   if (maintenance?.active && !formuleForcee) {
@@ -230,16 +245,6 @@ export default function LoginPage() {
       setFormError(extractErrorMessage(err) || "Impossible de renvoyer le code.");
     }
   };
-
-  // Dès que les 6 chiffres sont saisis, on vérifie automatiquement le code — sans attendre un
-  // clic sur « Confirmer » — pour que la connexion (et donc la redirection ci-dessus) se
-  // déclenche immédiatement une fois le code valide, comme demandé.
-  useEffect(() => {
-    if (otpRequis && otpCode.trim().length === 6 && !loading) {
-      submitOtp(otpCode.trim());
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [otpCode, otpRequis]);
 
   return (
     <div className="min-h-screen flex items-center justify-center px-4 py-10 gradient-surface relative overflow-hidden">
