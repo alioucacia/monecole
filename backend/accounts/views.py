@@ -369,7 +369,17 @@ class UserViewSet(viewsets.ModelViewSet):
                 User.objects.filter(ecole_id=ecole.id if ecole else None, role=User.Role.ADMIN).count(),
                 "administrateurs",
             )
-        serializer.save(ecole=ecole)
+        # Lu AVANT serializer.save() : UserCreateSerializer.create() le retire de
+        # validated_data et le hache immédiatement — c'est la seule occasion de le voir en
+        # clair pour pouvoir le communiquer au titulaire du compte ci-dessous (voir
+        # accounts.notifications.notifier_creation_compte — sans cet appel, un compte créé ici
+        # — Comptabilité, Surveillance, Directeur Général... via PersonnelAdminPage — n'était
+        # jamais notifié de ses identifiants par aucun canal).
+        mot_de_passe_clair = serializer.validated_data.get("password")
+        utilisateur = serializer.save(ecole=ecole)
+        from accounts.notifications import notifier_creation_compte
+
+        notifier_creation_compte(utilisateur, mot_de_passe_clair, expediteur=self.request.user)
 
     def perform_update(self, serializer):
         from accounts.services import journaliser

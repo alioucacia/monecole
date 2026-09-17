@@ -210,10 +210,14 @@ export default function ProfilePage() {
   }, [verifCode, verifCanalOuvert]);
 
   return (
-    <div className="max-w-2xl">
+    <div>
       <PageHeader title="Mon profil" description="Gérez vos informations personnelles." />
 
-      <Card className="mb-6">
+      {/* Deux colonnes sur grand écran (comme ParametresEcolePage) — colonne unique centrée
+          auparavant, ce qui laissait un très grand vide à droite sur les écrans larges. */}
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+      <div className="lg:col-span-2 space-y-6">
+      <Card>
         <h3 className="font-bold text-ink-900 mb-4">Photo de profil</h3>
         <p className="text-sm text-slate-500 mb-4">
           Utilisée sur votre badge (avec le code QR) et dans l'application.
@@ -246,7 +250,7 @@ export default function ProfilePage() {
         </div>
       </Card>
 
-      <Card className="mb-6">
+      <Card>
         <h3 className="font-bold text-ink-900 mb-4">Informations personnelles</h3>
         <form onSubmit={handleSubmit} className="grid grid-cols-1 sm:grid-cols-2 gap-4">
           <Input label="Prénom" value={form.first_name} onChange={(e) => setForm({ ...form, first_name: e.target.value })} />
@@ -261,8 +265,22 @@ export default function ProfilePage() {
         </form>
       </Card>
 
+      <Card>
+        <h3 className="font-bold text-ink-900 mb-4">Changer de mot de passe</h3>
+        <form onSubmit={handlePasswordSubmit} className="space-y-4">
+          <Input label="Mot de passe actuel" type="password" required value={pwdForm.old_password} onChange={(e) => setPwdForm({ ...pwdForm, old_password: e.target.value })} />
+          <Input label="Nouveau mot de passe" type="password" required value={pwdForm.new_password} onChange={(e) => setPwdForm({ ...pwdForm, new_password: e.target.value })} />
+
+          <div className="flex justify-end">
+            <Button type="submit" disabled={pwdSaving}>{pwdSaving ? "Modification…" : "Modifier le mot de passe"}</Button>
+          </div>
+        </form>
+      </Card>
+      </div>
+
+      <div className="space-y-6">
       {peutTelechargerCertificat && (
-        <Card className="mb-6">
+        <Card>
           <h3 className="font-bold text-ink-900 mb-1">Certificat de scolarité</h3>
           <p className="text-sm text-slate-500 mb-4">
             {user.role === "student"
@@ -281,18 +299,6 @@ export default function ProfilePage() {
           </div>
         </Card>
       )}
-
-      <Card className="mb-6">
-        <h3 className="font-bold text-ink-900 mb-4">Changer de mot de passe</h3>
-        <form onSubmit={handlePasswordSubmit} className="space-y-4">
-          <Input label="Mot de passe actuel" type="password" required value={pwdForm.old_password} onChange={(e) => setPwdForm({ ...pwdForm, old_password: e.target.value })} />
-          <Input label="Nouveau mot de passe" type="password" required value={pwdForm.new_password} onChange={(e) => setPwdForm({ ...pwdForm, new_password: e.target.value })} />
-
-          <div className="flex justify-end">
-            <Button type="submit" disabled={pwdSaving}>{pwdSaving ? "Modification…" : "Modifier le mot de passe"}</Button>
-          </div>
-        </form>
-      </Card>
 
       <Card>
         <h3 className="font-bold text-ink-900 mb-1">Sécurité</h3>
@@ -360,7 +366,7 @@ export default function ProfilePage() {
         </div>
       </Card>
 
-      <Card className="mt-6">
+      <Card>
         <h3 className="font-bold text-ink-900 mb-1">Mon activité récente</h3>
         <p className="text-sm text-slate-500 mb-4">Vos dernières connexions et actions sur votre compte.</p>
         {activiteLoading ? (
@@ -384,6 +390,8 @@ export default function ProfilePage() {
           </ul>
         )}
       </Card>
+      </div>
+      </div>
     </div>
   );
 }

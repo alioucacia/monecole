@@ -35,9 +35,12 @@ h1, h2, h3, h4 {
   background: linear-gradient(160deg, #2e1065 0%, #4c1d95 45%, #6d28d9 100%);
 }
 
-/* Dégradé magenta → bleu pour la barre latérale principale */
+/* Noir par défaut pour la barre latérale principale (demande explicite) — un dégradé très
+   subtil (pas un noir plat #000) pour garder un peu de profondeur, avec #0f0b1f comme ancrage
+   (déjà utilisé ailleurs dans l'appli, ex: écran de maintenance) plutôt qu'un noir neutre
+   sans rapport avec le reste de la palette. */
 .gradient-sidebar {
-  background: linear-gradient(165deg, #c026d3 0%, #9333ea 30%, #6d28d9 60%, #2563eb 100%);
+  background: linear-gradient(165deg, #17141f 0%, #0f0b1f 55%, #05030a 100%);
 }
 
 /* Barre de progression des toasts (voir context/ToastContext.tsx) */

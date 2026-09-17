@@ -318,6 +318,13 @@ class EnseignantProfileWriteSerializer(serializers.ModelSerializer):
         user.set_password(password)
         user.doit_changer_mot_de_passe = True
         user.save()
+        # Sans cet appel, le compte enseignant était bien créé mais son titulaire n'avait aucun
+        # moyen de connaître son identifiant/mot de passe (aucune notification n'était envoyée
+        # ici) — même bug que celui corrigé sur UserViewSet.perform_create pour les comptes
+        # Comptabilité/Surveillance/Directeur Général.
+        from accounts.notifications import notifier_creation_compte
+
+        notifier_creation_compte(user, password, expediteur=self.context["request"].user)
         return EnseignantProfile.objects.create(user=user, **validated_data)
 
     @transaction.atomic
