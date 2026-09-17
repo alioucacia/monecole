@@ -30,9 +30,13 @@ h1, h2, h3, h4 {
   @apply bg-brand-300;
 }
 
-/* Fond dégradé réutilisable pour les surfaces "héro" (sidebar, panneau de connexion...) */
+/* Fond dégradé réutilisable pour les surfaces "héro" (connexion, mot de passe oublié, badge...) —
+   noir profond (au lieu du violet plein d'origine), en cohérence avec .gradient-sidebar ci-dessous
+   (demande explicite) : les touches de couleur (violet/bleu/rose) de ces écrans restent en
+   accents lumineux (voir les cercles flous décoratifs de LoginPage.tsx par ex.) qui ressortent
+   davantage sur ce fond sombre plutôt que noyés dans un violet plein. */
 .gradient-surface {
-  background: linear-gradient(160deg, #2e1065 0%, #4c1d95 45%, #6d28d9 100%);
+  background: linear-gradient(160deg, #14101f 0%, #0a0713 55%, #030204 100%);
 }
 
 /* Noir par défaut pour la barre latérale principale (demande explicite) — un dégradé très

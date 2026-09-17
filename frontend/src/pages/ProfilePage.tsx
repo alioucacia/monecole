@@ -32,6 +32,12 @@ export default function ProfilePage() {
   const [pwdForm, setPwdForm] = useState({ old_password: "", new_password: "" });
   const [pwdSaving, setPwdSaving] = useState(false);
 
+  // Code secret de suppression d'école — Super Admin uniquement (voir ecolesApi.remove() /
+  // User.code_suppression côté backend). Reconfirmer le mot de passe de connexion empêche
+  // qu'une session déjà ouverte suffise, seule, à définir un code connu de tous.
+  const [codeForm, setCodeForm] = useState({ mot_de_passe_actuel: "", nouveau_code: "", confirmation: "" });
+  const [codeSaving, setCodeSaving] = useState(false);
+
   // Double authentification (2FA) + vérification e-mail/téléphone (voir User.otp_actif/
   // email_verifie/telephone_verifie côté backend) — les deux OTP par e-mail/SMS.
   const [otpToggling, setOtpToggling] = useState(false);
@@ -148,6 +154,25 @@ export default function ProfilePage() {
       toast.error(extractErrorMessage(err));
     } finally {
       setPwdSaving(false);
+    }
+  };
+
+  const handleCodeSuppressionSubmit = async (e: FormEvent) => {
+    e.preventDefault();
+    if (codeForm.nouveau_code !== codeForm.confirmation) {
+      toast.error("Les deux codes saisis ne correspondent pas.");
+      return;
+    }
+    setCodeSaving(true);
+    try {
+      await authApi.definirCodeSuppression(codeForm.mot_de_passe_actuel, codeForm.nouveau_code);
+      await refreshUser();
+      setCodeForm({ mot_de_passe_actuel: "", nouveau_code: "", confirmation: "" });
+      toast.success("Code de suppression enregistré.");
+    } catch (err) {
+      toast.error(extractErrorMessage(err));
+    } finally {
+      setCodeSaving(false);
     }
   };
 
@@ -276,6 +301,27 @@ export default function ProfilePage() {
           </div>
         </form>
       </Card>
+
+      {user.role === "superadmin" && (
+        <Card>
+          <h3 className="font-bold text-ink-900 mb-1">Code de suppression d'école</h3>
+          <p className="text-sm text-slate-500 mb-4">
+            {user.a_code_suppression
+              ? "Ce code sera exigé, en plus du nom de l'école, avant toute suppression définitive. Vous pouvez le changer ci-dessous."
+              : "Aucun code défini pour l'instant — la suppression d'une école restera bloquée tant que vous n'en aurez pas défini un."}
+          </p>
+          <form onSubmit={handleCodeSuppressionSubmit} className="space-y-4">
+            <Input label="Mot de passe actuel" type="password" required value={codeForm.mot_de_passe_actuel} onChange={(e) => setCodeForm({ ...codeForm, mot_de_passe_actuel: e.target.value })} />
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <Input label={user.a_code_suppression ? "Nouveau code" : "Code de suppression"} type="password" required minLength={4} value={codeForm.nouveau_code} onChange={(e) => setCodeForm({ ...codeForm, nouveau_code: e.target.value })} />
+              <Input label="Confirmer le code" type="password" required minLength={4} value={codeForm.confirmation} onChange={(e) => setCodeForm({ ...codeForm, confirmation: e.target.value })} />
+            </div>
+            <div className="flex justify-end">
+              <Button type="submit" disabled={codeSaving}>{codeSaving ? "Enregistrement…" : user.a_code_suppression ? "Changer le code" : "Définir le code"}</Button>
+            </div>
+          </form>
+        </Card>
+      )}
       </div>
 
       <div className="space-y-6">

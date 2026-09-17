@@ -194,3 +194,30 @@ def verifier_otp(utilisateur, objectif: str, code: str) -> bool:
     otp.utilise = True
     otp.save(update_fields=["utilise"])
     return True
+
+
+# ---------------------------------------------------------------------------
+# Code secret de suppression définitive d'une école (Super Admin uniquement) — voir
+# User.code_suppression et tenants.views.EcoleViewSet.destroy.
+# ---------------------------------------------------------------------------
+
+def definir_code_suppression(utilisateur, code: str) -> None:
+    """Enregistre (ou remplace) le code — toujours haché, jamais stocké en clair. L'appelant
+    (la vue) est responsable d'avoir déjà vérifié le mot de passe habituel de `utilisateur`
+    avant d'appeler cette fonction : la définir directement accessible sans ce garde-fou
+    permettrait à quiconque détournerait une session déjà ouverte de fixer lui-même un code
+    qu'il connaît, ce que ce mécanisme est justement censé empêcher."""
+    from django.contrib.auth.hashers import make_password
+
+    utilisateur.code_suppression = make_password(code)
+    utilisateur.save(update_fields=["code_suppression"])
+
+
+def verifier_code_suppression(utilisateur, code: str) -> bool:
+    """`False` si `utilisateur` n'a encore défini aucun code (suppression bloquée tant que ce
+    filet de sécurité n'a pas été mis en place — voir le champ), ou si `code` ne correspond pas."""
+    from django.contrib.auth.hashers import check_password
+
+    if not utilisateur.code_suppression:
+        return False
+    return check_password(code, utilisateur.code_suppression)

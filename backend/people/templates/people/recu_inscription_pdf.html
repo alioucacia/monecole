@@ -110,7 +110,6 @@
     <table class="ecole-header">
         <tr>
             <td class="bloc-nom">
-                {% if ecole_logo_data_uri %}<img class="logo" src="{{ ecole_logo_data_uri }}" />{% endif %}
                 <p class="nom">{{ ecole_nom }}</p>
                 <p class="tagline">Année scolaire {{ annee_scolaire|default:"—" }}</p>
             </td>
@@ -120,7 +119,6 @@
     {% elif modele == 4 %}
     <table class="ecole-header">
         <tr><td>
-            {% if ecole_logo_data_uri %}<img class="logo" src="{{ ecole_logo_data_uri }}" />{% endif %}
             <p class="nom">{{ ecole_nom }} — Fiche d'inscription</p>
             <p class="tagline">Année scolaire {{ annee_scolaire|default:"—" }}</p>
         </td></tr>
@@ -128,7 +126,6 @@
     {% else %}
     <table class="ecole-header">
         <tr><td>
-            {% if ecole_logo_data_uri %}<img class="logo" src="{{ ecole_logo_data_uri }}" />{% endif %}
             <p class="nom">{{ ecole_nom }}</p>
             <p class="tagline">Fiche d'inscription — Année scolaire {{ annee_scolaire|default:"—" }}</p>
         </td></tr>

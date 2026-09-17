@@ -76,6 +76,25 @@ class EcoleViewSet(viewsets.ModelViewSet):
         else:
             _journaliser(self.request, JournalActivite.Action.ECOLE_MODIFIEE, ecole, "Profil ou abonnement modifié")
 
+    def destroy(self, request, *args, **kwargs):
+        # Suppression IRRÉVERSIBLE de TOUTES les données d'une école (élèves, notes, paiements,
+        # comptes...) — en plus de la confirmation déjà demandée côté frontend (taper le nom de
+        # l'école, voir EcoleDetailPage.tsx), on exige ici un second secret propre au Super Admin
+        # (voir User.code_suppression / DefinirCodeSuppressionView) : une session déjà ouverte
+        # (poste non verrouillé, navigateur partagé...) ne suffit donc plus à elle seule à
+        # déclencher cette action, il faut aussi connaître ce code, jamais stocké en clair et
+        # distinct du mot de passe de connexion.
+        from accounts.services import verifier_code_suppression
+
+        if not request.user.code_suppression:
+            return Response(
+                {"detail": "Définissez d'abord un code de suppression depuis votre profil avant de pouvoir supprimer une école."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        if not verifier_code_suppression(request.user, request.data.get("code_suppression", "")):
+            return Response({"detail": "Code de suppression incorrect."}, status=status.HTTP_403_FORBIDDEN)
+        return super().destroy(request, *args, **kwargs)
+
     def perform_destroy(self, instance):
         nom = instance.nom
         # On journalise avant la suppression : le FK `ecole` de cette entrée passera à NULL

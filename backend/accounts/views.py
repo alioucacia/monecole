@@ -21,6 +21,7 @@ from .permissions import IsAdmin, IsSuperAdmin
 from .serializers import (
     ChangePasswordSerializer,
     CustomTokenObtainPairSerializer,
+    DefinirCodeSuppressionSerializer,
     JournalUtilisateurSerializer,
     PasswordResetConfirmSerializer,
     PasswordResetOtpCompleteSerializer,
@@ -29,6 +30,7 @@ from .serializers import (
     UserCreateSerializer,
     UserSerializer,
 )
+from .services import definir_code_suppression
 
 
 class LoginView(TokenObtainPairView):
@@ -126,6 +128,22 @@ class ChangePasswordView(APIView):
         user.doit_changer_mot_de_passe = False
         user.save()
         return Response({"detail": "Mot de passe mis à jour."})
+
+
+class DefinirCodeSuppressionView(APIView):
+    """Définit/remplace le code secret de suppression d'école du Super Admin connecté — voir
+    User.code_suppression et EcoleViewSet.destroy (tenants/views.py), qui l'exige. Réservée au
+    Super Admin : ce code n'a de sens pour aucun autre rôle."""
+
+    permission_classes = [IsSuperAdmin]
+
+    def post(self, request):
+        serializer = DefinirCodeSuppressionSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        if not request.user.check_password(serializer.validated_data["mot_de_passe_actuel"]):
+            return Response({"mot_de_passe_actuel": "Mot de passe incorrect."}, status=status.HTTP_400_BAD_REQUEST)
+        definir_code_suppression(request.user, serializer.validated_data["nouveau_code"])
+        return Response({"detail": "Code de suppression enregistré."})
 
 
 class PasswordResetRequestView(APIView):

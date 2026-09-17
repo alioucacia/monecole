@@ -25,6 +25,7 @@ from people.sms import send_sms, send_whatsapp
 from people.views import _classe_pour_annee, _image_data_uri, _mm_px
 
 from .models import Note, Periode
+from .notifications import DECISION_LABELS, notifier_classement
 from .serializers import NoteSerializer, PeriodeSerializer
 
 
@@ -199,9 +200,29 @@ def _moyenne_generale(matieres_moyennes):
     return round(total / coeffs, 2) if coeffs > 0 else None
 
 
+def _decision_admission(moyenne, ecole):
+    """« admis » / « repeche » / « redouble » selon le seuil d'admission paramétré par l'école
+    (Ecole.parametres.moyenne_admission, 10/20 par défaut) — un repêchage étant accordé jusqu'à
+    2 points sous ce seuil. Factorisé ici pour que `_build_bulletin` (bulletin individuel) et
+    `_class_results` (classement de classe, voir ResultsPage/« Admis »/« Redoublants ») utilisent
+    exactement la même règle."""
+    if moyenne is None:
+        return None
+    seuil_admission = Decimal("10")
+    if ecole and getattr(ecole, "parametres", None):
+        seuil_admission = ecole.parametres.moyenne_admission
+    if moyenne >= seuil_admission:
+        return "admis"
+    if moyenne >= seuil_admission - 2:
+        return "repeche"
+    return "redouble"
+
+
 def _class_results(classe, periodes):
-    """Classement complet d'une classe (moyenne générale + rang) sur un ensemble de périodes."""
+    """Classement complet d'une classe (moyenne générale + rang + décision d'admission) sur un
+    ensemble de périodes."""
     eleves = EleveProfile.objects.filter(classe=classe).select_related("user")
+    ecole = classe.annee_scolaire.ecole
     computed = [(el, _moyenne_generale(_matieres_moyennes(el, periodes))) for el in eleves]
     computed.sort(key=lambda x: (x[1] is None, -(x[1] or Decimal("0"))))
 
@@ -216,6 +237,7 @@ def _class_results(classe, periodes):
             "moyenne_generale": moyenne,
             "rang": rang if moyenne is not None else None,
             "mention": _mention_generale(moyenne),
+            "decision": _decision_admission(moyenne, ecole),
         })
     return resultats
 
@@ -348,19 +370,11 @@ def _build_bulletin(eleve, periodes, periode_label):
             "effectif": effectif_p, "appreciation": _appreciation(moyenne_p),
         })
 
-    seuil_admission = Decimal("10")
     bareme_notation = 20
-    if eleve.user.ecole_id and getattr(eleve.user.ecole, "parametres", None):
-        seuil_admission = eleve.user.ecole.parametres.moyenne_admission
-        bareme_notation = eleve.user.ecole.parametres.bareme_notation
-    decision = None
-    if moyenne_generale is not None:
-        if moyenne_generale >= seuil_admission:
-            decision = "admis"
-        elif moyenne_generale >= seuil_admission - 2:
-            decision = "repeche"
-        else:
-            decision = "redouble"
+    ecole = eleve.user.ecole if eleve.user.ecole_id else None
+    if ecole and getattr(ecole, "parametres", None):
+        bareme_notation = ecole.parametres.bareme_notation
+    decision = _decision_admission(moyenne_generale, ecole)
 
     modele_bulletin = eleve.user.ecole.modele_bulletin if eleve.user.ecole_id else 1
     # Cadre photo du modèle « Officiel » (5, carré 18×18mm) distinct des 4 autres (portrait
@@ -691,6 +705,29 @@ class ResultatsView(APIView):
         })
 
 
+class ResultatsNotifierView(APIView):
+    """Notifie chaque élève d'une classe (et son parent) de son classement — rang, moyenne et
+    décision (admis/repêché/redouble) — par e-mail et SMS en une seule action groupée (bouton
+    « Notifier les résultats » sur ResultsPage). Best-effort comme les autres notifications de
+    l'app : un élève sans coordonnées renseignées est simplement ignoré, sans faire échouer les
+    autres."""
+
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request):
+        classe_id = request.query_params.get("classe")
+        if not classe_id:
+            raise ValidationError("Le paramètre 'classe' est requis.")
+        classe = get_object_or_404(Classe, pk=classe_id)
+        _check_staff_class_access(request.user, classe)
+
+        periodes, label = _resolve_periodes(request)
+        resultats = _class_results(classe, periodes)
+
+        nb_notifies = notifier_classement(classe, label["nom"], resultats)
+        return Response({"notifies": nb_notifies, "effectif": len(resultats)})
+
+
 class ResultatsPdfView(APIView):
     """Version imprimable (PDF) du classement complet d'une classe."""
 
@@ -874,10 +911,11 @@ class ResultatsExportView(APIView):
         response = HttpResponse(content_type="text/csv; charset=utf-8-sig")
         response["Content-Disposition"] = f'attachment; filename="resultats_{classe.nom}.csv"'
         writer = csv.writer(response, delimiter=";")
-        writer.writerow(["Rang", "Matricule", "Nom complet", "Moyenne générale /20", "Mention"])
+        writer.writerow(["Rang", "Matricule", "Nom complet", "Moyenne générale /20", "Mention", "Décision"])
         for r in resultats:
             writer.writerow([
                 r["rang"] or "", r["matricule"], r["nom_complet"],
                 r["moyenne_generale"] if r["moyenne_generale"] is not None else "", r["mention"] or "",
+                DECISION_LABELS.get(r["decision"], ""),
             ])
         return response

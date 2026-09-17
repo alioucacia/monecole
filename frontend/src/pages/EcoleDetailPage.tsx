@@ -171,9 +171,14 @@ export default function EcoleDetailPage() {
       if (saisie !== null) toast.warning("Le nom saisi ne correspond pas — suppression annulée.");
       return;
     }
+    const code = await demander(
+      "Deuxième vérification : saisissez votre code secret de suppression (défini depuis votre profil).",
+      { title: "Code de suppression", label: "Code secret", confirmLabel: "Supprimer définitivement", inputType: "password", required: true }
+    );
+    if (code === null) return;
     setSuppression(true);
     try {
-      await ecolesApi.remove(ecole.id);
+      await ecolesApi.remove(ecole.id, code);
       navigate("/ecoles");
     } catch (err) {
       toast.error(extractErrorMessage(err));

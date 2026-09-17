@@ -74,6 +74,16 @@ class User(AbstractUser):
     email_verifie = models.BooleanField(default=False)
     telephone_verifie = models.BooleanField(default=False)
 
+    # Code secret de suppression définitive — concerne uniquement le Super Admin (voir
+    # tenants.views.EcoleViewSet.destroy) : exigé en plus de la confirmation habituelle (taper le
+    # nom de l'école) avant de supprimer TOUTES les données d'un établissement, pour qu'une simple
+    # session ouverte/volée ne suffise pas à déclencher cette action irréversible. Haché comme un
+    # mot de passe (voir accounts.services.definir_code_suppression/verifier_code_suppression) —
+    # jamais stocké ni renvoyé en clair. Vide tant que le Super Admin ne l'a pas défini lui-même
+    # depuis son profil ; la suppression d'école reste alors bloquée (voir la vue), plutôt que de
+    # l'autoriser sans ce filet de sécurité simplement parce qu'il n'a rien configuré.
+    code_suppression = models.CharField(max_length=128, blank=True, editable=False)
+
     # Une session est considérée active si une requête authentifiée a eu lieu dans ce délai —
     # au-delà, l'utilisateur est considéré hors ligne même si son jeton reste valide (JWT
     # stateless : rien ne prévient le serveur d'une fermeture d'onglet/déconnexion réseau).

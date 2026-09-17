@@ -14,7 +14,10 @@ export const ecolesApi = {
   get: (id: number) => api.get<Ecole>(`/tenants/ecoles/${id}/`),
   create: (data: Record<string, unknown>) => api.post<Ecole>("/tenants/ecoles/", toFormData(data), multipartHeaders),
   update: (id: number, data: Record<string, unknown>) => api.patch<Ecole>(`/tenants/ecoles/${id}/`, toFormData(data), multipartHeaders),
-  remove: (id: number) => api.delete(`/tenants/ecoles/${id}/`),
+  // `code_suppression` : second secret propre au Super Admin (voir User.code_suppression côté
+  // backend), distinct du mot de passe de connexion — exigé en plus du nom de l'école déjà tapé
+  // par l'utilisateur (voir EcoleDetailPage.handleSupprimer) avant toute suppression définitive.
+  remove: (id: number, code_suppression: string) => api.delete(`/tenants/ecoles/${id}/`, { data: { code_suppression } }),
   stats: () => api.get<EcoleStatsGlobales>("/tenants/ecoles/stats/"),
   statsDetail: (id: number) => api.get<EcoleStatsDetail>(`/tenants/ecoles/${id}/stats-detail/`),
   utilisateurs: (id: number) => api.get<EcoleUtilisateur[]>(`/tenants/ecoles/${id}/utilisateurs/`),
@@ -121,6 +124,10 @@ export const authApi = {
   updateMe: (data: Partial<User>) => api.patch<User>("/auth/me/", data),
   changePassword: (old_password: string, new_password: string) =>
     api.post("/auth/change-password/", { old_password, new_password }),
+  // Code secret de suppression d'école (Super Admin uniquement) — voir
+  // DefinirCodeSuppressionView côté backend et ecolesApi.remove().
+  definirCodeSuppression: (mot_de_passe_actuel: string, nouveau_code: string) =>
+    api.post<{ detail: string }>("/auth/me/code-suppression/", { mot_de_passe_actuel, nouveau_code }),
   requestPasswordReset: (email: string) =>
     api.post<{ detail: string }>("/auth/password-reset/", { email }),
   confirmPasswordReset: (uid: string, token: string, new_password: string) =>
@@ -414,6 +421,10 @@ export const resultatsApi = {
     downloadFile("/grades/resultats/pdf/", { classe, ...selection }, filename),
   attestations: (classe: number, selection: PeriodeSelection, rangMax: number, filename: string) =>
     downloadFile("/grades/resultats/attestations/", { classe, ...selection, rang_max: rangMax }, filename),
+  // Notifie chaque élève (et son parent) de son classement par e-mail + SMS — voir
+  // grades.notifications.notifier_classement côté backend.
+  notifier: (classe: number, selection: PeriodeSelection) =>
+    api.post<{ notifies: number; effectif: number }>("/grades/resultats/notifier/", null, { params: { classe, ...selection } }),
 };
 
 export const analysePerformanceApi = {

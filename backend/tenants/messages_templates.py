@@ -48,6 +48,16 @@ MODELES_MESSAGE = {
         "sujet_defaut": "{nom_ecole} — Réunion des parents",
         "contenu_defaut": "{nom_ecole} vous invite à une réunion des parents. Merci de votre présence.",
     },
+    "classement_eleve": {
+        "label": "Classement de l'élève",
+        "description": "Envoyé à l'élève (et à son parent) avec son rang, sa moyenne et sa décision d'admission, depuis « Résultats ».",
+        "jetons": ["{nom_complet}", "{periode}", "{rang}", "{effectif}", "{moyenne}", "{decision}"],
+        "sujet_defaut": "{nom_ecole} — Résultats de {nom_complet}",
+        "contenu_defaut": (
+            "{nom_ecole} : résultats de {nom_complet} ({periode}).\n"
+            "Rang : {rang}/{effectif} — Moyenne : {moyenne}/20 — {decision}."
+        ),
+    },
     "resultats_disponibles": {
         "label": "Résultats disponibles",
         "description": "Modèle de départ proposé dans « Nouvelle annonce » pour prévenir que les résultats/bulletins sont consultables.",

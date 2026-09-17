@@ -14,6 +14,7 @@ from .views import (
     NoteViewSet,
     PeriodeViewSet,
     ResultatsExportView,
+    ResultatsNotifierView,
     ResultatsPdfView,
     ResultatsView,
 )
@@ -33,6 +34,7 @@ urlpatterns = [
     path("resultats/export/", ResultatsExportView.as_view(), name="resultats-export"),
     path("resultats/pdf/", ResultatsPdfView.as_view(), name="resultats-pdf"),
     path("resultats/attestations/", AttestationHonneurPdfView.as_view(), name="attestations-honneur"),
+    path("resultats/notifier/", ResultatsNotifierView.as_view(), name="resultats-notifier"),
     path("analyse-performance/", AnalysePerformanceView.as_view(), name="analyse-performance"),
     path("", include(router.urls)),
 ]

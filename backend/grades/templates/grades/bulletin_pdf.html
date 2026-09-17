@@ -351,7 +351,6 @@
         <tr>
             <td class="bloc-nom">
                 <table cellspacing="0" cellpadding="0"><tr>
-                    {% if b.ecole_logo_data_uri %}<td style="width: 15mm;"><img class="logo" src="{{ b.ecole_logo_data_uri }}" /></td>{% endif %}
                     <td>
                         <p class="nom">{{ b.ecole_nom }}</p>
                         {% if b.ecole_adresse or b.ecole_telephone %}
@@ -371,14 +370,12 @@
     {% elif b.modele == 3 %}
     <table class="eh-m3">
         <tr>
-            {% if b.ecole_logo_data_uri %}<td style="width: 18mm;"><img class="logo" src="{{ b.ecole_logo_data_uri }}" /></td>{% endif %}
             <td>
                 <p class="nom">{{ b.ecole_nom }}</p>
                 {% if b.ecole_adresse or b.ecole_telephone %}
                 <p class="coord">{{ b.ecole_adresse|default:"" }}{% if b.ecole_adresse and b.ecole_telephone %} · {% endif %}{{ b.ecole_telephone|default:"" }}</p>
                 {% endif %}
             </td>
-            {% if b.ecole_logo_data_uri %}<td style="width: 18mm;">&nbsp;</td>{% endif %}
         </tr>
     </table>
     <div class="titre-bloc-m3">
@@ -399,16 +396,12 @@
     {% else %}
     <table class="ecole-header">
         <tr>
-            {% if b.ecole_logo_data_uri %}
-            <td style="width: 20mm;"><img class="logo" src="{{ b.ecole_logo_data_uri }}" /></td>
-            {% endif %}
             <td style="text-align:center;">
                 <p class="nom">{{ b.ecole_nom }}</p>
                 {% if b.ecole_adresse or b.ecole_telephone %}
                 <p class="coord">{{ b.ecole_adresse|default:"" }}{% if b.ecole_adresse and b.ecole_telephone %} · {% endif %}{{ b.ecole_telephone|default:"" }}</p>
                 {% endif %}
             </td>
-            {% if b.ecole_logo_data_uri %}<td style="width: 20mm;">&nbsp;</td>{% endif %}
         </tr>
     </table>
 

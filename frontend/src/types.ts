@@ -37,6 +37,9 @@ export interface User {
   ecole_adresse: string | null;
   // Activité dans les DELAI_EN_LIGNE_MINUTES dernières minutes (voir User.en_ligne côté backend).
   en_ligne: boolean;
+  // true si ce Super Admin a déjà défini un code de suppression d'école (voir
+  // User.code_suppression côté backend) — le code lui-même n'est jamais renvoyé.
+  a_code_suppression: boolean;
 }
 
 export type StatutAbonnement = "suspendu" | "paye" | "en_attente" | "en_retard" | "bloque";
@@ -577,6 +580,9 @@ export interface ResultatEleve {
   moyenne_generale: number | null;
   rang: number | null;
   mention: string | null;
+  // "admis" / "repeche" / "redouble" (voir grades._decision_admission côté backend), null tant
+  // qu'aucune moyenne n'est calculable.
+  decision: "admis" | "repeche" | "redouble" | null;
 }
 
 export interface Resultats {

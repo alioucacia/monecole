@@ -25,6 +25,8 @@ interface PromptOptions {
   confirmLabel?: string;
   cancelLabel?: string;
   required?: boolean;
+  /** Type natif du champ (ex. "password" pour un code secret) — "text" par défaut. */
+  inputType?: string;
 }
 
 type ConfirmFn = (message: string, options?: ConfirmOptions) => Promise<boolean>;
@@ -98,6 +100,7 @@ export function ConfirmProvider({ children }: { children: ReactNode }) {
           <form onSubmit={handleSubmitPrompt} className="space-y-5">
             <p className="text-sm text-slate-600 whitespace-pre-line">{etat.message}</p>
             <Input
+              type={etat.options.inputType || "text"}
               label={etat.options.label}
               placeholder={etat.options.placeholder}
               value={valeurSaisie}

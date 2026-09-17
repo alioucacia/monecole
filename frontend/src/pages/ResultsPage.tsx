@@ -5,7 +5,9 @@ import type { PeriodeSelection } from "../api/services";
 import { extractBlobErrorMessage, extractErrorMessage } from "../api/client";
 import { Badge, Button, EmptyState, PageHeader, Select, Spinner, StatCard, Table } from "../components/ui";
 import { CycleSelect } from "../components/CycleSelect";
-import type { Classe, Cycle, Periode, Resultats } from "../types";
+import { useConfirm } from "../context/ConfirmContext";
+import { useToast } from "../context/ToastContext";
+import type { Classe, Cycle, Periode, ResultatEleve, Resultats } from "../types";
 
 const MENTION_COLORS: Record<string, "green" | "brand" | "amber" | "rose" | "slate"> = {
   "Félicitations": "green",
@@ -16,9 +18,20 @@ const MENTION_COLORS: Record<string, "green" | "brand" | "amber" | "rose" | "sla
   "Avertissement — travail insuffisant": "rose",
 };
 
+// Un élève admis et un redoublant ne doivent jamais apparaître dans la même liste (voir demande
+// utilisateur) — chaque décision a sa propre section, dans cet ordre d'affichage.
+const DECISION_GROUPES: { decision: ResultatEleve["decision"]; titre: string; couleur: "green" | "amber" | "rose" | "slate" }[] = [
+  { decision: "admis", titre: "Admis", couleur: "green" },
+  { decision: "repeche", titre: "Repêchés", couleur: "amber" },
+  { decision: "redouble", titre: "Redoublants", couleur: "rose" },
+  { decision: null, titre: "Sans moyenne (notes incomplètes)", couleur: "slate" },
+];
+
 const ANNUEL_VALUE = "annuel";
 
 export default function ResultsPage() {
+  const confirmer = useConfirm();
+  const toast = useToast();
   const [classes, setClasses] = useState<Classe[]>([]);
   const [periodes, setPeriodes] = useState<Periode[]>([]);
   const [cycleFiltre, setCycleFiltre] = useState<Cycle | "">("");
@@ -30,6 +43,7 @@ export default function ResultsPage() {
   const [exporting, setExporting] = useState(false);
   const [exportingPdf, setExportingPdf] = useState(false);
   const [exportingAttestations, setExportingAttestations] = useState(false);
+  const [notifying, setNotifying] = useState(false);
   const [rangMax, setRangMax] = useState(3);
 
   useEffect(() => {
@@ -103,6 +117,25 @@ export default function ResultsPage() {
     }
   };
 
+  const handleNotifier = async () => {
+    const selection = buildSelection();
+    if (!classeId || !selection) return;
+    if (!(await confirmer(
+      "Chaque élève (et son parent) recevra son rang, sa moyenne et sa décision par e-mail et SMS. Continuer ?",
+      { title: "Notifier les résultats", confirmLabel: "Notifier" }
+    ))) return;
+    setNotifying(true);
+    setError("");
+    try {
+      const { data: resultat } = await resultatsApi.notifier(Number(classeId), selection);
+      toast.success(`${resultat.notifies}/${resultat.effectif} élève(s) notifié(s).`);
+    } catch (err) {
+      setError(extractErrorMessage(err));
+    } finally {
+      setNotifying(false);
+    }
+  };
+
   const moyennesValides = data?.resultats.filter((r) => r.moyenne_generale !== null) ?? [];
   const moyenneClasse = moyennesValides.length
     ? Math.round((moyennesValides.reduce((s, r) => s + (r.moyenne_generale || 0), 0) / moyennesValides.length) * 100) / 100
@@ -127,6 +160,7 @@ export default function ResultsPage() {
               <option value={10}>Top 10</option>
             </Select>
             <Button onClick={handleAttestations} disabled={exportingAttestations}>{exportingAttestations ? "Génération…" : "🏅 Attestations"}</Button>
+            <Button variant="secondary" onClick={handleNotifier} disabled={notifying}>{notifying ? "Envoi…" : "📣 Notifier les résultats"}</Button>
           </div>
         ) : undefined}
       />
@@ -162,19 +196,31 @@ export default function ResultsPage() {
             <StatCard label="Taux de réussite (≥10)" value={tauxReussite !== null ? `${tauxReussite}%` : "—"} icon="✅" accent="green" />
           </div>
 
-          <Table headers={["Rang", "Matricule", "Élève", "Moyenne générale", "Mention"]}>
-            {data.resultats.map((r) => (
-              <tr key={r.eleve_id}>
-                <td className="px-4 py-3 font-bold text-ink-900">{r.rang ?? "—"}</td>
-                <td className="px-4 py-3 font-mono text-xs text-slate-500">{r.matricule}</td>
-                <td className="px-4 py-3 font-medium text-slate-700">{r.nom_complet}</td>
-                <td className="px-4 py-3 font-semibold">{r.moyenne_generale !== null ? `${r.moyenne_generale}/20` : "—"}</td>
-                <td className="px-4 py-3">
-                  {r.mention && <Badge color={MENTION_COLORS[r.mention] || "slate"}>{r.mention}</Badge>}
-                </td>
-              </tr>
-            ))}
-          </Table>
+          {DECISION_GROUPES.map(({ decision, titre, couleur }) => {
+            const lignes = data.resultats.filter((r) => r.decision === decision);
+            if (lignes.length === 0) return null;
+            return (
+              <div key={decision ?? "sans-moyenne"} className="mb-6">
+                <div className="flex items-center gap-2 mb-2">
+                  <h3 className="font-bold text-ink-900">{titre}</h3>
+                  <Badge color={couleur}>{lignes.length}</Badge>
+                </div>
+                <Table headers={["Rang", "Matricule", "Élève", "Moyenne générale", "Mention"]}>
+                  {lignes.map((r) => (
+                    <tr key={r.eleve_id}>
+                      <td className="px-4 py-3 font-bold text-ink-900">{r.rang ?? "—"}</td>
+                      <td className="px-4 py-3 font-mono text-xs text-slate-500">{r.matricule}</td>
+                      <td className="px-4 py-3 font-medium text-slate-700">{r.nom_complet}</td>
+                      <td className="px-4 py-3 font-semibold">{r.moyenne_generale !== null ? `${r.moyenne_generale}/20` : "—"}</td>
+                      <td className="px-4 py-3">
+                        {r.mention && <Badge color={MENTION_COLORS[r.mention] || "slate"}>{r.mention}</Badge>}
+                      </td>
+                    </tr>
+                  ))}
+                </Table>
+              </div>
+            );
+          })}
         </>
       )}
     </div>

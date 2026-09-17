@@ -52,6 +52,10 @@ class UserSerializer(UniqueLoginFieldsMixin, serializers.ModelSerializer):
     ecole_logo = serializers.ImageField(source="ecole.logo", read_only=True, default=None)
     ecole_adresse = serializers.CharField(source="ecole.adresse", read_only=True, default=None)
     en_ligne = serializers.BooleanField(read_only=True)
+    # Jamais le code lui-même (haché, et de toute façon jamais exposé) — juste de quoi afficher
+    # "déjà défini" vs "à définir" côté profil (voir ProfilePage.tsx, section Super Admin) et
+    # bloquer/débloquer la suppression d'école côté EcoleDetailPage.tsx en conséquence.
+    a_code_suppression = serializers.SerializerMethodField()
 
     class Meta:
         model = User
@@ -61,7 +65,7 @@ class UserSerializer(UniqueLoginFieldsMixin, serializers.ModelSerializer):
             "sexe", "date_of_birth", "is_active", "date_joined", "last_login",
             "doit_changer_mot_de_passe", "otp_actif", "email_verifie", "telephone_verifie",
             "ecole_couleur_principale", "ecole_couleur_secondaire", "ecole_fonctionnalites_desactivees",
-            "ecole_logo", "ecole_adresse", "en_ligne",
+            "ecole_logo", "ecole_adresse", "en_ligne", "a_code_suppression",
         ]
         # CRITIQUE : `role` doit rester en lecture seule ici. `UserSerializer` sert à la fois à
         # `UserViewSet` (réservé à IsAdmin — qui ne l'utilise de toute façon que pour
@@ -89,6 +93,9 @@ class UserSerializer(UniqueLoginFieldsMixin, serializers.ModelSerializer):
 
     def validate_photo(self, value):
         return valider_taille_fichier(value, TAILLE_MAX_IMAGE, EXTENSIONS_IMAGE)
+
+    def get_a_code_suppression(self, obj) -> bool:
+        return bool(obj.code_suppression)
 
 
 class JournalUtilisateurSerializer(serializers.ModelSerializer):
@@ -137,6 +144,20 @@ class UserCreateSerializer(UniqueLoginFieldsMixin, serializers.ModelSerializer):
 class ChangePasswordSerializer(serializers.Serializer):
     old_password = serializers.CharField(write_only=True)
     new_password = serializers.CharField(write_only=True, validators=[password_validation.validate_password])
+
+
+class DefinirCodeSuppressionSerializer(serializers.Serializer):
+    """Définit/remplace le code secret de suppression d'école du Super Admin connecté (voir
+    User.code_suppression et accounts.services.definir_code_suppression) — exige son mot de
+    passe habituel (pas encore vérifié à ce stade, voir la vue) pour empêcher quiconque
+    détournerait une session déjà ouverte de fixer lui-même un code qu'il connaît."""
+
+    mot_de_passe_actuel = serializers.CharField(write_only=True)
+    # Volontairement pas de contrainte de complexité façon mot de passe (validate_password) : un
+    # code court mais mémorisable ("saisi rapidement au moment de supprimer une école") est
+    # préférable ici — la vraie protection vient du fait qu'il faut DÉJÀ être authentifié en
+    # Super Admin ET connaître ce second secret, pas de sa complexité intrinsèque.
+    nouveau_code = serializers.CharField(write_only=True, min_length=4, max_length=64)
 
 
 class VerifierOtpConnexionSerializer(serializers.Serializer):
