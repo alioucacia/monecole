@@ -104,12 +104,26 @@ class Frais(models.Model):
     def __str__(self):
         return f"{self.type_frais} - {self.eleve} ({self.montant})"
 
+    def _facteur_reduction_courant(self) -> Decimal | None:
+        """Le facteur de réduction ACTUELLEMENT applicable à ce frais selon son usage — deux
+        barèmes distincts (voir EleveProfile.facteur_mensualite/facteur_inscription_reinscription) :
+        mensualité (scolarité) d'un côté, inscription/réinscription de l'autre. `None` pour tout
+        le reste (cantine, transport, tranche, annuel, autre...), qui reste dû intégralement quelle
+        que soit la catégorie de l'élève — ces frais-là n'entrent jamais dans le mécanisme de gel
+        ci-dessous."""
+        if self.type_frais.est_mensuel:
+            return self.eleve.facteur_mensualite
+        if self.type_frais.usage in (TypeFrais.Usage.INSCRIPTION, TypeFrais.Usage.REINSCRIPTION):
+            return self.eleve.facteur_inscription_reinscription
+        return None
+
     @property
     def montant_du(self) -> Decimal:
         """Montant réellement dû, compte tenu d'une éventuelle réduction — `self.montant` reste
         toujours le tarif standard (utile pour reproduire un frais identique l'année suivante,
-        ou juste voir le tarif de référence). Seuls les frais mensuels (scolarité) sont concernés
-        — les autres types (cantine, transport, inscription...) restent dus intégralement quelle
+        ou juste voir le tarif de référence). Seuls les frais mensuels (scolarité) et les frais
+        d'inscription/réinscription (TypeFrais.usage) sont concernés par une catégorie de
+        paiement — les autres types (cantine, transport...) restent dus intégralement quelle
         que soit la catégorie de l'élève.
 
         AVANT un premier correctif, `solde`/`statut` ci-dessous se basaient directement sur
@@ -132,9 +146,9 @@ class Frais(models.Model):
         le bas : dès qu'un facteur plus favorable que celui figé est observé, il devient le nouveau
         gel (persisté), et ne remonte plus jamais — un mois soldé pendant une période où la
         réduction était plus généreuse reste protégé même si elle est ensuite retirée."""
-        if not self.type_frais.est_mensuel:
+        facteur_actuel = self._facteur_reduction_courant()
+        if facteur_actuel is None:
             return self.montant
-        facteur_actuel = self.eleve.facteur_mensualite
         if self.facteur_applique is None:
             facteur = facteur_actuel
         elif facteur_actuel < self.facteur_applique:
@@ -161,6 +175,12 @@ class Frais(models.Model):
 
     @property
     def statut(self):
+        # Un élève Fondation 100% (montant_du == 0 pour un frais mensuel/inscription/
+        # réinscription) n'a RIEN à payer sur ce frais — sans ce cas, il s'affichait "Impayé"
+        # partout (liste des frais, situation par classe...) pour un frais dont il est
+        # légitimement exonéré, ce qui est trompeur autant pour l'élève que pour la comptabilité.
+        if self.montant_du <= 0:
+            return "paye"
         if self.montant_paye <= 0:
             return "impaye"
         if self.montant_paye < self.montant_du:

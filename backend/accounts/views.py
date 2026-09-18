@@ -23,6 +23,7 @@ from .serializers import (
     CustomTokenObtainPairSerializer,
     JournalUtilisateurSerializer,
     PasswordResetConfirmSerializer,
+    PasswordResetOtpConfirmSerializer,
     PasswordResetRequestSerializer,
     UserCreateSerializer,
     UserSerializer,
@@ -130,9 +131,17 @@ class PasswordResetRequestView(APIView):
                 recipient_list=[user.email],
                 fail_silently=True,
             )
+            # En plus du lien ci-dessus : un code à 6 chiffres, par e-mail ET SMS — un
+            # deuxième chemin pour réinitialiser qui ne dépend pas du lien (utile si le client
+            # mail/navigateur bascule le lien en HTTPS avant que le site ne soit servi en HTTPS,
+            # voir backend/DEPLOYMENT.md). Voir PasswordResetOtpConfirmView pour la suite.
+            from .models import CodeOTP
+            from .services import generer_otp
+
+            generer_otp(user, CodeOTP.Objectif.REINITIALISATION)
 
         return Response(
-            {"detail": "Si un compte existe avec cet e-mail, un lien de réinitialisation vient d'être envoyé."}
+            {"detail": "Si un compte existe avec cet e-mail, un lien ET un code de réinitialisation viennent d'être envoyés."}
         )
 
 
@@ -149,6 +158,124 @@ class PasswordResetConfirmView(APIView):
         user.doit_changer_mot_de_passe = False
         user.save()
         return Response({"detail": "Mot de passe réinitialisé avec succès."})
+
+
+class PasswordResetOtpConfirmView(APIView):
+    """Second chemin de réinitialisation : un code à 6 chiffres (voir
+    PasswordResetRequestView, qui l'envoie en plus du lien) plutôt qu'un lien signé — mêmes
+    garanties de sécurité (code à usage unique, expire en 10 minutes, 5 tentatives max, voir
+    accounts.services.verifier_otp), sans dépendre d'un lien cliquable."""
+
+    permission_classes = [AllowAny]
+    throttle_classes = [ScopedRateThrottle]
+    throttle_scope = "login"
+
+    def post(self, request):
+        from .models import CodeOTP
+        from .services import verifier_otp
+
+        serializer = PasswordResetOtpConfirmSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        email = serializer.validated_data["email"]
+
+        # Même prudence que PasswordResetRequestView : ne jamais confirmer si le compte existe
+        # via le message d'erreur (un code toujours "invalide" pour un e-mail inconnu, jamais
+        # "compte introuvable").
+        user = User.objects.filter(email__iexact=email, is_active=True).first()
+        if not user or not verifier_otp(user, CodeOTP.Objectif.REINITIALISATION, serializer.validated_data["code"]):
+            raise ValidationError({"code": "Code invalide ou expiré."})
+
+        user.set_password(serializer.validated_data["new_password"])
+        user.doit_changer_mot_de_passe = False
+        user.save()
+        return Response({"detail": "Mot de passe réinitialisé avec succès."})
+
+
+class VerifierOtpConnexionView(APIView):
+    """Second temps de la connexion quand `User.otp_actif` est activé — voir
+    `CustomTokenObtainPairSerializer.validate`, qui a déjà vérifié le mot de passe et envoyé le
+    code à cette étape. Délivre le vrai jeton JWT une fois le code confirmé, avec exactement la
+    même forme de réponse que `/auth/login/` (access/refresh/user)."""
+
+    permission_classes = [AllowAny]
+    throttle_classes = [ScopedRateThrottle]
+    throttle_scope = "login"
+
+    def post(self, request):
+        from django.db.models import Q
+
+        from .models import CodeOTP
+        from .serializers import CustomTokenObtainPairSerializer, VerifierOtpConnexionSerializer
+        from .services import journaliser, verifier_otp
+
+        serializer = VerifierOtpConnexionSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        identifiant = serializer.validated_data["identifiant"]
+
+        try:
+            user = User.objects.get(
+                Q(username__iexact=identifiant) | Q(email__iexact=identifiant) | Q(phone=identifiant)
+            )
+        except (User.DoesNotExist, User.MultipleObjectsReturned):
+            raise AuthenticationFailed("Code invalide ou expiré.")
+
+        if not verifier_otp(user, CodeOTP.Objectif.CONNEXION, serializer.validated_data["code"]):
+            raise AuthenticationFailed("Code invalide ou expiré.")
+
+        token = CustomTokenObtainPairSerializer.get_token(user)
+        journaliser(user, JournalUtilisateur.Categorie.CONNEXION, "Connexion à la plateforme (2FA)", request)
+        return Response({
+            "access": str(token.access_token), "refresh": str(token),
+            "user": UserSerializer(user).data,
+        })
+
+
+class DemanderVerificationView(APIView):
+    """Envoie un OTP pour vérifier l'e-mail ou le téléphone ACTUEL de l'utilisateur connecté
+    (voir `DemanderVerificationSerializer` — jamais une valeur arbitraire soumise par
+    l'appelant)."""
+
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request):
+        from .models import CodeOTP
+        from .serializers import DemanderVerificationSerializer
+        from .services import generer_otp
+
+        serializer = DemanderVerificationSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        canal = serializer.validated_data["canal"]
+
+        cible = request.user.email if canal == "email" else request.user.phone
+        if not cible:
+            raise ValidationError(f"Aucun{'e' if canal == 'email' else ''} {'adresse' if canal == 'email' else 'numéro'} renseigné{'e' if canal == 'email' else ''} sur ce compte.")
+
+        generer_otp(request.user, CodeOTP.Objectif.VERIFICATION, cible=cible)
+        return Response({"detail": f"Code envoyé à {cible}."})
+
+
+class ConfirmerVerificationView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request):
+        from .models import CodeOTP
+        from .serializers import ConfirmerVerificationSerializer
+        from .services import verifier_otp
+
+        serializer = ConfirmerVerificationSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        canal = serializer.validated_data["canal"]
+
+        if not verifier_otp(request.user, CodeOTP.Objectif.VERIFICATION, serializer.validated_data["code"]):
+            raise ValidationError({"code": "Code invalide ou expiré."})
+
+        if canal == "email":
+            request.user.email_verifie = True
+            request.user.save(update_fields=["email_verifie"])
+        else:
+            request.user.telephone_verifie = True
+            request.user.save(update_fields=["telephone_verifie"])
+        return Response(UserSerializer(request.user).data)
 
 
 class UserViewSet(viewsets.ModelViewSet):

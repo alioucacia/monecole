@@ -55,14 +55,19 @@ def notifier_frais_impayes(ecole_id: int | None = None) -> int:
         email_ok = False
         if destinataire.email:
             try:
-                send_mail(
+                # `send_mail(..., fail_silently=True)` avale l'exception ET renvoie 0 (pas
+                # d'exception levée) en cas d'échec (SMTP down, identifiants invalides...) — sans
+                # vérifier ce retour, `email_ok` passait à `True` même quand rien n'était parti,
+                # ce qui pouvait empêcher tout renvoi ultérieur (voir le compteur `nb_notifies` /
+                # le garde-fou `AlerteParent` ci-dessous, qui se fient à `email_ok`).
+                nb_envoyes = send_mail(
                     subject=sujet,
                     message=message,
                     from_email=settings.DEFAULT_FROM_EMAIL,
                     recipient_list=[destinataire.email],
                     fail_silently=True,
                 )
-                email_ok = True
+                email_ok = nb_envoyes > 0
             except Exception:  # noqa: BLE001 — un échec d'email ne doit pas bloquer les autres familles
                 pass
         sms_ok = send_sms(destinataire.phone, message) if destinataire.phone else False

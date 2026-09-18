@@ -25,6 +25,14 @@ export default function ProfilePage() {
   const [pwdForm, setPwdForm] = useState({ old_password: "", new_password: "" });
   const [pwdSaving, setPwdSaving] = useState(false);
 
+  // Double authentification (2FA) + vérification e-mail/téléphone (voir User.otp_actif/
+  // email_verifie/telephone_verifie côté backend) — les deux OTP par e-mail/SMS.
+  const [otpToggling, setOtpToggling] = useState(false);
+  const [verifCanalOuvert, setVerifCanalOuvert] = useState<"email" | "telephone" | null>(null);
+  const [verifCode, setVerifCode] = useState("");
+  const [verifEnvoi, setVerifEnvoi] = useState(false);
+  const [verifConfirmation, setVerifConfirmation] = useState(false);
+
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [uploadingPhoto, setUploadingPhoto] = useState(false);
 
@@ -110,6 +118,50 @@ export default function ProfilePage() {
     }
   };
 
+  const handleToggleOtp = async () => {
+    setOtpToggling(true);
+    try {
+      await authApi.updateMe({ otp_actif: !user.otp_actif });
+      await refreshUser();
+      toast.success(user.otp_actif ? "Double authentification désactivée." : "Double authentification activée.");
+    } catch (err) {
+      toast.error(extractErrorMessage(err));
+    } finally {
+      setOtpToggling(false);
+    }
+  };
+
+  const handleDemanderVerification = async (canal: "email" | "telephone") => {
+    setVerifEnvoi(true);
+    try {
+      const { data } = await authApi.demanderVerification(canal);
+      toast.success(data.detail);
+      setVerifCanalOuvert(canal);
+      setVerifCode("");
+    } catch (err) {
+      toast.error(extractErrorMessage(err));
+    } finally {
+      setVerifEnvoi(false);
+    }
+  };
+
+  const handleConfirmerVerification = async (e: FormEvent) => {
+    e.preventDefault();
+    if (!verifCanalOuvert) return;
+    setVerifConfirmation(true);
+    try {
+      await authApi.confirmerVerification(verifCanalOuvert, verifCode.trim());
+      await refreshUser();
+      toast.success(verifCanalOuvert === "email" ? "E-mail vérifié." : "Téléphone vérifié.");
+      setVerifCanalOuvert(null);
+      setVerifCode("");
+    } catch (err) {
+      toast.error(extractErrorMessage(err));
+    } finally {
+      setVerifConfirmation(false);
+    }
+  };
+
   return (
     <div className="max-w-2xl">
       <PageHeader title="Mon profil" description="Gérez vos informations personnelles." />
@@ -178,7 +230,7 @@ export default function ProfilePage() {
         </Card>
       )}
 
-      <Card>
+      <Card className="mb-6">
         <h3 className="font-bold text-ink-900 mb-4">Changer de mot de passe</h3>
         <form onSubmit={handlePasswordSubmit} className="space-y-4">
           <Input label="Mot de passe actuel" type="password" required value={pwdForm.old_password} onChange={(e) => setPwdForm({ ...pwdForm, old_password: e.target.value })} />
@@ -188,6 +240,66 @@ export default function ProfilePage() {
             <Button type="submit" disabled={pwdSaving}>{pwdSaving ? "Modification…" : "Modifier le mot de passe"}</Button>
           </div>
         </form>
+      </Card>
+
+      <Card>
+        <h3 className="font-bold text-ink-900 mb-1">Sécurité</h3>
+        <p className="text-sm text-slate-500 mb-4">
+          Vérifiez votre e-mail/téléphone, et activez la double authentification par code à usage unique.
+        </p>
+
+        <div className="space-y-4">
+          {(["email", "telephone"] as const).map((canal) => {
+            const valeur = canal === "email" ? user.email : user.phone;
+            const verifie = canal === "email" ? user.email_verifie : user.telephone_verifie;
+            return (
+              <div key={canal} className="rounded-xl border border-slate-100 px-4 py-3">
+                <div className="flex items-center justify-between gap-3 flex-wrap">
+                  <div>
+                    <p className="text-sm font-semibold text-slate-700">
+                      {canal === "email" ? "E-mail" : "Téléphone"} {valeur ? `— ${valeur}` : <span className="text-slate-400 font-normal">(non renseigné)</span>}
+                    </p>
+                    {valeur && (
+                      verifie
+                        ? <p className="text-xs text-emerald-600 font-semibold mt-0.5">✓ Vérifié</p>
+                        : <p className="text-xs text-slate-400 mt-0.5">Non vérifié</p>
+                    )}
+                  </div>
+                  {valeur && !verifie && verifCanalOuvert !== canal && (
+                    <Button type="button" variant="secondary" disabled={verifEnvoi} onClick={() => handleDemanderVerification(canal)}>
+                      {verifEnvoi ? "Envoi…" : "Vérifier"}
+                    </Button>
+                  )}
+                </div>
+                {verifCanalOuvert === canal && (
+                  <form onSubmit={handleConfirmerVerification} className="mt-3 flex items-end gap-2">
+                    <Input
+                      label="Code reçu" placeholder="123456" inputMode="numeric" maxLength={6}
+                      value={verifCode} onChange={(e) => setVerifCode(e.target.value.replace(/\D/g, ""))}
+                      className="max-w-[160px]"
+                    />
+                    <Button type="submit" disabled={verifConfirmation || verifCode.length !== 6}>
+                      {verifConfirmation ? "…" : "Confirmer"}
+                    </Button>
+                    <Button type="button" variant="ghost" onClick={() => setVerifCanalOuvert(null)}>Annuler</Button>
+                  </form>
+                )}
+              </div>
+            );
+          })}
+
+          <div className="rounded-xl border border-slate-100 px-4 py-3 flex items-center justify-between gap-3 flex-wrap">
+            <div>
+              <p className="text-sm font-semibold text-slate-700">Double authentification</p>
+              <p className="text-xs text-slate-400 mt-0.5">
+                Un code à usage unique (e-mail/SMS) sera demandé à chaque connexion, en plus du mot de passe.
+              </p>
+            </div>
+            <Button type="button" variant={user.otp_actif ? "secondary" : "primary"} disabled={otpToggling} onClick={handleToggleOtp}>
+              {otpToggling ? "…" : user.otp_actif ? "Désactiver" : "Activer"}
+            </Button>
+          </div>
+        </div>
       </Card>
     </div>
   );

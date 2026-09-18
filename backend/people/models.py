@@ -135,6 +135,19 @@ class EleveProfile(models.Model):
             facteur *= Decimal("0.95")
         return facteur
 
+    @property
+    def facteur_inscription_reinscription(self) -> Decimal:
+        """Fraction du tarif standard des frais d'inscription/réinscription (TypeFrais.usage)
+        effectivement due par cet élève — barème DISTINCT de `facteur_mensualite` : seule la
+        catégorie « Fondation 100% » (exonération totale, gratuité) en dispense complètement.
+        Fondation 50% et « Inscription seulement » paient ces frais-là en INTÉGRALITÉ (c'est
+        justement ce qui les distingue de Fondation 100% — voir les 4 catégories définies par
+        l'établissement) ; la réduction fidélité (mensualité uniquement) ne s'y applique pas non
+        plus. 1 = tarif plein, 0 = exonéré."""
+        if self.categorie_paiement == self.CategoriePaiement.FONDATION_GRATUIT:
+            return Decimal("0")
+        return Decimal("1")
+
 
 class HistoriqueClasse(models.Model):
     """Classe d'un élève pour une année scolaire donnée — nécessaire car `EleveProfile.classe`

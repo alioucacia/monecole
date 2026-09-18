@@ -2,7 +2,7 @@ import { useEffect, useState, type FormEvent } from "react";
 
 import { parametresPlateformeApi } from "../api/services";
 import { extractErrorMessage } from "../api/client";
-import { Badge, Button, Card, Input, PageHeader, Spinner } from "../components/ui";
+import { Badge, Button, Card, Input, Modal, PageHeader, Spinner } from "../components/ui";
 import { useToast } from "../context/ToastContext";
 
 export default function ParametresPlateformePage() {
@@ -55,12 +55,13 @@ export default function ParametresPlateformePage() {
   };
 
   const [messageSaving, setMessageSaving] = useState(false);
+  // Remplace l'ancien `confirm()` natif (infobulle système du navigateur, pas stylable) par une
+  // vraie popup de l'app — seule l'ACTIVATION est destructrice pour tout le monde et mérite
+  // cette confirmation ; désactiver reste immédiat, comme avant.
+  const [confirmActivationOuvert, setConfirmActivationOuvert] = useState(false);
+  const [activationEnCours, setActivationEnCours] = useState(false);
 
-  const handleToggleMaintenance = async () => {
-    const activer = !form.maintenance_active;
-    if (activer && !confirm("Activer le mode maintenance ? Plus personne (sauf le Super Admin) ne pourra utiliser la plateforme tant qu'il ne sera pas désactivé.")) {
-      return;
-    }
+  const appliquerBasculeMaintenance = async (activer: boolean) => {
     setForm({ ...form, maintenance_active: activer });
     try {
       // Envoie aussi le message actuellement saisi : sans ça, le modifier puis cliquer
@@ -71,6 +72,21 @@ export default function ParametresPlateformePage() {
       setForm({ ...form, maintenance_active: !activer });
       toast.error(extractErrorMessage(err));
     }
+  };
+
+  const handleToggleMaintenance = () => {
+    if (form.maintenance_active) {
+      appliquerBasculeMaintenance(false);
+      return;
+    }
+    setConfirmActivationOuvert(true);
+  };
+
+  const handleConfirmerActivation = async () => {
+    setActivationEnCours(true);
+    await appliquerBasculeMaintenance(true);
+    setActivationEnCours(false);
+    setConfirmActivationOuvert(false);
   };
 
   const handleSaveMessage = async () => {
@@ -181,6 +197,22 @@ export default function ParametresPlateformePage() {
 
         <Button type="submit" disabled={saving}>{saving ? "Enregistrement…" : "Enregistrer les paramètres"}</Button>
       </form>
+
+      <Modal open={confirmActivationOuvert} onClose={() => setConfirmActivationOuvert(false)} title="🛠️ Activer le mode maintenance ?">
+        <div className="space-y-5">
+          <p className="text-sm text-slate-600 leading-relaxed">
+            Plus personne (sauf le Super Admin) ne pourra utiliser la plateforme tant qu'il ne sera pas désactivé.
+          </p>
+          <div className="flex justify-end gap-2">
+            <Button type="button" variant="secondary" onClick={() => setConfirmActivationOuvert(false)} disabled={activationEnCours}>
+              Annuler
+            </Button>
+            <Button type="button" variant="danger" onClick={handleConfirmerActivation} disabled={activationEnCours}>
+              {activationEnCours ? "Activation…" : "Activer la maintenance"}
+            </Button>
+          </div>
+        </div>
+      </Modal>
     </div>
   );
 }

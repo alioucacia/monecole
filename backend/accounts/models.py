@@ -53,6 +53,21 @@ class User(AbstractUser):
     # temps réel (websockets, présence...), qu'aucune autre partie du projet n'a.
     derniere_activite = models.DateTimeField(null=True, blank=True, editable=False)
 
+    # Double authentification (OTP par e-mail/SMS) — opt-in, réglé par l'utilisateur lui-même
+    # depuis son profil (jamais imposé d'office : de nombreux comptes, en particulier élèves,
+    # n'ont ni e-mail ni téléphone renseigné, ce qui rendrait un 2FA obligatoire bloquant pour
+    # eux). Quand activé, `CustomTokenObtainPairSerializer.validate()` ne délivre plus de jeton
+    # directement après le mot de passe : un code à usage unique doit d'abord être vérifié
+    # (voir accounts.models.CodeOTP / accounts.services.generer_otp/verifier_otp).
+    otp_actif = models.BooleanField(
+        default=False,
+        help_text="Double authentification (code à usage unique par e-mail/SMS) à chaque connexion.",
+    )
+    # Vérification ponctuelle de l'adresse/du numéro (pas liée au 2FA ci-dessus) : confirme que
+    # la valeur saisie appartient bien à la personne — voir CodeOTP.Objectif.VERIFICATION.
+    email_verifie = models.BooleanField(default=False)
+    telephone_verifie = models.BooleanField(default=False)
+
     # Une session est considérée active si une requête authentifiée a eu lieu dans ce délai —
     # au-delà, l'utilisateur est considéré hors ligne même si son jeton reste valide (JWT
     # stateless : rien ne prévient le serveur d'une fermeture d'onglet/déconnexion réseau).
@@ -99,6 +114,52 @@ class User(AbstractUser):
     @property
     def is_surveillance_role(self):
         return self.role == self.Role.SURVEILLANCE
+
+
+class CodeOTP(models.Model):
+    """Code à usage unique (6 chiffres), envoyé par e-mail et/ou SMS — trois usages distincts
+    (voir `Objectif`), tous gérés par les mêmes fonctions `accounts.services.generer_otp` /
+    `verifier_otp` : double authentification à la connexion, vérification lors de la
+    réinitialisation de mot de passe, et vérification ponctuelle d'un e-mail/téléphone.
+
+    Toujours rattaché à un `User` déjà identifié (par mot de passe correct, ou par e-mail lors
+    d'une demande de réinitialisation) — il n'existe aucun flux d'auto-inscription dans cette
+    application (tous les comptes sont créés par un administrateur), donc pas besoin de générer
+    un OTP pour un e-mail qui ne correspond encore à personne."""
+
+    class Objectif(models.TextChoices):
+        CONNEXION = "connexion", "Double authentification à la connexion"
+        REINITIALISATION = "reinitialisation", "Réinitialisation de mot de passe"
+        VERIFICATION = "verification", "Vérification d'e-mail/téléphone"
+
+    user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name="codes_otp")
+    code = models.CharField(max_length=6)
+    objectif = models.CharField(max_length=20, choices=Objectif.choices)
+    # Ce que ce code vérifie concrètement pour VERIFICATION (l'e-mail ou le téléphone au moment
+    # de l'envoi) — sans objet pour les deux autres `objectif`, où c'est toujours `user` lui-même
+    # qui s'authentifie/se réinitialise.
+    cible = models.CharField(max_length=255, blank=True)
+    expire_le = models.DateTimeField()
+    utilise = models.BooleanField(default=False)
+    # Nombre de tentatives de saisie ratées — au-delà de `MAX_TENTATIVES`, le code est rejeté
+    # même s'il est correct (protège contre un essai par force brute des 10⁶ codes possibles
+    # depuis un même code encore valide, sans devoir bloquer tout le compte).
+    tentatives = models.PositiveSmallIntegerField(default=0)
+    cree_le = models.DateTimeField(auto_now_add=True)
+
+    MAX_TENTATIVES = 5
+
+    class Meta:
+        ordering = ["-cree_le"]
+        indexes = [models.Index(fields=["user", "objectif", "utilise"])]
+
+    def __str__(self):
+        return f"OTP {self.get_objectif_display()} — {self.user} ({'utilisé' if self.utilise else 'en attente'})"
+
+    @property
+    def expire(self) -> bool:
+        from django.utils import timezone
+        return timezone.now() >= self.expire_le
 
 
 class JournalUtilisateur(models.Model):

@@ -278,7 +278,12 @@ class EleveProfileViewSet(viewsets.ModelViewSet):
             eleve.classe = classe_destination
             eleve.save(update_fields=["classe"])
             enregistrer_historique_classe(eleve, classe_destination)
-            if type_frais and montant_frais:
+            if type_frais:
+                # `montant` reste le tarif STANDARD (celui de la classe) — c'est `Frais.montant_du`
+                # qui applique ensuite, à la volée, la réduction propre à la catégorie de paiement
+                # de CET élève (ex: Fondation 100% => montant_du = 0, malgré un `montant` plein
+                # ici) : deux élèves de la même classe réinscrits dans le même geste peuvent donc
+                # légitimement devoir des montants différents sur un `Frais` créé identiquement.
                 Frais.objects.create(
                     eleve=eleve, type_frais=type_frais, annee_scolaire=classe_destination.annee_scolaire,
                     montant=montant_frais,

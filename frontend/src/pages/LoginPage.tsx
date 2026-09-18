@@ -1,8 +1,9 @@
 import { useEffect, useState, type FormEvent } from "react";
 import { Link, Navigate } from "react-router-dom";
+import axios from "axios";
 
 import { extractErrorMessage } from "../api/client";
-import { plateformeBrandingApi } from "../api/services";
+import { authApi, plateformeBrandingApi } from "../api/services";
 import { Button, Input } from "../components/ui";
 import { useAuth } from "../context/AuthContext";
 
@@ -64,13 +65,18 @@ function SchoolIllustration({ className = "" }: { className?: string }) {
 }
 
 export default function LoginPage() {
-  const { user, login } = useAuth();
+  const { user, login, completeLogin } = useAuth();
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
   const [rememberMe, setRememberMe] = useState(true);
   const [shake, setShake] = useState(false);
   const [formError, setFormError] = useState("");
   const [loading, setLoading] = useState(false);
+  // Double authentification (voir User.otp_actif côté backend) : le mot de passe a déjà été
+  // vérifié (login() a répondu code="otp_requis", pas une erreur d'identifiants) — il ne reste
+  // qu'à saisir le code reçu par e-mail/SMS pour obtenir le vrai accès.
+  const [otpRequis, setOtpRequis] = useState(false);
+  const [otpCode, setOtpCode] = useState("");
   const [nomPlateforme, setNomPlateforme] = useState("Taly-School");
   const [logoPlateforme, setLogoPlateforme] = useState<string | null>(null);
   // `undefined` tant que la réponse de plateformeBrandingApi n'est pas encore arrivée — on évite
@@ -156,7 +162,35 @@ export default function LoginPage() {
     try {
       await login(username, password, rememberMe);
     } catch (err) {
+      if (axios.isAxiosError(err) && err.response?.data && (err.response.data as { code?: string }).code === "otp_requis") {
+        setOtpRequis(true);
+        setFormError("");
+        setLoading(false);
+        return;
+      }
       setFormError(extractErrorMessage(err) || "Identifiants incorrects.");
+      setShake(true);
+      setTimeout(() => setShake(false), 500);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleSubmitOtp = async (e: FormEvent) => {
+    e.preventDefault();
+    setFormError("");
+    if (otpCode.trim().length !== 6) {
+      setFormError("Le code comporte 6 chiffres.");
+      setShake(true);
+      setTimeout(() => setShake(false), 500);
+      return;
+    }
+    setLoading(true);
+    try {
+      const { data } = await authApi.verifierOtpConnexion(username, otpCode.trim());
+      completeLogin(data.access, data.refresh, data.user, rememberMe);
+    } catch (err) {
+      setFormError(extractErrorMessage(err) || "Code invalide ou expiré.");
       setShake(true);
       setTimeout(() => setShake(false), 500);
     } finally {
@@ -200,6 +234,41 @@ export default function LoginPage() {
         </div>
 
         <div className="p-8 sm:p-10 flex flex-col justify-center">
+          {otpRequis ? (
+            <>
+              <h2 className="text-2xl font-extrabold text-ink-900 tracking-tight mb-1">Vérification</h2>
+              <p className="text-slate-500 text-sm mb-6">
+                Un code à 6 chiffres a été envoyé par e-mail/SMS au compte « {username} ». Saisissez-le ci-dessous.
+              </p>
+              <form onSubmit={handleSubmitOtp} className={`space-y-4 ${shake ? "animate-shake" : ""}`}>
+                <Input
+                  label="Code de vérification"
+                  placeholder="123456"
+                  inputMode="numeric"
+                  maxLength={6}
+                  value={otpCode}
+                  onChange={(e) => { setOtpCode(e.target.value.replace(/\D/g, "")); if (formError) setFormError(""); }}
+                  autoFocus
+                />
+                <Button type="submit" className="w-full" disabled={loading}>
+                  {loading ? "Vérification…" : "Confirmer"}
+                </Button>
+                <button
+                  type="button"
+                  onClick={() => { setOtpRequis(false); setOtpCode(""); setFormError(""); }}
+                  className="block w-full text-center text-sm font-semibold text-slate-500 hover:text-brand-700"
+                >
+                  ← Revenir à la connexion
+                </button>
+                {formError && (
+                  <p className="text-sm text-rose-600 bg-rose-50 border border-rose-100 rounded-xl px-3.5 py-2.5 text-center">
+                    {formError}
+                  </p>
+                )}
+              </form>
+            </>
+          ) : (
+            <>
           <h2 className="text-2xl font-extrabold text-ink-900 tracking-tight mb-1">Connexion</h2>
           <p className="text-slate-500 text-sm mb-6">Connectez-vous pour accéder à votre espace.</p>
 
@@ -244,6 +313,8 @@ export default function LoginPage() {
               </p>
             )}
           </form>
+            </>
+          )}
         </div>
       </div>
     </div>

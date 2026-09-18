@@ -10,6 +10,9 @@ interface AuthContextValue {
   user: User | null;
   loading: boolean;
   login: (username: string, password: string, remember?: boolean) => Promise<void>;
+  /** Termine une connexion 2FA (voir LoginPage) une fois le code OTP confirmé — même effet que
+   * login(), mais à partir d'un access/refresh déjà émis par /auth/verifier-otp-connexion/. */
+  completeLogin: (access: string, refresh: string, targetUser: User, remember?: boolean) => void;
   logout: () => void;
   refreshUser: () => Promise<void>;
   /** Bascule la session sur un autre compte (mode support) en gardant le moyen d'y revenir. */
@@ -52,6 +55,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setUser(data.user);
   }, []);
 
+  const completeLogin = useCallback((access: string, refresh: string, targetUser: User, remember = true) => {
+    tokenStorage.set(access, refresh, remember);
+    setUser(targetUser);
+  }, []);
+
   const logout = useCallback(() => {
     tokenStorage.clear();
     sessionStorage.removeItem(RETOUR_KEY);
@@ -82,7 +90,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, [refreshUser]);
 
   return (
-    <AuthContext.Provider value={{ user, loading, login, logout, refreshUser, impersonate, enModeSupport, quitterModeSupport }}>
+    <AuthContext.Provider value={{ user, loading, login, completeLogin, logout, refreshUser, impersonate, enModeSupport, quitterModeSupport }}>
       {children}
     </AuthContext.Provider>
   );

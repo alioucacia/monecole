@@ -1,5 +1,7 @@
 from datetime import datetime, timedelta
 
+from django.conf import settings
+from django.core.mail import send_mail
 from django.db.models import Count, Q
 from rest_framework import status, viewsets
 from rest_framework.decorators import action
@@ -106,7 +108,7 @@ class PresenceViewSet(viewsets.ModelViewSet):
         if not already_alerted:
             ecole = eleve.user.ecole if eleve.user.ecole_id else None
             periode = f"{week_start:%d/%m} au {week_start + timedelta(days=6):%d/%m}"
-            _sujet, contenu = rendre_modele(
+            sujet, contenu = rendre_modele(
                 ecole, "absence",
                 nom_complet=eleve.user.get_full_name(),
                 nombre_absences=absences, periode=periode,
@@ -116,6 +118,17 @@ class PresenceViewSet(viewsets.ModelViewSet):
                 eleve=eleve,
                 message=contenu,
             )
+            # `sujet` était jusqu'ici récupéré puis jeté (`_sujet, contenu = ...`) : seul le SMS
+            # partait réellement, jamais l'e-mail — malgré un modèle "absence" dédié (sujet +
+            # contenu) prévu pour les deux canaux, comme pour compte_cree/mensualite_impayee.
+            if eleve.parent.email:
+                try:
+                    send_mail(
+                        subject=sujet, message=contenu, from_email=settings.DEFAULT_FROM_EMAIL,
+                        recipient_list=[eleve.parent.email], fail_silently=True,
+                    )
+                except Exception:  # noqa: BLE001 — un échec d'e-mail ne doit pas bloquer le SMS ci-dessous
+                    pass
             if eleve.parent.phone and send_sms(eleve.parent.phone, alerte.message):
                 alerte.sms_envoye = True
                 alerte.save(update_fields=["sms_envoye"])

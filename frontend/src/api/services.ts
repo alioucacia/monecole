@@ -109,6 +109,11 @@ export const supervisionApi = {
 export const authApi = {
   login: (username: string, password: string) =>
     api.post<{ access: string; refresh: string; user: User }>("/auth/login/", { username, password }),
+  // Second temps de la connexion quand le compte a activé la double authentification (voir
+  // User.otp_actif) — appelé après un login() qui a échoué avec code "otp_requis". Même forme
+  // de réponse que login().
+  verifierOtpConnexion: (identifiant: string, code: string) =>
+    api.post<{ access: string; refresh: string; user: User }>("/auth/verifier-otp-connexion/", { identifiant, code }),
   me: () => api.get<User>("/auth/me/"),
   updateMe: (data: Partial<User>) => api.patch<User>("/auth/me/", data),
   changePassword: (old_password: string, new_password: string) =>
@@ -117,6 +122,14 @@ export const authApi = {
     api.post<{ detail: string }>("/auth/password-reset/", { email }),
   confirmPasswordReset: (uid: string, token: string, new_password: string) =>
     api.post<{ detail: string }>("/auth/password-reset-confirm/", { uid, token, new_password }),
+  // Chemin alternatif au lien signé ci-dessus (envoyé en même temps, voir
+  // PasswordResetRequestView côté backend) : un code à 6 chiffres plutôt qu'un lien cliquable.
+  confirmPasswordResetOtp: (email: string, code: string, new_password: string) =>
+    api.post<{ detail: string }>("/auth/password-reset-otp-confirm/", { email, code, new_password }),
+  demanderVerification: (canal: "email" | "telephone") =>
+    api.post<{ detail: string }>("/auth/demander-verification/", { canal }),
+  confirmerVerification: (canal: "email" | "telephone", code: string) =>
+    api.post<User>("/auth/confirmer-verification/", { canal, code }),
   /** Upload de la photo de profil (multipart) — utilisée ensuite sur les badges. */
   uploadPhoto: (file: File) => {
     const form = new FormData();

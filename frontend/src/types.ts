@@ -20,6 +20,12 @@ export interface User {
   date_joined: string;
   last_login: string | null;
   doit_changer_mot_de_passe: boolean;
+  // Double authentification (OTP e-mail/SMS) — opt-in, réglée par l'utilisateur lui-même
+  // (Mon profil). email_verifie/telephone_verifie : vérification ponctuelle, indépendante du
+  // 2FA — voir accounts.models.CodeOTP côté backend.
+  otp_actif: boolean;
+  email_verifie: boolean;
+  telephone_verifie: boolean;
   // Personnalisation et fonctionnalités désactivées de l'école de ce compte (voir
   // Ecole.couleur_principale/couleur_secondaire/fonctionnalites_desactivees) — portées
   // directement par /me/ pour que la navigation puisse se masquer, quel que soit le rôle.

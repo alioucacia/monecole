@@ -94,3 +94,103 @@ def reinitialiser_mot_de_passe(utilisateur) -> dict:
             pass
 
     return {"nouveau_mot_de_passe": nouveau_mot_de_passe, "email_envoye": email_envoye}
+
+
+# ---------------------------------------------------------------------------
+# Codes à usage unique (OTP) — double authentification, réinitialisation de mot de passe,
+# vérification d'e-mail/téléphone (voir CodeOTP.Objectif). Fonctions partagées par les 3 usages.
+# ---------------------------------------------------------------------------
+
+DUREE_VALIDITE_OTP_MINUTES = 10
+# Un seul envoi toutes les 60 secondes par (utilisateur, objectif) — empêche un clic répété
+# (ou un script) de vider le crédit SMS/la boîte mail en boucle.
+DELAI_MIN_RENVOI_SECONDES = 60
+
+
+def generer_otp(utilisateur, objectif: str, cible: str = "") -> dict:
+    """Invalide les codes en attente de ce (utilisateur, objectif), en génère un nouveau à 6
+    chiffres, l'envoie par e-mail ET SMS — sur CHAQUE canal où `utilisateur` a une valeur
+    renseignée (pas un choix exclusif : la demande était « par mail ET SMS ») — et retourne un
+    résumé indiquant sur quel(s) canal(aux) l'envoi a réellement réussi.
+
+    `cible` : pour `VERIFICATION` uniquement, l'e-mail ou le téléphone à vérifier (peut différer
+    de `utilisateur.email`/`utilisateur.phone` si la personne est en train de le CHANGER — auquel
+    cas le code doit partir vers la NOUVELLE valeur, pas l'ancienne)."""
+    from django.core.cache import cache
+    from django.utils import timezone
+
+    from people.sms import send_sms
+
+    from .models import CodeOTP
+
+    cache_key = f"otp_recent:{utilisateur.id}:{objectif}"
+    if cache.get(cache_key):
+        return {"cree": False, "raison": "trop_recent"}
+
+    CodeOTP.objects.filter(user=utilisateur, objectif=objectif, utilise=False).update(utilise=True)
+
+    code = f"{secrets.randbelow(1_000_000):06d}"
+    maintenant = timezone.now()
+    otp = CodeOTP.objects.create(
+        user=utilisateur, code=code, objectif=objectif, cible=cible,
+        expire_le=maintenant + timezone.timedelta(minutes=DUREE_VALIDITE_OTP_MINUTES),
+    )
+
+    libelles_objectif = {
+        CodeOTP.Objectif.CONNEXION: "pour confirmer votre connexion",
+        CodeOTP.Objectif.REINITIALISATION: "pour réinitialiser votre mot de passe",
+        CodeOTP.Objectif.VERIFICATION: "pour vérifier cette adresse/ce numéro",
+    }
+    ecole = utilisateur.ecole if utilisateur.ecole_id else None
+    nom_ecole = ecole.nom if ecole else "Taly-School"
+    texte = (
+        f"{nom_ecole} : votre code {libelles_objectif.get(objectif, '')} est {code}. "
+        f"Valable {DUREE_VALIDITE_OTP_MINUTES} minutes. Ne le partagez avec personne."
+    )
+
+    email_cible = cible if objectif == CodeOTP.Objectif.VERIFICATION and "@" in cible else utilisateur.email
+    telephone_cible = cible if objectif == CodeOTP.Objectif.VERIFICATION and "@" not in cible else utilisateur.phone
+
+    email_envoye = False
+    if email_cible:
+        try:
+            nb_envoyes = send_mail(
+                subject=f"{nom_ecole} — Votre code de vérification",
+                message=texte,
+                from_email=settings.DEFAULT_FROM_EMAIL,
+                recipient_list=[email_cible],
+                fail_silently=True,
+            )
+            email_envoye = nb_envoyes > 0
+        except Exception:  # noqa: BLE001 — un canal en échec ne doit jamais bloquer l'autre
+            pass
+
+    sms_envoye = False
+    if telephone_cible:
+        sms_envoye = send_sms(telephone_cible, texte)
+
+    cache.set(cache_key, True, timeout=DELAI_MIN_RENVOI_SECONDES)
+    return {"cree": True, "otp": otp, "email_envoye": email_envoye, "sms_envoye": sms_envoye}
+
+
+def verifier_otp(utilisateur, objectif: str, code: str) -> bool:
+    """`True` si `code` correspond au dernier OTP valide (non utilisé, non expiré, sous
+    `CodeOTP.MAX_TENTATIVES`) de ce (utilisateur, objectif) — le marque alors utilisé (un code
+    ne sert qu'une fois, même correct). Chaque appel avec un mauvais code incrémente le compteur
+    de tentatives de CE code, jusqu'à l'invalider définitivement (protège contre l'essai des
+    10⁶ codes possibles pendant sa fenêtre de validité de 10 minutes)."""
+    from .models import CodeOTP
+
+    otp = (
+        CodeOTP.objects.filter(user=utilisateur, objectif=objectif, utilise=False)
+        .order_by("-cree_le").first()
+    )
+    if not otp or otp.expire or otp.tentatives >= CodeOTP.MAX_TENTATIVES:
+        return False
+    if otp.code != code:
+        otp.tentatives += 1
+        otp.save(update_fields=["tentatives"])
+        return False
+    otp.utilise = True
+    otp.save(update_fields=["utilise"])
+    return True

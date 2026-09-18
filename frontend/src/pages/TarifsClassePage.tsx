@@ -152,6 +152,15 @@ export default function TarifsClassePage() {
                           onBlur={(e) => handleCellBlur(classe, type, e.target.value)}
                           className="w-32 rounded-lg border border-slate-200 bg-white px-2.5 py-1.5 text-sm text-slate-800 placeholder:text-slate-300 transition focus:outline-none focus:ring-4 focus:ring-brand-500/15 focus:border-brand-400 disabled:opacity-50"
                         />
+                        {/* Pour un type mensuel, ce champ EST le montant par mois (voir Frais.montant
+                            "représente le montant par mois" — cf. business rules paiements) : cette
+                            ligne traduit ce que ça représente sur l'année scolaire (9 mois), pour que
+                            l'admin puisse aussi raisonner/paramétrer en pensant "montant annuel". */}
+                        {type.periodicite === "mensuel" && (
+                          <p className="text-[11px] text-slate-400 mt-0.5">
+                            = {money(Number(tarif?.montant ?? type.montant_standard) * 9)}/an
+                          </p>
+                        )}
                       </td>
                     );
                   })}

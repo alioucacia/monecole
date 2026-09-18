@@ -419,10 +419,14 @@ export default function ParametresEcolePage() {
           <Button type="submit" disabled={saving}>{saving ? "Enregistrement…" : "Enregistrer les paramètres"}</Button>
         </form>
 
-        <div className="lg:col-span-2">
-          <ModelesMessageSection />
-        </div>
-
+        {/* Colonne de droite (1/3) : auparavant, "Modèles de message" occupait à tort 2
+            colonnes juste après le formulaire (span-2 sur une grille qui n'a que 1 colonne
+            libre à cet endroit) — la grille le renvoyait alors à la ligne suivante, laissant
+            toute la 1ère ligne de cette colonne vide à côté du logo/profil. Regroupées dans un
+            seul conteneur pleine hauteur, "Années scolaires" et les cartes qui suivent
+            remontent naturellement combler cet espace ; "Modèles de message" (qui a vraiment
+            besoin de toute la largeur) est sorti de la grille, en pleine largeur plus bas. */}
+        <div className="space-y-6">
         <Card>
           <h3 className="font-bold text-ink-900 mb-1">Années scolaires</h3>
           <p className="text-xs text-slate-500 mb-4">Toute la plateforme (classes, notes, frais...) se règle sur l'année active.</p>
@@ -564,6 +568,11 @@ export default function ParametresEcolePage() {
             </div>
           )}
         </Card>
+        </div>
+      </div>
+
+      <div className="mt-6">
+        <ModelesMessageSection />
       </div>
     </div>
   );

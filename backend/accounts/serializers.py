@@ -59,7 +59,7 @@ class UserSerializer(UniqueLoginFieldsMixin, serializers.ModelSerializer):
             "id", "username", "email", "first_name", "last_name", "full_name",
             "role", "role_display", "ecole", "ecole_nom", "phone", "address", "photo",
             "sexe", "date_of_birth", "is_active", "date_joined", "last_login",
-            "doit_changer_mot_de_passe",
+            "doit_changer_mot_de_passe", "otp_actif", "email_verifie", "telephone_verifie",
             "ecole_couleur_principale", "ecole_couleur_secondaire", "ecole_fonctionnalites_desactivees",
             "ecole_logo", "ecole_adresse", "en_ligne",
         ]
@@ -75,7 +75,17 @@ class UserSerializer(UniqueLoginFieldsMixin, serializers.ModelSerializer):
         # activer/désactiver un compte utilisé par l'admin dans ComptesEcolePage — un
         # utilisateur ne peut de toute façon pas se réactiver lui-même une fois désactivé,
         # puisque son jeton cesse alors d'être accepté, voir SimpleJWT.)
-        read_only_fields = ["id", "date_joined", "last_login", "ecole", "doit_changer_mot_de_passe", "role"]
+        #
+        # `email_verifie`/`telephone_verifie` sont AUSSI en lecture seule ici, pour la même
+        # raison que `role` : ne se posent que via `ConfirmerVerificationView`, qui exige un
+        # code OTP réellement reçu — sans ce verrou, n'importe qui aurait pu s'auto-déclarer
+        # "vérifié" par un simple PATCH, rendant le badge de vérification totalement fictif.
+        # `otp_actif`, lui, reste volontairement modifiable ici : c'est un choix personnel
+        # (activer/désactiver son propre 2FA), pas une preuve à apporter.
+        read_only_fields = [
+            "id", "date_joined", "last_login", "ecole", "doit_changer_mot_de_passe", "role",
+            "email_verifie", "telephone_verifie",
+        ]
 
     def validate_photo(self, value):
         return valider_taille_fichier(value, TAILLE_MAX_IMAGE, EXTENSIONS_IMAGE)
@@ -129,8 +139,31 @@ class ChangePasswordSerializer(serializers.Serializer):
     new_password = serializers.CharField(write_only=True, validators=[password_validation.validate_password])
 
 
+class VerifierOtpConnexionSerializer(serializers.Serializer):
+    """Second temps de la connexion quand `User.otp_actif` est activé (voir
+    `CustomTokenObtainPairSerializer.validate` et `accounts.views.VerifierOtpConnexionView`) —
+    le mot de passe a déjà été vérifié à l'étape précédente (`/auth/login/`), il ne reste qu'à
+    confirmer le code reçu par e-mail/SMS."""
+
+    identifiant = serializers.CharField()
+    code = serializers.CharField(max_length=6, min_length=6)
+
+
 class PasswordResetRequestSerializer(serializers.Serializer):
     email = serializers.EmailField()
+
+
+class PasswordResetOtpConfirmSerializer(serializers.Serializer):
+    """Alternative au lien signé (`PasswordResetConfirmSerializer` ci-dessous) : un code à 6
+    chiffres à saisir directement dans l'app plutôt que de suivre un lien e-mail — utile quand
+    ce lien n'aboutit pas (ex : navigateur/client mail qui bascule le lien en HTTPS alors que le
+    site n'est pas encore servi en HTTPS, voir backend/DEPLOYMENT.md). Même e-mail que la
+    demande (`PasswordResetRequestSerializer`) : pas de uid à transporter, le code est déjà
+    rattaché à l'utilisateur identifié à cet e-mail."""
+
+    email = serializers.EmailField()
+    code = serializers.CharField(max_length=6, min_length=6)
+    new_password = serializers.CharField(write_only=True, validators=[password_validation.validate_password])
 
 
 class PasswordResetConfirmSerializer(serializers.Serializer):
@@ -187,9 +220,46 @@ class CustomTokenObtainPairSerializer(TokenObtainPairSerializer):
                     "Contactez l'administrateur de la plateforme.",
                     code="ecole_inactive",
                 )
+
+        if user.otp_actif:
+            # Double authentification activée par CET utilisateur (voir User.otp_actif) : le mot
+            # de passe vient d'être vérifié avec succès par `super().validate()` ci-dessus (et un
+            # jeton déjà généré en interne, jeté sans être renvoyé) — mais on ne délivre PAS
+            # encore l'accès : un code à usage unique part par e-mail/SMS, à confirmer via
+            # `VerifierOtpConnexionView` (voir accounts.views) pour obtenir le vrai jeton.
+            from .models import CodeOTP
+            from .services import generer_otp
+
+            resultat = generer_otp(user, CodeOTP.Objectif.CONNEXION)
+            # `cree=False` ("trop_recent") : un code envoyé il y a moins d'une minute est encore
+            # valable — on redemande quand même sa saisie plutôt que d'en émettre un nouveau.
+            # `cree=True` mais ni e-mail ni SMS n'ont pu partir (aucun des deux renseigné, ou
+            # échec des deux) : bloquer l'accès derrière un 2FA qui ne peut matériellement pas
+            # arriver serait un verrou sans porte — on laisse passer cette fois-ci plutôt que de
+            # coincer l'utilisateur hors de son propre compte.
+            if not (resultat["cree"] and not (resultat["email_envoye"] or resultat["sms_envoye"])):
+                raise AuthenticationFailed(
+                    "Un code de vérification a été envoyé par e-mail/SMS — saisissez-le pour terminer la connexion.",
+                    code="otp_requis",
+                )
+
         from .services import journaliser
 
         journaliser(user, JournalUtilisateur.Categorie.CONNEXION, "Connexion à la plateforme", self.context.get("request"))
 
         data["user"] = UserSerializer(user).data
         return data
+
+
+class DemanderVerificationSerializer(serializers.Serializer):
+    """Déclenche l'envoi d'un OTP pour vérifier l'e-mail OU le téléphone COURANT de
+    l'utilisateur connecté (voir accounts.views.DemanderVerificationView) — jamais une valeur
+    arbitraire fournie ici : on vérifie ce qui est réellement enregistré sur le compte, pas ce
+    que l'appelant prétend vouloir vérifier."""
+
+    canal = serializers.ChoiceField(choices=["email", "telephone"])
+
+
+class ConfirmerVerificationSerializer(serializers.Serializer):
+    canal = serializers.ChoiceField(choices=["email", "telephone"])
+    code = serializers.CharField(max_length=6, min_length=6)

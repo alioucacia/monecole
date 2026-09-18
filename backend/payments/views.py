@@ -812,10 +812,12 @@ class PaiementViewSet(viewsets.ModelViewSet):
         # Premier paiement sur ce frais : on fige la réduction en vigueur à cet instant (voir
         # Frais.facteur_applique/montant_du) — un changement ultérieur de catégorie de paiement
         # de l'élève n'affectera plus ce frais, la réduction ne s'applique jamais à une somme
-        # déjà versée.
+        # déjà versée. Concerne la mensualité ET les frais d'inscription/réinscription (voir
+        # Frais._facteur_reduction_courant) — `None` pour tout le reste (cantine, transport...).
         frais = paiement.frais
-        if frais.facteur_applique is None and frais.type_frais.est_mensuel:
-            frais.facteur_applique = frais.eleve.facteur_mensualite
+        facteur_actuel = frais._facteur_reduction_courant()
+        if frais.facteur_applique is None and facteur_actuel is not None:
+            frais.facteur_applique = facteur_actuel
             frais.save(update_fields=["facteur_applique"])
 
         journaliser(

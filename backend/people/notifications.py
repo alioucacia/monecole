@@ -4,10 +4,13 @@ simplement lié), avec les identifiants de connexion en clair. C'est la seule oc
 voir : le mot de passe n'est jamais stocké ni renvoyé par l'API au-delà de cet instant (il est
 haché immédiatement, voir EleveProfileWriteSerializer.create()).
 
-Suit le même schéma que payments/notifications.py et accounts/services.reinitialiser_mot_de_passe :
-e-mail en best-effort (fail_silently — un échec SMTP ne doit jamais faire échouer la création du
-compte), SMS respectant le coupe-circuit global `ParametresPlateforme.sms_actif` (contrairement à
-payments/notifications.py, qui ne le vérifie pas — voir sa note d'incohérence connue)."""
+Trois canaux, tous en best-effort (un échec sur l'un n'empêche jamais les autres, ni la création
+du compte elle-même) : e-mail, SMS (respectant le coupe-circuit global
+`ParametresPlateforme.sms_actif`, contrairement à payments/notifications.py — voir sa note
+d'incohérence connue), et un message dans la messagerie interne de l'application — celui-ci est
+le seul dont on est SÛR que le destinataire le verra tôt ou tard (email/SMS peuvent échouer
+silencieusement, ou l'élève n'a simplement pas d'adresse/numéro renseigné) : il attend
+l'utilisateur dès sa première connexion, dans sa messagerie."""
 
 from django.conf import settings
 from django.core.mail import send_mail
@@ -38,15 +41,40 @@ def _envoyer_sms(destinataire_phone: str, message: str) -> bool:
     return send_sms(destinataire_phone, message)
 
 
+def _envoyer_message_interne(expediteur, destinataire_user, contenu: str) -> bool:
+    """Dépose le message dans la messagerie interne de `destinataire_user`, signé par
+    `expediteur` (l'administrateur qui vient de créer le compte) — silencieux si la messagerie
+    est désactivée pour cette école (fonctionnalité optionnelle, voir `Ecole.a_fonctionnalite`)
+    ou si `expediteur` est absent (ex: import Excel en masse, sans requête HTTP/admin identifié).
+    Un échec ici (import, contrainte DB...) ne doit pas non plus faire échouer la création du
+    compte — même best-effort que l'e-mail/SMS ci-dessus."""
+    from messaging.models import Message
+
+    if not expediteur or expediteur.id == destinataire_user.id:
+        return False
+    ecole = destinataire_user.ecole if destinataire_user.ecole_id else None
+    if ecole and not ecole.a_fonctionnalite("messagerie"):
+        return False
+    try:
+        Message.objects.create(expediteur=expediteur, destinataire=destinataire_user, contenu=contenu)
+        return True
+    except Exception:  # noqa: BLE001
+        return False
+
+
 def notifier_creation_compte_eleve(
     eleve_user, mot_de_passe_eleve: str,
     parent_user=None, mot_de_passe_parent: str | None = None, parent_est_nouveau: bool = False,
+    expediteur=None,
 ) -> None:
     """`eleve_user` : le compte élève tout juste créé. `parent_user` : le parent rattaché, qu'il
     s'agisse d'un nouveau compte (créé dans la même requête — voir `parent_creer` côté
     serializer) ou d'un parent déjà existant simplement lié. `mot_de_passe_parent` n'est fourni
     (et donc communiqué) que si `parent_est_nouveau` — jamais pour un parent déjà existant, dont
-    le mot de passe n'a pas changé.
+    le mot de passe n'a pas changé. `expediteur` : l'administrateur à l'origine de la création
+    (utilisateur de la requête HTTP) — signe le message interne envoyé à l'élève/au parent ;
+    `None` si l'appelant n'en a pas (ex: import Excel en masse), auquel cas seul l'e-mail/SMS
+    partent, comme avant l'introduction du message interne.
 
     Le texte envoyé au parent quand SON PROPRE compte vient aussi d'être créé (identifiants des
     deux comptes à la fois) reste codé en dur ici plutôt que dans le modèle `compte_cree` de
@@ -65,6 +93,7 @@ def notifier_creation_compte_eleve(
     )
     _envoyer_email(eleve_user.email, sujet_eleve, message_eleve)
     _envoyer_sms(eleve_user.phone, message_eleve)
+    _envoyer_message_interne(expediteur, eleve_user, message_eleve)
 
     if not parent_user:
         return
@@ -87,3 +116,4 @@ def notifier_creation_compte_eleve(
         )
     _envoyer_email(parent_user.email, sujet_parent, message_parent)
     _envoyer_sms(parent_user.phone, message_parent)
+    _envoyer_message_interne(expediteur, parent_user, message_parent)

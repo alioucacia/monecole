@@ -184,14 +184,19 @@ class EleveProfileWriteSerializer(serializers.ModelSerializer):
         eleve = EleveProfile.objects.create(user=user, **validated_data)
         enregistrer_historique_classe(eleve, eleve.classe)
 
-        # Envoi automatique des identifiants par e-mail/SMS — à l'élève, et au parent rattaché
-        # (nouveau compte tout juste créé ci-dessus, ou parent déjà existant simplement lié via
-        # `validated_data["parent"]`) : voir people/notifications.py pour le détail des messages.
+        # Envoi automatique des identifiants par e-mail/SMS/messagerie interne — à l'élève, et
+        # au parent rattaché (nouveau compte tout juste créé ci-dessus, ou parent déjà existant
+        # simplement lié via `validated_data["parent"]`) : voir people/notifications.py pour le
+        # détail des messages. `expediteur` : l'admin à l'origine de cette création, pour signer
+        # le message interne — absent du contexte lors d'un import Excel en masse (pas de requête
+        # HTTP), auquel cas seuls l'e-mail/le SMS partent, comme avant.
+        request = self.context.get("request")
         notifier_creation_compte_eleve(
             user, password,
             parent_user=validated_data.get("parent"),
             mot_de_passe_parent=mot_de_passe_parent if nouveau_parent else None,
             parent_est_nouveau=bool(nouveau_parent),
+            expediteur=request.user if request else None,
         )
         return eleve
 
