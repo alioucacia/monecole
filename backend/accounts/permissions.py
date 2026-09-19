@@ -147,6 +147,21 @@ class IsAdminOrTeacherOrReadOnly(BasePermission):
             return True
         return _role(request) in ("admin", "teacher")
 
+
+class IsAdminOrSurveillanceReadWriteNoDelete(BasePermission):
+    """Lecture pour tous les authentifiés ; création/modification pour admin et surveillance
+    générale ; suppression réservée à l'admin seul (Classes, Enseignants, Matières : le
+    surveillant gère au quotidien mais ne doit pas pouvoir supprimer définitivement)."""
+
+    def has_permission(self, request, view):
+        if not (request.user and request.user.is_authenticated):
+            return False
+        if request.method in SAFE_METHODS:
+            return True
+        if request.method == "DELETE":
+            return _role(request) == "admin"
+        return _role(request) in ("admin", "surveillance")
+
 # Le blocage "établissement suspendu / plateforme en maintenance" ne vit plus ici : voir
 # accounts.authentication.PlateformeJWTAuthentication et son commentaire pour le pourquoi
 # (chaque ViewSet de ce projet déclare son propre permission_classes, qui remplace plutôt

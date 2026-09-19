@@ -3,7 +3,7 @@ from rest_framework import viewsets
 from rest_framework.decorators import action
 from rest_framework.response import Response
 
-from accounts.permissions import IsAdminOrReadOnly, IsAdminOrTeacherOrReadOnly
+from accounts.permissions import IsAdminOrReadOnly, IsAdminOrSurveillanceReadWriteNoDelete, IsAdminOrTeacherOrReadOnly
 
 from .models import AnneeScolaire, Classe, Creneau, Enseignement, Matiere, deviner_cycle
 from .serializers import (
@@ -30,7 +30,7 @@ class AnneeScolaireViewSet(viewsets.ModelViewSet):
 class MatiereViewSet(viewsets.ModelViewSet):
     queryset = Matiere.objects.all()
     serializer_class = MatiereSerializer
-    permission_classes = [IsAdminOrReadOnly]
+    permission_classes = [IsAdminOrSurveillanceReadWriteNoDelete]
     search_fields = ["nom", "code"]
 
     def get_queryset(self):
@@ -43,7 +43,7 @@ class MatiereViewSet(viewsets.ModelViewSet):
 class ClasseViewSet(viewsets.ModelViewSet):
     queryset = Classe.objects.select_related("annee_scolaire", "professeur_principal")
     serializer_class = ClasseSerializer
-    permission_classes = [IsAdminOrReadOnly]
+    permission_classes = [IsAdminOrSurveillanceReadWriteNoDelete]
     filterset_fields = ["annee_scolaire", "niveau", "cycle"]
     search_fields = ["nom", "niveau"]
 

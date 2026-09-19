@@ -227,7 +227,7 @@ export default function App() {
         <Route
           path="/reinscription"
           element={
-            <ProtectedRoute roles={["admin", "directeur"]}>
+            <ProtectedRoute roles={["admin", "directeur", "comptabilite"]}>
               <ReinscriptionPage />
             </ProtectedRoute>
           }
@@ -235,7 +235,7 @@ export default function App() {
         <Route
           path="/enseignants"
           element={
-            <ProtectedRoute roles={["admin", "directeur"]}>
+            <ProtectedRoute roles={["admin", "directeur", "surveillance"]}>
               <TeachersPage />
             </ProtectedRoute>
           }
@@ -243,7 +243,7 @@ export default function App() {
         <Route
           path="/classes"
           element={
-            <ProtectedRoute roles={["admin", "directeur", "teacher"]}>
+            <ProtectedRoute roles={["admin", "directeur", "teacher", "surveillance"]}>
               <ClassesPage />
             </ProtectedRoute>
           }
@@ -251,7 +251,7 @@ export default function App() {
         <Route
           path="/matieres"
           element={
-            <ProtectedRoute roles={["admin", "directeur"]}>
+            <ProtectedRoute roles={["admin", "directeur", "surveillance"]}>
               <SubjectsPage />
             </ProtectedRoute>
           }

@@ -30,6 +30,7 @@ from accounts.permissions import (
     IsAdminOrReadOnly,
     IsAdminOrSurveillance,
     IsAdminOrSurveillanceOrReadOnly,
+    IsAdminOrSurveillanceReadWriteNoDelete,
     IsAdminOrTeacherOrReadOnly,
     IsStudent,
 )
@@ -266,7 +267,7 @@ class EleveProfileViewSet(viewsets.ModelViewSet):
         response["Content-Disposition"] = f'attachment; filename="certificat_scolarite_{eleve.matricule}.pdf"'
         return response
 
-    @action(detail=False, methods=["post"], url_path="reinscription", permission_classes=[IsAdmin])
+    @action(detail=False, methods=["post"], url_path="reinscription", permission_classes=[IsAdminOrComptabilite])
     def reinscription(self, request):
         """Réinscrit en masse une sélection d'élèves dans une classe (généralement l'année
         suivante), avec création optionnelle d'un frais de réinscription pour chacun."""
@@ -464,7 +465,7 @@ class EleveProfileViewSet(viewsets.ModelViewSet):
 
         return Response({"crees": crees, "erreurs": erreurs, "total_lignes": len(lignes)})
 
-    @action(detail=True, methods=["post"], url_path="marquer-non-reinscrit", permission_classes=[IsAdmin])
+    @action(detail=True, methods=["post"], url_path="marquer-non-reinscrit", permission_classes=[IsAdminOrComptabilite])
     def marquer_non_reinscrit(self, request, pk=None):
         """Marque un élève comme ne se réinscrivant pas (parti, changement d'école...)."""
         eleve = self.get_object()
@@ -476,7 +477,7 @@ class EleveProfileViewSet(viewsets.ModelViewSet):
         eleve.save(update_fields=["actif", "date_sortie", "motif_sortie"])
         return Response(EleveProfileSerializer(eleve).data)
 
-    @action(detail=True, methods=["post"], url_path="reactiver", permission_classes=[IsAdmin])
+    @action(detail=True, methods=["post"], url_path="reactiver", permission_classes=[IsAdminOrComptabilite])
     def reactiver(self, request, pk=None):
         """Réactive un élève précédemment marqué comme non réinscrit."""
         eleve = self.get_object()
@@ -489,7 +490,7 @@ class EleveProfileViewSet(viewsets.ModelViewSet):
 
 class EnseignantProfileViewSet(viewsets.ModelViewSet):
     queryset = EnseignantProfile.objects.select_related("user")
-    permission_classes = [IsAdminOrReadOnly]
+    permission_classes = [IsAdminOrSurveillanceReadWriteNoDelete]
     search_fields = ["user__first_name", "user__last_name", "matricule", "specialite"]
 
     def get_queryset(self):

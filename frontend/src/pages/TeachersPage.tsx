@@ -17,9 +17,10 @@ export default function TeachersPage() {
   const { user } = useAuth();
   // Le Directeur Général voit cette page (accès lecture seule à toute l'école, voir
   // accounts.permissions._lecture_seule_directeur côté backend) mais ne doit jamais pouvoir
-  // créer/modifier/supprimer — cette page était jusqu'ici réservée à l'admin exclusivement,
-  // sans avoir besoin de ce garde-fou (aucun autre rôle ne l'atteignait).
+  // créer/modifier/supprimer. Le Surveillant Général peut créer/modifier (gestion courante)
+  // mais pas supprimer — voir IsAdminOrSurveillanceReadWriteNoDelete côté backend.
   const isAdmin = user?.role === "admin";
+  const peutModifier = isAdmin || user?.role === "surveillance";
   const confirmer = useConfirm();
   const [search, setSearch] = useState("");
   const [modalOpen, setModalOpen] = useState(false);
@@ -96,7 +97,7 @@ export default function TeachersPage() {
       <PageHeader
         title="Enseignants"
         description="Gestion du corps enseignant."
-        actions={isAdmin ? <Button onClick={openCreate}>+ Nouvel enseignant</Button> : undefined}
+        actions={peutModifier ? <Button onClick={openCreate}>+ Nouvel enseignant</Button> : undefined}
       />
 
       <Input placeholder="Rechercher un enseignant…" value={search} onChange={(e) => setSearch(e.target.value)} className="max-w-xs mb-4" />
@@ -126,10 +127,10 @@ export default function TeachersPage() {
                 <td className="px-4 py-3">{ens.specialite || "—"}</td>
                 <td className="px-4 py-3 text-slate-500">{ens.user.email || ens.user.phone || "—"}</td>
                 <td className="px-4 py-3">
-                  {isAdmin && (
+                  {peutModifier && (
                     <RowActions>
                       <EditButton onClick={() => openEdit(ens)} />
-                      <DeleteButton onClick={() => handleDelete(ens)} />
+                      {isAdmin && <DeleteButton onClick={() => handleDelete(ens)} />}
                     </RowActions>
                   )}
                 </td>

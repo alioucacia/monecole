@@ -35,6 +35,11 @@ export default function ClassesPage() {
   const toast = useToast();
   const confirmer = useConfirm();
   const isAdmin = user?.role === "admin";
+  // Le Surveillant Général peut créer/modifier une classe (nom, niveau, prof principal...) mais
+  // pas la supprimer — voir IsAdminOrSurveillanceReadWriteNoDelete côté backend. L'affectation
+  // matière/enseignant dans le détail d'une classe (ClassDetailModal) reste admin uniquement :
+  // c'est un autre endpoint (EnseignementViewSet), resté sur IsAdminOrReadOnly.
+  const peutModifier = isAdmin || user?.role === "surveillance";
   const [annees, setAnnees] = useState<AnneeScolaire[]>([]);
   const [teachers, setTeachers] = useState<EnseignantProfile[]>([]);
   const [modalOpen, setModalOpen] = useState(false);
@@ -127,7 +132,7 @@ export default function ClassesPage() {
         title="Classes"
         description="Structure des classes et affectations pédagogiques."
         actions={
-          isAdmin ? (
+          peutModifier ? (
             <div className="flex flex-wrap gap-2">
               <Button variant="secondary" onClick={handleDevinerCycles} disabled={devinant}>
                 {devinant ? "Affectation…" : "🪄 Deviner les niveaux"}
@@ -167,10 +172,10 @@ export default function ClassesPage() {
                     <td className="px-4 py-3">
                       <div className="flex items-center gap-3">
                         <button onClick={() => setDetailClasse(classe)} className="text-brand-600 hover:underline text-sm">Détails</button>
-                        {isAdmin && (
+                        {peutModifier && (
                           <RowActions>
                             <EditButton onClick={() => openEdit(classe)} />
-                            <DeleteButton onClick={() => handleDelete(classe)} />
+                            {isAdmin && <DeleteButton onClick={() => handleDelete(classe)} />}
                           </RowActions>
                         )}
                       </div>

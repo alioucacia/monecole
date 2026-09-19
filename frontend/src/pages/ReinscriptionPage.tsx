@@ -14,10 +14,10 @@ function money(value: number | string) {
 
 export default function ReinscriptionPage() {
   const { user } = useAuth();
-  // Page réservée jusqu'ici à l'admin exclusivement — le Directeur Général (accès lecture
-  // seule, voir TeachersPage.tsx) y accède désormais aussi : il garde la consultation/impression
-  // des élèves déjà réinscrits (section en bas), mais pas la réinscription en masse elle-même.
-  const isAdmin = user?.role === "admin";
+  // Réinscription en masse + réactivation : admin et comptabilité (voir IsAdminOrComptabilite
+  // côté backend). Le Directeur Général (accès lecture seule, voir TeachersPage.tsx) garde
+  // seulement la consultation/impression des élèves déjà réinscrits (section en bas).
+  const peutGerer = user?.role === "admin" || user?.role === "comptabilite";
   const demander = usePrompt();
   const [classes, setClasses] = useState<Classe[]>([]);
   const [classeSourceId, setClasseSourceId] = useState("");
@@ -174,13 +174,13 @@ export default function ReinscriptionPage() {
         description="Passez vos élèves dans la classe supérieure et gérez les départs, d'une année sur l'autre."
       />
 
-      {!isAdmin && (
+      {!peutGerer && (
         <p className="text-sm text-slate-500 bg-slate-50 border border-slate-100 rounded-xl px-3.5 py-2.5 mb-6">
-          Accès en lecture seule — consultez et imprimez les élèves déjà réinscrits ci-dessous. La réinscription en masse reste réservée à l'administrateur.
+          Accès en lecture seule — consultez et imprimez les élèves déjà réinscrits ci-dessous. La réinscription en masse reste réservée à l'administrateur et à la comptabilité.
         </p>
       )}
 
-      {isAdmin && (
+      {peutGerer && (
         <>
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
         <Select label="Classe source (élèves à traiter)" value={classeSourceId} onChange={(e) => setClasseSourceId(e.target.value)}>

@@ -12,8 +12,11 @@ const emptyForm = { nom: "", code: "", coefficient: 1, couleur: "#8b5cf6" };
 export default function SubjectsPage() {
   const { user } = useAuth();
   // Page réservée jusqu'ici à l'admin exclusivement — le Directeur Général (accès lecture
-  // seule, voir TeachersPage.tsx) y accède désormais aussi, d'où ce garde-fou.
+  // seule, voir TeachersPage.tsx) y accède désormais aussi, d'où ce garde-fou. Le Surveillant
+  // Général peut créer/modifier mais pas supprimer — voir
+  // IsAdminOrSurveillanceReadWriteNoDelete côté backend.
   const isAdmin = user?.role === "admin";
+  const peutModifier = isAdmin || user?.role === "surveillance";
   const confirmer = useConfirm();
   const [matieres, setMatieres] = useState<Matiere[]>([]);
   const [loading, setLoading] = useState(true);
@@ -68,7 +71,7 @@ export default function SubjectsPage() {
 
   return (
     <div>
-      <PageHeader title="Matières" description="Référentiel des matières enseignées." actions={isAdmin ? <Button onClick={openCreate}>+ Nouvelle matière</Button> : undefined} />
+      <PageHeader title="Matières" description="Référentiel des matières enseignées." actions={peutModifier ? <Button onClick={openCreate}>+ Nouvelle matière</Button> : undefined} />
 
       {loading ? (
         <div className="flex justify-center py-16"><Spinner /></div>
@@ -83,10 +86,10 @@ export default function SubjectsPage() {
               <td className="px-4 py-3 font-mono text-xs text-slate-500">{m.code}</td>
               <td className="px-4 py-3">{m.coefficient}</td>
               <td className="px-4 py-3">
-                {isAdmin && (
+                {peutModifier && (
                   <RowActions>
                     <EditButton onClick={() => openEdit(m)} />
-                    <DeleteButton onClick={() => handleDelete(m)} />
+                    {isAdmin && <DeleteButton onClick={() => handleDelete(m)} />}
                   </RowActions>
                 )}
               </td>

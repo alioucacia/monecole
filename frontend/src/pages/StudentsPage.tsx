@@ -36,6 +36,9 @@ export default function StudentsPage() {
   const [search, setSearch] = useState("");
   const [classeFilter, setClasseFilter] = useState("");
   const [cycleFilter, setCycleFilter] = useState<Cycle | "">("");
+  // "" = tous, "inactif" = partis/transférés (voir EleveProfile.actif, avec leur motif de
+  // départ), "reinscription"/"transfert" = filtrent sur EleveProfile.statut_inscription.
+  const [statutFilter, setStatutFilter] = useState<"" | "inactif" | "reinscription" | "transfert">("");
   const [classes, setClasses] = useState<Classe[]>([]);
   const [parents, setParents] = useState<User[]>([]);
   const [modalOpen, setModalOpen] = useState(false);
@@ -57,8 +60,12 @@ export default function StudentsPage() {
   const [tarifInscription, setTarifInscription] = useState<{ type_frais_nom: string | null; montant: string | null } | null>(null);
 
   const { items, count, loading, hasNext, hasPrevious, goNext, goPrevious, reload } = usePaginated<EleveProfile>(
-    () => elevesApi.list({ search: search || undefined, classe: classeFilter || undefined, cycle: cycleFilter || undefined }),
-    [search, classeFilter, cycleFilter]
+    () => elevesApi.list({
+      search: search || undefined, classe: classeFilter || undefined, cycle: cycleFilter || undefined,
+      actif: statutFilter === "inactif" ? false : undefined,
+      statut_inscription: statutFilter === "reinscription" || statutFilter === "transfert" ? statutFilter : undefined,
+    }),
+    [search, classeFilter, cycleFilter, statutFilter]
   );
 
   // Répartition rapide (actifs/inactifs/nouveaux/réinscrits) sur l'ensemble des élèves
@@ -248,10 +255,18 @@ export default function StudentsPage() {
       />
 
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 mb-6">
-        <StatCard label="Élèves" value={count !== null ? String(count) : "…"} icon="🎓" accent="brand" />
-        <StatCard label="Actifs" value={stats ? String(stats.actifs) : "…"} icon="✅" accent="green" />
-        <StatCard label="Réinscrits" value={stats ? String(stats.reinscrits) : "…"} icon="🔁" accent="teal" />
-        <StatCard label="Inactifs" value={stats ? String(stats.inactifs) : "…"} icon="🚪" accent="rose" />
+        <button className="text-left" onClick={() => setStatutFilter("")}>
+          <StatCard label="Élèves" value={count !== null ? String(count) : "…"} icon="🎓" accent="brand" />
+        </button>
+        <button className="text-left" onClick={() => setStatutFilter("")}>
+          <StatCard label="Actifs" value={stats ? String(stats.actifs) : "…"} icon="✅" accent="green" />
+        </button>
+        <button className="text-left" onClick={() => setStatutFilter("reinscription")}>
+          <StatCard label="Réinscrits" value={stats ? String(stats.reinscrits) : "…"} icon="🔁" accent="teal" />
+        </button>
+        <button className="text-left" onClick={() => setStatutFilter("inactif")}>
+          <StatCard label="Partis / transférés" value={stats ? String(stats.inactifs) : "…"} icon="🚪" accent="rose" />
+        </button>
       </div>
 
       <div className="flex flex-wrap gap-3 mb-4">
@@ -265,6 +280,12 @@ export default function StudentsPage() {
           <option value="">Toutes les classes</option>
           {classes.filter((c) => !cycleFilter || c.cycle === cycleFilter).map((c) => <option key={c.id} value={c.id}>{c.nom}</option>)}
         </Select>
+        <Select value={statutFilter} onChange={(e) => setStatutFilter(e.target.value as typeof statutFilter)} className="max-w-xs">
+          <option value="">Tous les statuts</option>
+          <option value="inactif">Partis / transférés (inactifs)</option>
+          <option value="reinscription">Réinscrits</option>
+          <option value="transfert">Arrivés par transfert</option>
+        </Select>
       </div>
 
       {loading ? (
@@ -273,7 +294,9 @@ export default function StudentsPage() {
         <EmptyState title="Aucun élève trouvé" />
       ) : (
         <>
-          <Table headers={["Matricule", "Nom complet", "Classe", "Statut", "Parent", "Contact", "Actions"]}>
+          <Table headers={statutFilter === "inactif"
+            ? ["Matricule", "Nom complet", "Classe", "Statut", "Motif / Date de départ", "Contact", "Actions"]
+            : ["Matricule", "Nom complet", "Classe", "Statut", "Parent", "Contact", "Actions"]}>
             {items.map((eleve) => (
               <tr key={eleve.id} className={eleve.actif ? undefined : "opacity-60"}>
                 <td className="px-4 py-3 font-mono text-xs text-slate-500">{eleve.matricule}</td>
@@ -304,7 +327,14 @@ export default function StudentsPage() {
                     <Badge color="brand">Nouveau</Badge>
                   )}
                 </td>
-                <td className="px-4 py-3">{eleve.parent_nom || <span className="text-slate-400">—</span>}</td>
+                {statutFilter === "inactif" ? (
+                  <td className="px-4 py-3 text-slate-500">
+                    {eleve.motif_sortie || <span className="text-slate-400">—</span>}
+                    {eleve.date_sortie && <span className="block text-xs text-slate-400">{new Date(eleve.date_sortie).toLocaleDateString("fr-FR")}</span>}
+                  </td>
+                ) : (
+                  <td className="px-4 py-3">{eleve.parent_nom || <span className="text-slate-400">—</span>}</td>
+                )}
                 <td className="px-4 py-3 text-slate-500">{eleve.user.email || eleve.user.phone || "—"}</td>
                 <td className="px-4 py-3">
                   <RowActions>

@@ -1,3 +1,4 @@
+import axios from "axios";
 import { createContext, useCallback, useContext, useEffect, useState, type ReactNode } from "react";
 
 import { authApi } from "../api/services";
@@ -5,6 +6,10 @@ import { tokenStorage } from "../api/client";
 import type { User } from "../types";
 
 const RETOUR_KEY = "support_retour_tokens";
+/** Dernier profil utilisateur connu, mis en cache à chaque `/auth/me/` réussi — permet de rester
+ * connecté hors-ligne au rechargement de l'app (voir refreshUser ci-dessous) plutôt que de
+ * dépendre d'un appel réseau qui échouera systématiquement sans connexion. */
+const CACHED_USER_KEY = "ecole_cached_user";
 
 interface AuthContextValue {
   user: User | null;
@@ -34,9 +39,28 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     try {
       const { data } = await authApi.me();
       setUser(data);
-    } catch {
+      localStorage.setItem(CACHED_USER_KEY, JSON.stringify(data));
+    } catch (err) {
+      // Aucune réponse du tout = hors-ligne (ou serveur injoignable), pas un jeton invalide : le
+      // déconnecter ferait perdre l'accès à toute l'app hors-ligne (coquille + données en cache)
+      // pour un simple défaut de réseau. On garde les jetons et on retombe sur le dernier profil
+      // connu ; un vrai jeton invalide (401) est de toute façon déjà géré par l'intercepteur
+      // d'`api/client.ts` (rafraîchissement, puis déconnexion + redirection si ça échoue aussi).
+      if (axios.isAxiosError(err) && !err.response) {
+        const cache = localStorage.getItem(CACHED_USER_KEY);
+        if (cache) {
+          try {
+            setUser(JSON.parse(cache) as User);
+            return;
+          } catch {
+            // Cache corrompu — retombe sur la déconnexion ci-dessous.
+          }
+        }
+        return;
+      }
       setUser(null);
       tokenStorage.clear();
+      localStorage.removeItem(CACHED_USER_KEY);
     }
   }, []);
 
@@ -53,16 +77,19 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     const { data } = await authApi.login(username, password);
     tokenStorage.set(data.access, data.refresh, remember);
     setUser(data.user);
+    localStorage.setItem(CACHED_USER_KEY, JSON.stringify(data.user));
   }, []);
 
   const completeLogin = useCallback((access: string, refresh: string, targetUser: User, remember = true) => {
     tokenStorage.set(access, refresh, remember);
     setUser(targetUser);
+    localStorage.setItem(CACHED_USER_KEY, JSON.stringify(targetUser));
   }, []);
 
   const logout = useCallback(() => {
     tokenStorage.clear();
     sessionStorage.removeItem(RETOUR_KEY);
+    localStorage.removeItem(CACHED_USER_KEY);
     setEnModeSupport(false);
     setUser(null);
   }, []);
