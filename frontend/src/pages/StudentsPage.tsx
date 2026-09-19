@@ -6,7 +6,7 @@ import { extractBlobErrorMessage, extractErrorMessage } from "../api/client";
 import { Badge, Button, DeleteButton, EditButton, EmptyState, Input, Modal, PageHeader, RowActions, Select, Spinner, StatCard, Table } from "../components/ui";
 import { ClasseOptions, CycleSelect } from "../components/CycleSelect";
 import { useAuth } from "../context/AuthContext";
-import { useConfirm } from "../context/ConfirmContext";
+import { useConfirm, usePrompt } from "../context/ConfirmContext";
 import { useToast } from "../context/ToastContext";
 import { usePaginated } from "../hooks/usePaginated";
 import type { Classe, Cycle, EleveProfile, User } from "../types";
@@ -31,7 +31,11 @@ export default function StudentsPage() {
   const location = useLocation();
   const navigate = useNavigate();
   const isAdmin = user?.role === "admin";
+  // Bascule Actif/Inactif (voir handleToggleActif) : mêmes droits que la réinscription
+  // (backend IsAdminOrComptabilite sur marquer-non-reinscrit/reactiver, voir ReinscriptionPage).
+  const peutGererStatut = isAdmin || user?.role === "comptabilite";
   const confirmer = useConfirm();
+  const demander = usePrompt();
   const toast = useToast();
   const [search, setSearch] = useState("");
   const [classeFilter, setClasseFilter] = useState("");
@@ -184,6 +188,20 @@ export default function StudentsPage() {
   const handleDelete = async (eleve: EleveProfile) => {
     if (!(await confirmer(`Supprimer définitivement ${eleve.user.first_name} ${eleve.user.last_name} ?`, { danger: true }))) return;
     await elevesApi.remove(eleve.id);
+    reload();
+  };
+
+  const handleToggleActif = async (eleve: EleveProfile) => {
+    if (eleve.actif) {
+      const motif = await demander(`Vous pouvez préciser le motif du départ de ${eleve.user.first_name} ${eleve.user.last_name}.`, {
+        title: "Rendre l'élève inactif", label: "Motif (optionnel)", confirmLabel: "Confirmer",
+      });
+      if (motif === null) return; // annulé
+      await elevesApi.marquerNonReinscrit(eleve.id, motif);
+    } else {
+      if (!(await confirmer(`Réactiver ${eleve.user.first_name} ${eleve.user.last_name} ?`))) return;
+      await elevesApi.reactiver(eleve.id);
+    }
     reload();
   };
 
@@ -347,6 +365,14 @@ export default function StudentsPage() {
                     >
                       🧾 Reçu
                     </button>
+                    {peutGererStatut && (
+                      <button
+                        className={`text-xs font-semibold hover:underline ${eleve.actif ? "text-rose-600" : "text-emerald-600"}`}
+                        onClick={() => handleToggleActif(eleve)}
+                      >
+                        {eleve.actif ? "🚪 Rendre inactif" : "✅ Réactiver"}
+                      </button>
+                    )}
                     {isAdmin && (
                       <>
                         <EditButton onClick={() => openEdit(eleve)} />

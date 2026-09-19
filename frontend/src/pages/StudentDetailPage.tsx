@@ -9,6 +9,7 @@ import { extractBlobErrorMessage, extractErrorMessage } from "../api/client";
 import { PdfPreviewModal } from "../components/PdfPreviewModal";
 import { Badge, Button, Card, EmptyState, PageHeader, Select, Spinner, StatCard, Table } from "../components/ui";
 import { useAuth } from "../context/AuthContext";
+import { useConfirm, usePrompt } from "../context/ConfirmContext";
 import { useToast } from "../context/ToastContext";
 import type {
   AffectationTransport, AnneeScolaire, Bulletin, CategoriePaiement, EleveProfile, Emprunt, Frais, JustificatifAbsence, Note, Periode, Presence, SuiviMensuelMois,
@@ -81,6 +82,11 @@ export default function StudentDetailPage() {
   const { user } = useAuth();
   const isAdmin = user?.role === "admin";
   const peutVoirPaiements = user?.role === "admin" || user?.role === "comptabilite";
+  // Bascule Actif/Inactif (voir handleToggleActif) — mêmes droits que la réinscription (backend
+  // IsAdminOrComptabilite sur marquer-non-reinscrit/reactiver, voir ReinscriptionPage).
+  const peutGererStatut = isAdmin || user?.role === "comptabilite";
+  const confirmer = useConfirm();
+  const demander = usePrompt();
 
   const [searchParams] = useSearchParams();
   const [eleve, setEleve] = useState<EleveProfile | null>(null);
@@ -185,6 +191,22 @@ export default function StudentDetailPage() {
       toast.error(await extractBlobErrorMessage(err));
     } finally {
       setCertificatLoading(false);
+    }
+  };
+
+  const handleToggleActif = async () => {
+    if (!eleve) return;
+    if (eleve.actif) {
+      const motif = await demander(`Vous pouvez préciser le motif du départ de ${eleve.user.first_name} ${eleve.user.last_name}.`, {
+        title: "Rendre l'élève inactif", label: "Motif (optionnel)", confirmLabel: "Confirmer",
+      });
+      if (motif === null) return; // annulé
+      const { data } = await elevesApi.marquerNonReinscrit(eleve.id, motif);
+      setEleve(data);
+    } else {
+      if (!(await confirmer(`Réactiver ${eleve.user.first_name} ${eleve.user.last_name} ?`))) return;
+      const { data } = await elevesApi.reactiver(eleve.id);
+      setEleve(data);
     }
   };
 
@@ -355,6 +377,14 @@ export default function StudentDetailPage() {
 
       <div className="flex flex-wrap items-center gap-2 mb-6">
         <Badge color={eleve.actif ? "green" : "rose"}>{eleve.actif ? "Actif" : "Inactif"}</Badge>
+        {peutGererStatut && (
+          <button
+            className={`text-xs font-semibold hover:underline ${eleve.actif ? "text-rose-600" : "text-emerald-600"}`}
+            onClick={handleToggleActif}
+          >
+            {eleve.actif ? "🚪 Rendre inactif" : "✅ Réactiver"}
+          </button>
+        )}
         <Badge color="brand">{REGIME_LABELS[eleve.regime]}</Badge>
         <Badge color="slate">{STATUT_INSCRIPTION_LABELS[eleve.statut_inscription]}</Badge>
         <span className="text-sm text-slate-500">{eleve.user.email || eleve.user.phone || "—"}</span>
