@@ -2,7 +2,7 @@ import { useEffect, useState, type FormEvent } from "react";
 
 import { annoncesApi, classesApi, modelesMessageApi, unwrapList } from "../api/services";
 import { extractErrorMessage } from "../api/client";
-import { Badge, Button, Card, DeleteButton, EmptyState, Input, Modal, PageHeader, Select, Spinner } from "../components/ui";
+import { Badge, Button, Card, DeleteButton, EmptyState, Input, Modal, PageHeader, Select, Spinner, Textarea } from "../components/ui";
 import { ClasseOptions } from "../components/CycleSelect";
 import { useAuth } from "../context/AuthContext";
 import { useConfirm } from "../context/ConfirmContext";
@@ -162,13 +162,7 @@ export default function AnnouncementsPage() {
             </div>
           )}
           <Input label="Titre" required value={form.titre} onChange={(e) => setForm({ ...form, titre: e.target.value })} />
-          <label className="block">
-            <span className="block text-sm font-semibold text-slate-600 mb-1.5">Contenu</span>
-            <textarea
-              required rows={4} value={form.contenu} onChange={(e) => setForm({ ...form, contenu: e.target.value })}
-              className="w-full rounded-xl border border-slate-200 px-3.5 py-2.5 text-sm focus:outline-none focus:ring-4 focus:ring-brand-500/15 focus:border-brand-400"
-            />
-          </label>
+          <Textarea label="Contenu" required rows={4} value={form.contenu} onChange={(e) => setForm({ ...form, contenu: e.target.value })} />
           <Select label="Destinataires" value={form.cible_role} onChange={(e) => setForm({ ...form, cible_role: e.target.value })}>
             {Object.entries(CIBLE_LABELS).map(([value, label]) => <option key={value} value={value}>{label}</option>)}
           </Select>

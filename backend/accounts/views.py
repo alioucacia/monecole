@@ -17,7 +17,7 @@ from rest_framework.exceptions import AuthenticationFailed, ValidationError
 from tenants.quotas import verifier_quota_plan
 
 from .models import JournalUtilisateur, User
-from .permissions import IsAdmin, IsSuperAdmin
+from .permissions import IsAdminOrComptabiliteReadOnly, IsSuperAdmin
 from .serializers import (
     ChangePasswordSerializer,
     CustomTokenObtainPairSerializer,
@@ -366,7 +366,7 @@ class UserViewSet(viewsets.ModelViewSet):
     (chacun ne voit et ne gère que les comptes de sa propre école)."""
 
     queryset = User.objects.all()
-    permission_classes = [IsAdmin]
+    permission_classes = [IsAdminOrComptabiliteReadOnly]
     filterset_fields = ["role", "is_active"]
     search_fields = ["username", "first_name", "last_name", "email"]
     ordering_fields = ["last_name", "date_joined"]

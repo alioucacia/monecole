@@ -1,5 +1,5 @@
 import { useRef } from "react";
-import type { ButtonHTMLAttributes, InputHTMLAttributes, MouseEvent, ReactNode, SelectHTMLAttributes } from "react";
+import type { ButtonHTMLAttributes, InputHTMLAttributes, MouseEvent, ReactNode, SelectHTMLAttributes, TextareaHTMLAttributes } from "react";
 
 export function Card({ children, className = "" }: { children: ReactNode; className?: string }) {
   return (
@@ -217,6 +217,25 @@ export function Select({
       >
         {children}
       </select>
+    </label>
+  );
+}
+
+// Même règle que Input/Select ci-dessus : `required` jamais transmis à l'élément natif.
+export function Textarea({
+  label, required, className = "", ...props
+}: TextareaHTMLAttributes<HTMLTextAreaElement> & { label?: string }) {
+  return (
+    <label className="block">
+      {label && (
+        <span className="block text-sm font-semibold text-slate-600 mb-1.5">
+          {label}{required && <span className="text-rose-500"> *</span>}
+        </span>
+      )}
+      <textarea
+        className={`w-full rounded-xl border border-slate-200 bg-white px-3.5 py-2.5 text-sm text-slate-800 placeholder:text-slate-400 transition focus:outline-none focus:ring-4 focus:ring-brand-500/15 focus:border-brand-400 ${className}`}
+        {...props}
+      />
     </label>
   );
 }

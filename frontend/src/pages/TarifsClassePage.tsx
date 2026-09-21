@@ -3,7 +3,7 @@ import { Link } from "react-router-dom";
 
 import { anneesApi, classesApi, fraisApi, tarifsClasseApi, typesFraisApi, unwrapList } from "../api/services";
 import { extractErrorMessage } from "../api/client";
-import { Button, EmptyState, Modal, PageHeader, Select, Spinner } from "../components/ui";
+import { Button, EmptyState, Input, Modal, PageHeader, Select, Spinner } from "../components/ui";
 import { useToast } from "../context/ToastContext";
 import type { AnneeScolaire, Classe, TarifClasse, TypeFrais } from "../types";
 
@@ -191,16 +191,11 @@ export default function TarifsClassePage() {
               en utilisant le tarif paramétré (ou le montant standard si aucun n'est défini). Les frais déjà existants
               pour un élève ne sont jamais dupliqués.
             </p>
-            <label className="block">
-              <span className="block text-sm font-semibold text-slate-600 mb-1.5">Date d'échéance</span>
-              <input
-                type="date"
-                required
-                value={genererDate}
-                onChange={(e) => setGenererDate(e.target.value)}
-                className="w-full rounded-xl border border-slate-200 bg-white px-3.5 py-2.5 text-sm text-slate-800 transition focus:outline-none focus:ring-4 focus:ring-brand-500/15 focus:border-brand-400"
-              />
-            </label>
+            <Input
+              label="Date d'échéance" type="date" required
+              value={genererDate}
+              onChange={(e) => setGenererDate(e.target.value)}
+            />
 
             {genererError && <p className="text-sm text-rose-600 bg-rose-50 border border-rose-100 rounded-xl px-3.5 py-2.5">{genererError}</p>}
 

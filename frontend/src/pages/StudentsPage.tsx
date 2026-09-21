@@ -100,7 +100,11 @@ export default function StudentsPage() {
   useEffect(() => {
     classesApi.list().then(({ data }) => setClasses(unwrapList(data)));
     if (peutModifier) {
-      usersApi.list({ role: "parent" }).then(({ data }) => setParents(unwrapList(data)));
+      // Sans ce catch, un échec (droits insuffisants, réseau...) laissait la liste "Parent"
+      // vide sans aucune indication — voir IsAdminOrComptabiliteReadOnly côté backend pour le
+      // cas qui a révélé ce silence (comptabilité sans accès à /auth/users/ jusqu'ici).
+      usersApi.list({ role: "parent" }).then(({ data }) => setParents(unwrapList(data)))
+        .catch((err) => toast.error(extractErrorMessage(err)));
     }
   }, [peutModifier]);
 

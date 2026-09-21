@@ -178,6 +178,22 @@ class IsAdminOrComptabiliteReadWriteNoDelete(BasePermission):
             return _role(request) == "admin"
         return _role(request) in ("admin", "comptabilite")
 
+
+class IsAdminOrComptabiliteReadOnly(BasePermission):
+    """Comptes utilisateurs (UserViewSet) : lecture pour admin et comptabilité — la comptabilité
+    a besoin de retrouver un parent déjà inscrit pour l'associer à un élève (voir StudentsPage.tsx
+    → "Associer un parent déjà inscrit"), sans quoi `usersApi.list({role: "parent"})` échouait en
+    403 et laissait la liste vide, silencieusement, côté frontend. Création/modification/
+    suppression d'un compte utilisateur restent réservées à l'admin seul (le Directeur Général
+    garde son accès lecture seule habituel, voir `_lecture_seule_directeur`)."""
+
+    def has_permission(self, request, view):
+        if _lecture_seule_directeur(request):
+            return True
+        if request.method in SAFE_METHODS:
+            return bool(request.user and request.user.is_authenticated and _role(request) in ("admin", "comptabilite"))
+        return bool(request.user and request.user.is_authenticated and _role(request) == "admin")
+
 # Le blocage "établissement suspendu / plateforme en maintenance" ne vit plus ici : voir
 # accounts.authentication.PlateformeJWTAuthentication et son commentaire pour le pourquoi
 # (chaque ViewSet de ce projet déclare son propre permission_classes, qui remplace plutôt

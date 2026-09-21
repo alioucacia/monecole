@@ -2,7 +2,7 @@ import { useEffect, useRef, useState, type FormEvent } from "react";
 
 import { supportApi, unwrapList } from "../api/services";
 import { extractErrorMessage } from "../api/client";
-import { Badge, Button, EmptyState, Input, Modal, Select, Spinner } from "../components/ui";
+import { Badge, Button, EmptyState, Input, Modal, Select, Spinner, Textarea } from "../components/ui";
 import { useAuth } from "../context/AuthContext";
 import type { MessageTicket, PrioriteTicket, StatutTicket, Ticket } from "../types";
 
@@ -272,13 +272,7 @@ export default function SupportPage() {
           <Select label="Priorité" value={newForm.priorite} onChange={(e) => setNewForm({ ...newForm, priorite: e.target.value as PrioriteTicket })}>
             {PRIORITE_OPTIONS.map((p) => <option key={p.value} value={p.value}>{p.label}</option>)}
           </Select>
-          <label className="block">
-            <span className="block text-sm font-semibold text-slate-600 mb-1.5">Décrivez votre problème</span>
-            <textarea
-              required rows={5} value={newForm.message} onChange={(e) => setNewForm({ ...newForm, message: e.target.value })}
-              className="w-full rounded-xl border border-slate-200 px-3.5 py-2.5 text-sm focus:outline-none focus:ring-4 focus:ring-brand-500/15 focus:border-brand-400"
-            />
-          </label>
+          <Textarea label="Décrivez votre problème" required rows={5} value={newForm.message} onChange={(e) => setNewForm({ ...newForm, message: e.target.value })} />
 
           {createError && <p className="text-sm text-rose-600 bg-rose-50 border border-rose-100 rounded-xl px-3.5 py-2.5">{createError}</p>}
 
