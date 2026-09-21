@@ -81,10 +81,14 @@ export default function StudentDetailPage() {
   const navigate = useNavigate();
   const { user } = useAuth();
   const isAdmin = user?.role === "admin";
-  const peutVoirPaiements = user?.role === "admin" || user?.role === "comptabilite";
+  const estComptabilite = user?.role === "comptabilite";
+  const peutVoirPaiements = isAdmin || estComptabilite;
+  // Modifier le dossier élève : admin et comptabilité (backend
+  // IsAdminOrComptabiliteReadWriteNoDelete, voir StudentsPage.tsx).
+  const peutModifier = isAdmin || estComptabilite;
   // Bascule Actif/Inactif (voir handleToggleActif) — mêmes droits que la réinscription (backend
   // IsAdminOrComptabilite sur marquer-non-reinscrit/reactiver, voir ReinscriptionPage).
-  const peutGererStatut = isAdmin || user?.role === "comptabilite";
+  const peutGererStatut = isAdmin || estComptabilite;
   const confirmer = useConfirm();
   const demander = usePrompt();
 
@@ -356,7 +360,7 @@ export default function StudentDetailPage() {
           actions={
             <div className="flex flex-wrap items-center gap-2">
               <Link to="/eleves" className="text-sm text-brand-600 font-medium hover:underline mr-2">← Retour</Link>
-              {isAdmin && (
+              {peutModifier && (
                 <Button variant="secondary" onClick={() => navigate("/eleves", { state: { editEleveId: eleve.id } })}>
                   ✏️ Modifier
                 </Button>

@@ -31,9 +31,14 @@ export default function StudentsPage() {
   const location = useLocation();
   const navigate = useNavigate();
   const isAdmin = user?.role === "admin";
+  const estComptabilite = user?.role === "comptabilite";
+  // Enregistrer/modifier un élève : admin et comptabilité (backend
+  // IsAdminOrComptabiliteReadWriteNoDelete) — la suppression et l'export/import en masse restent
+  // admin uniquement, voir plus bas.
+  const peutModifier = isAdmin || estComptabilite;
   // Bascule Actif/Inactif (voir handleToggleActif) : mêmes droits que la réinscription
   // (backend IsAdminOrComptabilite sur marquer-non-reinscrit/reactiver, voir ReinscriptionPage).
-  const peutGererStatut = isAdmin || user?.role === "comptabilite";
+  const peutGererStatut = isAdmin || estComptabilite;
   const confirmer = useConfirm();
   const demander = usePrompt();
   const toast = useToast();
@@ -45,6 +50,10 @@ export default function StudentsPage() {
   const [statutFilter, setStatutFilter] = useState<"" | "inactif" | "reinscription" | "transfert">("");
   const [classes, setClasses] = useState<Classe[]>([]);
   const [parents, setParents] = useState<User[]>([]);
+  // Filtre local (pas envoyé à l'API) pour la liste déroulante "Associer un parent existant" —
+  // un établissement avec beaucoup de parents inscrits rend un simple <select> à plat difficile
+  // à parcourir sans pouvoir d'abord taper un nom.
+  const [parentSearch, setParentSearch] = useState("");
   const [modalOpen, setModalOpen] = useState(false);
   const [editing, setEditing] = useState<EleveProfile | null>(null);
   const [form, setForm] = useState(emptyForm);
@@ -90,10 +99,10 @@ export default function StudentsPage() {
 
   useEffect(() => {
     classesApi.list().then(({ data }) => setClasses(unwrapList(data)));
-    if (isAdmin) {
+    if (peutModifier) {
       usersApi.list({ role: "parent" }).then(({ data }) => setParents(unwrapList(data)));
     }
-  }, [isAdmin]);
+  }, [peutModifier]);
 
   useEffect(() => {
     // Uniquement pour une nouvelle inscription — un élève déjà inscrit n'a pas à réafficher ce
@@ -113,6 +122,7 @@ export default function StudentsPage() {
     setPhotoFile(null);
     setPhotoPreview(null);
     setError("");
+    setParentSearch("");
     setModalOpen(true);
   };
 
@@ -133,17 +143,18 @@ export default function StudentsPage() {
     setPhotoFile(null);
     setPhotoPreview(eleve.user.photo);
     setError("");
+    setParentSearch("");
     setModalOpen(true);
   };
 
   // Revenu depuis la fiche détail d'un élève avec l'intention de le modifier (StudentDetailPage → "✏️ Modifier").
   useEffect(() => {
     const editEleveId = (location.state as { editEleveId?: number } | null)?.editEleveId;
-    if (!editEleveId || !isAdmin) return;
+    if (!editEleveId || !peutModifier) return;
     elevesApi.get(editEleveId).then(({ data }) => openEdit(data));
     navigate(location.pathname, { replace: true, state: null });
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [location.state, isAdmin]);
+  }, [location.state, peutModifier]);
 
   const handlePhotoChange = (file: File | null) => {
     setPhotoFile(file);
@@ -215,6 +226,14 @@ export default function StudentsPage() {
     }
   };
 
+  const handleCertificat = async (eleve: EleveProfile) => {
+    try {
+      await elevesApi.certificatScolarite(eleve.id, `certificat_scolarite_${eleve.matricule}.pdf`);
+    } catch (err) {
+      toast.error(await extractBlobErrorMessage(err));
+    }
+  };
+
   const handleExport = async () => {
     setExporting(true);
     try {
@@ -262,11 +281,15 @@ export default function StudentsPage() {
       <PageHeader
         title="Élèves"
         description="Gestion des inscriptions et des profils élèves."
-        actions={isAdmin ? (
+        actions={peutModifier ? (
           <div className="flex flex-wrap gap-2">
-            <Button variant="secondary" onClick={handleExport} disabled={exporting}>{exporting ? "Export…" : "📤 Exporter CSV"}</Button>
-            <Button variant="secondary" onClick={handleExportPdf} disabled={exportingPdf}>{exportingPdf ? "Export…" : "🖨️ Exporter PDF"}</Button>
-            <Button variant="secondary" onClick={() => { setImportRapport(null); setImportError(""); setImportModalOpen(true); }}>📥 Importer Excel</Button>
+            {isAdmin && (
+              <>
+                <Button variant="secondary" onClick={handleExport} disabled={exporting}>{exporting ? "Export…" : "📤 Exporter CSV"}</Button>
+                <Button variant="secondary" onClick={handleExportPdf} disabled={exportingPdf}>{exportingPdf ? "Export…" : "🖨️ Exporter PDF"}</Button>
+                <Button variant="secondary" onClick={() => { setImportRapport(null); setImportError(""); setImportModalOpen(true); }}>📥 Importer Excel</Button>
+              </>
+            )}
             <Button onClick={openCreate}>+ Nouvel élève</Button>
           </div>
         ) : undefined}
@@ -365,6 +388,12 @@ export default function StudentsPage() {
                     >
                       🧾 Reçu
                     </button>
+                    <button
+                      className="text-xs font-semibold text-brand-700 hover:underline"
+                      onClick={() => handleCertificat(eleve)}
+                    >
+                      🎓 Attestation
+                    </button>
                     {peutGererStatut && (
                       <button
                         className={`text-xs font-semibold hover:underline ${eleve.actif ? "text-rose-600" : "text-emerald-600"}`}
@@ -373,12 +402,8 @@ export default function StudentsPage() {
                         {eleve.actif ? "🚪 Rendre inactif" : "✅ Réactiver"}
                       </button>
                     )}
-                    {isAdmin && (
-                      <>
-                        <EditButton onClick={() => openEdit(eleve)} />
-                        <DeleteButton onClick={() => handleDelete(eleve)} />
-                      </>
-                    )}
+                    {peutModifier && <EditButton onClick={() => openEdit(eleve)} />}
+                    {isAdmin && <DeleteButton onClick={() => handleDelete(eleve)} />}
                   </RowActions>
                 </td>
               </tr>
@@ -465,15 +490,30 @@ export default function StudentsPage() {
             <option value="nouveau">Créer un nouveau compte parent</option>
           </Select>
           {form.parentMode === "existant" && (
-            <Select
-              label="Parent"
-              className="sm:col-span-2"
-              value={form.parent}
-              onChange={(e) => setForm({ ...form, parent: e.target.value })}
-            >
-              <option value="">— Choisir un parent —</option>
-              {parents.map((p) => <option key={p.id} value={p.id}>{p.full_name || p.username}</option>)}
-            </Select>
+            <>
+              <Input
+                label="Rechercher un parent"
+                className="sm:col-span-2"
+                placeholder="Nom, identifiant, téléphone…"
+                value={parentSearch}
+                onChange={(e) => setParentSearch(e.target.value)}
+              />
+              <Select
+                label="Parent"
+                className="sm:col-span-2"
+                value={form.parent}
+                onChange={(e) => setForm({ ...form, parent: e.target.value })}
+              >
+                <option value="">— Choisir un parent —</option>
+                {parents
+                  .filter((p) => {
+                    const terme = parentSearch.trim().toLowerCase();
+                    if (!terme) return true;
+                    return [p.full_name, p.username, p.phone, p.email].some((champ) => champ?.toLowerCase().includes(terme));
+                  })
+                  .map((p) => <option key={p.id} value={p.id}>{p.full_name || p.username}{p.phone ? ` — ${p.phone}` : ""}</option>)}
+              </Select>
+            </>
           )}
           {form.parentMode === "nouveau" && (
             <>

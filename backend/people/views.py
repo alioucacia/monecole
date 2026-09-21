@@ -27,7 +27,7 @@ from academics.models import Classe
 from accounts.permissions import (
     IsAdmin,
     IsAdminOrComptabilite,
-    IsAdminOrReadOnly,
+    IsAdminOrComptabiliteReadWriteNoDelete,
     IsAdminOrSurveillance,
     IsAdminOrSurveillanceOrReadOnly,
     IsAdminOrSurveillanceReadWriteNoDelete,
@@ -63,7 +63,10 @@ from .serializers import (
 
 class EleveProfileViewSet(viewsets.ModelViewSet):
     queryset = EleveProfile.objects.select_related("user", "classe", "parent")
-    permission_classes = [IsAdminOrReadOnly]
+    # La comptabilité peut enregistrer/modifier un élève (inscription, correction de dossier)
+    # mais pas le supprimer — voir IsAdminOrComptabiliteReadWriteNoDelete. Import Excel/export
+    # CSV-PDF restent des actions séparées ci-dessous, toujours admin uniquement.
+    permission_classes = [IsAdminOrComptabiliteReadWriteNoDelete]
     filterset_fields = ["classe", "actif", "statut_inscription"]
     search_fields = ["user__first_name", "user__last_name", "matricule"]
 
@@ -165,8 +168,10 @@ class EleveProfileViewSet(viewsets.ModelViewSet):
     @action(detail=True, methods=["patch"], url_path="categorie-paiement", permission_classes=[IsAdminOrComptabilite])
     def categorie_paiement(self, request, pk=None):
         """Modifie uniquement la catégorie de paiement (mensualité) et la réduction fidélité d'un
-        élève — accessible à la comptabilité sans lui donner un accès en écriture à toute la fiche
-        élève (le reste de `EleveProfileViewSet` est réservé à l'admin, voir `IsAdminOrReadOnly`)."""
+        élève, sans passer par `EleveProfileWriteSerializer` (qui exige les champs d'identité
+        first_name/last_name à chaque appel) — un simple raccourci pour ce cas précis, la
+        comptabilité ayant de toute façon accès au reste de la fiche élève (voir
+        `IsAdminOrComptabiliteReadWriteNoDelete`)."""
         eleve = self.get_object()
         serializer = CategoriePaiementSerializer(eleve, data=request.data, partial=True)
         serializer.is_valid(raise_exception=True)

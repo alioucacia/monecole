@@ -113,6 +113,26 @@ function statutPeriodePourFrais(frais: Frais, periodeId: number): "paye" | "part
   return paye >= Number(frais.montant_du) ? "paye" : "partiel";
 }
 
+/** Ce qu'il reste réellement à payer pour CE versement précis — le mois/la tranche choisi·e s'il
+ * y en a un·e (un élève ne peut pas verser plus que ce qu'il reste pour ce mois/cette tranche
+ * précis·e), sinon le solde global du frais. Même règle que `PaiementSerializer.validate` côté
+ * backend (voir payments/serializers.py) — dupliquée ici pour un retour immédiat à la saisie,
+ * mais le backend reste la source de vérité en cas d'écart (ex: un autre paiement encaissé
+ * entre-temps par quelqu'un d'autre). */
+function restantAVerser(frais: Frais, mois: string, periode: string): number {
+  const montantDu = Number(frais.montant_du);
+  if (mois && frais.type_frais_est_mensuel) {
+    const deja = frais.paiements.filter((p) => p.mois && p.mois.startsWith(mois)).reduce((sum, p) => sum + Number(p.montant), 0);
+    return Math.max(0, montantDu - deja);
+  }
+  if (periode && frais.type_frais_periodicite === "trimestriel") {
+    const periodeId = Number(periode);
+    const deja = frais.paiements.filter((p) => p.periode === periodeId).reduce((sum, p) => sum + Number(p.montant), 0);
+    return Math.max(0, montantDu - deja);
+  }
+  return Math.max(0, Number(frais.solde));
+}
+
 export default function PaymentsPage() {
   const toast = useToast();
   const confirmer = useConfirm();
@@ -134,6 +154,15 @@ export default function PaymentsPage() {
   const [fraisForm, setFraisForm] = useState(emptyFraisForm);
   const [fraisError, setFraisError] = useState("");
   const [fraisSaving, setFraisSaving] = useState(false);
+  // Cycle/Classe : filtrent uniquement la liste déroulante "Élève" ci-dessous (pas envoyés à
+  // l'API) — un grand établissement peut avoir des centaines d'élèves, difficiles à retrouver
+  // dans une seule liste à plat sans pouvoir d'abord restreindre par classe.
+  const [fraisEleveCycle, setFraisEleveCycle] = useState<Cycle | "">("");
+  const [fraisEleveClasse, setFraisEleveClasse] = useState("");
+  const classesDuCycleFrais = fraisEleveCycle ? classes.filter((c) => c.cycle === fraisEleveCycle) : classes;
+  const elevesFiltres = eleves.filter((el) =>
+    (!fraisEleveCycle || el.classe_cycle === fraisEleveCycle) && (!fraisEleveClasse || String(el.classe) === fraisEleveClasse)
+  );
   // Trimestres (Periode) de l'année scolaire choisie dans "Nouveau frais" — ne sert que pour la
   // liste déroulante "Trimestre d'échéance" d'un type de frais Trimestriel (voir périodicité).
   const [periodesAnnee, setPeriodesAnnee] = useState<Periode[]>([]);
@@ -260,6 +289,8 @@ export default function PaymentsPage() {
   const openFraisModal = () => {
     setFraisForm({ ...emptyFraisForm, annee_scolaire: annees.find((a) => a.active)?.id.toString() || "" });
     setFraisError("");
+    setFraisEleveCycle("");
+    setFraisEleveClasse("");
     setFraisModalOpen(true);
   };
 
@@ -326,6 +357,11 @@ export default function PaymentsPage() {
   const handlePaiementSubmit = async (e: FormEvent) => {
     e.preventDefault();
     if (!paiementTarget) return;
+    const montantMax = restantAVerser(paiementTarget, paiementForm.mois, paiementForm.periode);
+    if (Number(paiementForm.montant) > montantMax) {
+      setPaiementError(`Le montant dépasse ce qu'il reste à payer (${money(montantMax)}).`);
+      return;
+    }
     setPaiementSaving(true);
     setPaiementError("");
     try {
@@ -551,9 +587,20 @@ export default function PaymentsPage() {
 
       <Modal open={fraisModalOpen} onClose={() => setFraisModalOpen(false)} title="Nouveau frais">
         <form onSubmit={handleFraisSubmit} className="space-y-4">
+          <div className="grid grid-cols-2 gap-3">
+            <CycleSelect
+              label="Cycle"
+              value={fraisEleveCycle}
+              onChange={(c) => { setFraisEleveCycle(c); setFraisEleveClasse(""); }}
+            />
+            <Select label="Classe" value={fraisEleveClasse} onChange={(e) => setFraisEleveClasse(e.target.value)}>
+              <option value="">— Toutes les classes —</option>
+              {classesDuCycleFrais.map((c) => <option key={c.id} value={c.id}>{c.nom}</option>)}
+            </Select>
+          </div>
           <Select label="Élève" required value={fraisForm.eleve} onChange={(e) => setFraisForm({ ...fraisForm, eleve: e.target.value })}>
             <option value="">— Sélectionner —</option>
-            {eleves.map((el) => <option key={el.id} value={el.id}>{el.user.first_name} {el.user.last_name} ({el.matricule})</option>)}
+            {elevesFiltres.map((el) => <option key={el.id} value={el.id}>{el.user.first_name} {el.user.last_name} ({el.matricule})</option>)}
           </Select>
           <Select label="Type de frais" required value={fraisForm.type_frais} onChange={(e) => {
             const type = types.find((t) => t.id === Number(e.target.value));
@@ -661,7 +708,19 @@ export default function PaymentsPage() {
         {paiementTarget && (
           <form onSubmit={handlePaiementSubmit} className="space-y-4">
             <p className="text-sm text-slate-500">Solde restant : <span className="font-semibold text-slate-700">{money(paiementTarget.solde)}</span></p>
-            <Input label="Montant reçu" type="number" min={0} step="0.01" required value={paiementForm.montant} onChange={(e) => setPaiementForm({ ...paiementForm, montant: e.target.value })} />
+            <div>
+              <Input
+                label="Montant reçu" type="number" min={0}
+                max={restantAVerser(paiementTarget, paiementForm.mois, paiementForm.periode)}
+                step="0.01" required
+                value={paiementForm.montant}
+                onChange={(e) => setPaiementForm({ ...paiementForm, montant: e.target.value })}
+              />
+              <p className="text-xs text-slate-400 mt-1">
+                Maximum pour {paiementForm.mois || paiementForm.periode ? "cette échéance" : "ce frais"} :{" "}
+                {money(restantAVerser(paiementTarget, paiementForm.mois, paiementForm.periode))}
+              </p>
+            </div>
             <Select label="Mode de paiement" value={paiementForm.mode_paiement} onChange={(e) => setPaiementForm({ ...paiementForm, mode_paiement: e.target.value })}>
               <option value="especes">Espèces</option>
               <option value="cheque">Chèque</option>

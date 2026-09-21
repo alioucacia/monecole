@@ -6,13 +6,29 @@ import { registerSW } from "virtual:pwa-register";
 let applyUpdateFn: ((reloadPage?: boolean) => Promise<void>) | null = null;
 const updateListeners = new Set<() => void>();
 
+/** Délai avant le rechargement automatique une fois une nouvelle version détectée — laisse le
+ * bandeau "Nouvelle version disponible" (voir PwaBanners) s'afficher un court instant plutôt
+ * qu'un rechargement instantané et déroutant en pleine saisie. */
+const DELAI_AUTO_MAJ_MS = 5_000;
+
 export function initPwa() {
   applyUpdateFn = registerSW({
     onNeedRefresh() {
       updateListeners.forEach((fn) => fn());
+      // Auto-refresh : applique la mise à jour toute seule, sans attendre un clic sur le
+      // bandeau — un onglet laissé ouvert (accueil, salle des profs...) reste ainsi à jour.
+      setTimeout(() => applyUpdateFn?.(true), DELAI_AUTO_MAJ_MS);
     },
     onOfflineReady() {
       // L'application peut désormais fonctionner hors-ligne (coquille + dernières données API en cache).
+    },
+    onRegistered(registration) {
+      // Filet de sécurité pour un onglet resté ouvert longtemps sans navigation ni rechargement
+      // (le navigateur ne revérifie pas toujours une nouvelle version tout seul) : redéclenche
+      // la vérification une fois par heure — si une nouvelle version est trouvée, ceci ré-arme
+      // `onNeedRefresh` ci-dessus comme au chargement normal de la page.
+      if (!registration) return;
+      setInterval(() => { registration.update(); }, 60 * 60 * 1000);
     },
   });
 }

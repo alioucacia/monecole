@@ -86,7 +86,10 @@ def models_q_teacher(user):
 class EnseignementViewSet(viewsets.ModelViewSet):
     queryset = Enseignement.objects.select_related("enseignant", "matiere", "classe")
     serializer_class = EnseignementSerializer
-    permission_classes = [IsAdminOrReadOnly]
+    # Affectation classe+matière à un professeur : admin et surveillance générale peuvent
+    # affecter/modifier, seul l'admin peut retirer une affectation (voir ClassesPage.tsx →
+    # ClassDetailModal, section "Enseignements affectés").
+    permission_classes = [IsAdminOrSurveillanceReadWriteNoDelete]
     filterset_fields = ["classe", "matiere", "enseignant"]
 
     def get_queryset(self):

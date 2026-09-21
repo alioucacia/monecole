@@ -24,7 +24,13 @@ export default function DashboardPage() {
       setLoading(false);
       return;
     }
-    dashboardApi.get().then(({ data }) => setData(data)).finally(() => setLoading(false));
+    const charger = () => dashboardApi.get().then(({ data }) => setData(data));
+    charger().finally(() => setLoading(false));
+    // Auto-refresh : les chiffres (effectifs, impayés, présences du jour...) peuvent changer
+    // pendant que la page reste ouverte (accueil, salle des profs...) — revérifiés en arrière-plan
+    // sans redéclencher le spinner de chargement initial (`loading` n'est pas retouché ici).
+    const intervalId = setInterval(charger, 60_000);
+    return () => clearInterval(intervalId);
   }, [user]);
 
   if (user?.role === "superadmin") return <Navigate to="/ecoles" replace />;

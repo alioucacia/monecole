@@ -36,9 +36,9 @@ export default function ClassesPage() {
   const confirmer = useConfirm();
   const isAdmin = user?.role === "admin";
   // Le Surveillant Général peut créer/modifier une classe (nom, niveau, prof principal...) mais
-  // pas la supprimer — voir IsAdminOrSurveillanceReadWriteNoDelete côté backend. L'affectation
-  // matière/enseignant dans le détail d'une classe (ClassDetailModal) reste admin uniquement :
-  // c'est un autre endpoint (EnseignementViewSet), resté sur IsAdminOrReadOnly.
+  // pas la supprimer — voir IsAdminOrSurveillanceReadWriteNoDelete côté backend. Même règle pour
+  // l'affectation matière/enseignant dans le détail d'une classe (ClassDetailModal ci-dessous) :
+  // EnseignementViewSet utilise la même permission (affecter oui, retirer non pour le surveillant).
   const peutModifier = isAdmin || user?.role === "surveillance";
   const [annees, setAnnees] = useState<AnneeScolaire[]>([]);
   const [teachers, setTeachers] = useState<EnseignantProfile[]>([]);
@@ -221,15 +221,15 @@ export default function ClassesPage() {
       </Modal>
 
       {detailClasse && (
-        <ClassDetailModal classe={detailClasse} isAdmin={isAdmin} onClose={() => setDetailClasse(null)} teachers={teachers} />
+        <ClassDetailModal classe={detailClasse} isAdmin={isAdmin} peutModifier={peutModifier} onClose={() => setDetailClasse(null)} teachers={teachers} />
       )}
     </div>
   );
 }
 
 function ClassDetailModal({
-  classe, isAdmin, onClose, teachers,
-}: { classe: Classe; isAdmin: boolean; onClose: () => void; teachers: EnseignantProfile[] }) {
+  classe, isAdmin, peutModifier, onClose, teachers,
+}: { classe: Classe; isAdmin: boolean; peutModifier: boolean; onClose: () => void; teachers: EnseignantProfile[] }) {
   const [matieres, setMatieres] = useState<Matiere[]>([]);
   const [enseignements, setEnseignements] = useState<Enseignement[]>([]);
   const [eleves, setEleves] = useState<EleveProfile[]>([]);
@@ -282,7 +282,7 @@ function ClassDetailModal({
                 </li>
               ))}
             </ul>
-            {isAdmin && (
+            {peutModifier && (
               <div className="flex gap-2 mt-3">
                 <Select value={newMatiere} onChange={(e) => setNewMatiere(e.target.value)} className="flex-1">
                   <option value="">Matière…</option>

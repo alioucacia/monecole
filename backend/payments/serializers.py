@@ -64,16 +64,24 @@ class PaiementSerializer(serializers.ModelSerializer):
             return attrs
         mois = attrs.get("mois", getattr(self.instance, "mois", None))
         periode = attrs.get("periode", getattr(self.instance, "periode", None))
+        montant = attrs.get("montant", getattr(self.instance, "montant", None))
         if periode and periode.annee_scolaire_id != frais.annee_scolaire_id:
             raise serializers.ValidationError({"periode": "Cette tranche n'appartient pas à l'année scolaire de ce frais."})
 
         # 1) Mensuel : un mois déjà intégralement payé pour ce frais ne peut plus recevoir de
-        #    versement supplémentaire (le montant dû tient compte de la réduction — voir
-        #    Frais.montant_du).
+        #    versement supplémentaire, et un versement ne peut pas dépasser ce qu'il reste à
+        #    payer pour CE mois précis (le montant dû tient compte de la réduction — voir
+        #    Frais.montant_du). `restant` exclut le paiement en cours d'édition le cas échéant
+        #    (voir `_deja_verse`), donc reste correct aussi bien en création qu'en modification.
         if mois and frais.type_frais.est_mensuel:
-            if frais.montant_du > 0 and self._deja_verse(frais, mois=mois) >= frais.montant_du:
+            restant = frais.montant_du - self._deja_verse(frais, mois=mois)
+            if frais.montant_du > 0 and restant <= 0:
                 raise serializers.ValidationError({
                     "mois": f"Le mois {mois.strftime('%m/%Y')} est déjà intégralement payé pour ce frais."
+                })
+            if montant is not None and montant > restant:
+                raise serializers.ValidationError({
+                    "montant": f"Le montant dépasse ce qu'il reste à payer pour {mois.strftime('%m/%Y')} ({restant} GNF)."
                 })
             return attrs
 
@@ -81,9 +89,14 @@ class PaiementSerializer(serializers.ModelSerializer):
         #    que par mois — `Frais.montant` représente le montant D'UNE tranche (comme il
         #    représente celui D'UN mois pour un frais mensuel), pas le total de l'année.
         if periode and frais.type_frais.periodicite == TypeFrais.Periodicite.TRIMESTRIEL:
-            if frais.montant_du > 0 and self._deja_verse(frais, periode=periode) >= frais.montant_du:
+            restant = frais.montant_du - self._deja_verse(frais, periode=periode)
+            if frais.montant_du > 0 and restant <= 0:
                 raise serializers.ValidationError({
                     "periode": f"{periode.nom} est déjà intégralement payée pour ce frais."
+                })
+            if montant is not None and montant > restant:
+                raise serializers.ValidationError({
+                    "montant": f"Le montant dépasse ce qu'il reste à payer pour {periode.nom} ({restant} GNF)."
                 })
             return attrs
 
@@ -91,6 +104,10 @@ class PaiementSerializer(serializers.ModelSerializer):
         #    dans son ensemble ne doit pas recevoir de paiement au-delà de son solde restant.
         if frais.solde <= 0:
             raise serializers.ValidationError({"montant": "Ce frais est déjà intégralement payé."})
+        if montant is not None and montant > frais.solde:
+            raise serializers.ValidationError({
+                "montant": f"Le montant dépasse le solde restant ({frais.solde} GNF)."
+            })
         return attrs
 
 
