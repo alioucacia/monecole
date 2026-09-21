@@ -138,6 +138,10 @@ export default function PaymentsPage() {
   const confirmer = useConfirm();
   const { user } = useAuth();
   const peutGerer = user?.role === "admin" || user?.role === "comptabilite";
+  // Import Excel de frais/paiements historiques : admin uniquement (même choix que l'import
+  // Excel des élèves, StudentsPage.tsx — une opération de migration en masse plus sensible
+  // qu'un encaissement au quotidien, voir IsAdmin sur FraisViewSet.import_excel côté backend).
+  const isAdmin = user?.role === "admin";
 
   const [types, setTypes] = useState<TypeFrais[]>([]);
   const [annees, setAnnees] = useState<AnneeScolaire[]>([]);
@@ -154,6 +158,10 @@ export default function PaymentsPage() {
   const [fraisForm, setFraisForm] = useState(emptyFraisForm);
   const [fraisError, setFraisError] = useState("");
   const [fraisSaving, setFraisSaving] = useState(false);
+  const [importModalOpen, setImportModalOpen] = useState(false);
+  const [importing, setImporting] = useState(false);
+  const [importRapport, setImportRapport] = useState<{ frais_crees: number; paiements_crees: number; total_lignes: number; erreurs: { ligne: number; message: string }[] } | null>(null);
+  const [importError, setImportError] = useState("");
   // Cycle/Classe : filtrent uniquement la liste déroulante "Élève" ci-dessous (pas envoyés à
   // l'API) — un grand établissement peut avoir des centaines d'élèves, difficiles à retrouver
   // dans une seule liste à plat sans pouvoir d'abord restreindre par classe.
@@ -345,6 +353,27 @@ export default function PaymentsPage() {
     }
   };
 
+  const handleImportFraisFile = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const fichier = e.target.files?.[0];
+    e.target.value = "";
+    if (!fichier) return;
+    setImporting(true);
+    setImportRapport(null);
+    setImportError("");
+    try {
+      const { data } = await fraisApi.importExcel(fichier);
+      setImportRapport(data);
+      if (data.frais_crees > 0 || data.paiements_crees > 0) {
+        reload();
+        loadSummary();
+      }
+    } catch (err) {
+      setImportError(extractErrorMessage(err));
+    } finally {
+      setImporting(false);
+    }
+  };
+
   const openPaiementModal = (frais: Frais) => {
     setPaiementTarget(frais);
     setPaiementForm({ ...emptyPaiementForm, montant: frais.solde });
@@ -470,6 +499,11 @@ export default function PaymentsPage() {
               <Button variant="secondary">💰 Tarifs par classe</Button>
             </Link>
             <Button variant="secondary" onClick={openTypesModal}>⚙️ Types de frais</Button>
+            {isAdmin && (
+              <Button variant="secondary" onClick={() => { setImportRapport(null); setImportError(""); setImportModalOpen(true); }}>
+                📥 Importer Excel
+              </Button>
+            )}
             <Button onClick={openFraisModal}>+ Nouveau frais</Button>
           </div>
         ) : undefined}
@@ -917,6 +951,55 @@ export default function PaymentsPage() {
               <Button type="submit" disabled={typeSaving}>{typeSaving ? "Enregistrement…" : typeEditTarget ? "Mettre à jour" : "Ajouter"}</Button>
             </div>
           </form>
+        </div>
+      </Modal>
+
+      <Modal open={importModalOpen} onClose={() => setImportModalOpen(false)} title="Importer des frais/paiements depuis Excel">
+        <div className="space-y-4">
+          <p className="text-sm text-slate-500">
+            Pour reprendre l'historique d'un autre logiciel sans tout ressaisir : remplissez le modèle (une ligne par
+            frais, avec le paiement déjà versé s'il y en a un — plusieurs lignes pour un même élève/type/année se
+            rattachent au même frais), puis importez-le ici. Les élèves, types de frais et années scolaires doivent
+            déjà exister sur le site. Chaque ligne est traitée indépendamment : les lignes en erreur sont listées
+            ci-dessous pour correction.
+          </p>
+
+          <Button variant="secondary" onClick={() => fraisApi.importExcelModele("modele_import_frais_paiements.xlsx")}>
+            ⬇️ Télécharger le modèle Excel
+          </Button>
+
+          <label className="block">
+            <span className="block text-sm font-semibold text-slate-600 mb-1.5">Fichier rempli (.xlsx)</span>
+            <input
+              type="file" accept=".xlsx" onChange={handleImportFraisFile} disabled={importing}
+              className="text-sm text-slate-500 file:mr-3 file:py-1.5 file:px-3 file:rounded-full file:border-0 file:text-xs file:font-semibold file:bg-brand-50 file:text-brand-700 hover:file:bg-brand-100"
+            />
+          </label>
+
+          {importing && <div className="flex justify-center py-4"><Spinner /></div>}
+
+          {importError && <p className="text-sm text-rose-600 bg-rose-50 border border-rose-100 rounded-xl px-3.5 py-2.5">{importError}</p>}
+
+          {importRapport && (
+            <div className="space-y-2">
+              <p className="text-sm font-semibold text-ink-900">
+                {importRapport.frais_crees} frais et {importRapport.paiements_crees} paiement{importRapport.paiements_crees > 1 ? "s" : ""} importé{importRapport.paiements_crees > 1 ? "s" : ""} sur {importRapport.total_lignes} ligne{importRapport.total_lignes > 1 ? "s" : ""}.
+              </p>
+              {importRapport.erreurs.length > 0 && (
+                <div className="max-h-48 overflow-y-auto rounded-xl border border-rose-100 bg-rose-50 divide-y divide-rose-100">
+                  {importRapport.erreurs.map((err, i) => (
+                    <p key={i} className="px-3.5 py-2 text-xs text-rose-700">
+                      <strong>Ligne {err.ligne}</strong> — {err.message}
+                    </p>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
+
+          <div className="flex justify-end">
+            <Button type="button" variant="secondary" onClick={() => setImportModalOpen(false)}>Fermer</Button>
+          </div>
         </div>
       </Modal>
     </div>

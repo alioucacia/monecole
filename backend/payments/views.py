@@ -1,8 +1,10 @@
 import csv
-from datetime import date
-from decimal import Decimal
+from datetime import date, datetime
+from decimal import Decimal, InvalidOperation
 from io import BytesIO
 
+import openpyxl
+from openpyxl.utils import get_column_letter
 from django.db.models import ProtectedError, Sum
 from django.http import HttpResponse
 from django.shortcuts import get_object_or_404
@@ -437,6 +439,204 @@ class FraisViewSet(viewsets.ModelViewSet):
                 "(historique de paiements). Seul un frais impayé peut être supprimé."
             )
         instance.delete()
+
+    @action(detail=False, methods=["get"], url_path="import-excel-modele", permission_classes=[IsAdmin])
+    def import_excel_modele(self, request):
+        """Modèle Excel (.xlsx) à remplir pour l'import en masse de frais/paiements historiques
+        (reprise de données depuis un autre logiciel de gestion scolaire) — colonnes attendues
+        par `import_excel` ci-dessous."""
+        classeur = openpyxl.Workbook()
+        feuille = classeur.active
+        feuille.title = "Frais et paiements"
+        entetes = [
+            "Matricule élève*", "Type de frais*", "Année scolaire*", "Montant du frais (GNF)*",
+            "Date d'échéance (JJ/MM/AAAA)", "Montant déjà payé (GNF)", "Date du paiement (JJ/MM/AAAA)",
+            "Mode de paiement (especes/cheque/virement/mobile_money)", "Mois couvert (MM/AAAA)", "Référence",
+        ]
+        feuille.append(entetes)
+        feuille.append([
+            "DI2401", "Mensualité", "2024-2025", "500000", "05/10/2024",
+            "500000", "03/10/2024", "especes", "10/2024", "",
+        ])
+        for i, entete in enumerate(entetes, start=1):
+            feuille.column_dimensions[get_column_letter(i)].width = max(len(entete) * 0.9, 18)
+
+        buffer = BytesIO()
+        classeur.save(buffer)
+        response = HttpResponse(
+            buffer.getvalue(),
+            content_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        )
+        response["Content-Disposition"] = 'attachment; filename="modele_import_frais_paiements.xlsx"'
+        return response
+
+    @action(detail=False, methods=["post"], url_path="import-excel", permission_classes=[IsAdmin])
+    def import_excel(self, request):
+        """Import en masse de frais et de leur historique de paiement depuis un fichier Excel
+        (.xlsx, voir `import_excel_modele` pour le format attendu) — pensé pour reprendre les
+        données d'un autre logiciel de gestion scolaire sans tout ressaisir à la main.
+
+        Une ligne = un frais (créé s'il n'existe pas encore pour cet élève/type/année, sinon
+        réutilisé) + optionnellement UN paiement historique dessus. Pour un frais réglé en
+        plusieurs fois par le passé, ajouter une ligne par versement avec le même élève/type/
+        année : elles se rattachent toutes au même frais plutôt que d'en recréer un à chaque fois.
+
+        `Paiement.date_paiement` est `auto_now_add` (toujours "aujourd'hui" à la création, voir
+        Paiement.save) : impossible d'y écrire la vraie date historique via un simple `.save()`
+        — d'où le correctif via `.update()` juste après (le seul moyen de contourner `auto_now_add`).
+
+        Ne s'arrête jamais à la première erreur : chaque ligne est traitée indépendamment, le
+        rapport final liste les lignes créées et celles en échec avec leur motif, pour corriger
+        et réimporter seulement les lignes en erreur (même logique que
+        `EleveProfileViewSet.import_excel`)."""
+        from academics.models import AnneeScolaire
+        from people.models import EleveProfile
+
+        fichier = request.FILES.get("fichier")
+        if not fichier:
+            raise ValidationError("Le paramètre 'fichier' (fichier .xlsx) est requis.")
+        try:
+            classeur = openpyxl.load_workbook(fichier, data_only=True)
+        except Exception:
+            raise ValidationError("Fichier illisible — vérifiez qu'il s'agit bien d'un fichier Excel (.xlsx) valide.")
+        feuille = classeur.active
+
+        ecole_id = request.user.ecole_id
+        eleves_par_matricule = {
+            e.matricule.strip().lower(): e
+            for e in EleveProfile.objects.filter(user__ecole_id=ecole_id).select_related("user")
+        }
+        types_par_nom = {t.nom.strip().lower(): t for t in TypeFrais.objects.filter(ecole_id=ecole_id)}
+        annees_par_libelle = {a.libelle.strip().lower(): a for a in AnneeScolaire.objects.filter(ecole_id=ecole_id)}
+        modes_valides = {valeur for valeur, _ in Paiement.ModePaiement.choices}
+
+        def parse_date(valeur):
+            """(date, message_erreur) — message_erreur non None seulement si `valeur` est
+            renseignée mais illisible ; une valeur vide renvoie (None, None), pas une erreur."""
+            if not valeur:
+                return None, None
+            if hasattr(valeur, "date"):
+                return valeur.date(), None
+            try:
+                return datetime.strptime(str(valeur).strip(), "%d/%m/%Y").date(), None
+            except ValueError:
+                return None, f"« {valeur} » (format attendu JJ/MM/AAAA)"
+
+        def parse_montant(valeur):
+            if valeur in (None, ""):
+                return None
+            try:
+                montant = Decimal(str(valeur).strip().replace(" ", "").replace(",", "."))
+                return montant if montant > 0 else None
+            except InvalidOperation:
+                return None
+
+        lignes = list(feuille.iter_rows(min_row=2, values_only=True))
+        frais_crees, paiements_crees = 0, 0
+        erreurs = []
+
+        for num_ligne, ligne in enumerate(lignes, start=2):
+            if not ligne or all(valeur in (None, "") for valeur in ligne):
+                continue  # ligne vide (souvent en fin de feuille) — ignorée silencieusement
+
+            valeurs = (list(ligne) + [None] * 10)[:10]
+            (matricule, type_nom, annee_libelle, montant_frais, echeance_brute,
+             montant_paye, date_paiement_brute, mode_paiement, mois_brut, reference) = valeurs
+
+            eleve = eleves_par_matricule.get(str(matricule or "").strip().lower())
+            if not eleve:
+                erreurs.append({"ligne": num_ligne, "message": f"Élève introuvable pour le matricule « {matricule} »."})
+                continue
+
+            type_frais = types_par_nom.get(str(type_nom or "").strip().lower())
+            if not type_frais:
+                erreurs.append({
+                    "ligne": num_ligne,
+                    "message": f"Type de frais « {type_nom} » introuvable — créez-le d'abord dans Paiements → ⚙️ Types de frais.",
+                })
+                continue
+
+            annee = annees_par_libelle.get(str(annee_libelle or "").strip().lower())
+            if not annee:
+                erreurs.append({
+                    "ligne": num_ligne,
+                    "message": f"Année scolaire « {annee_libelle} » introuvable — créez-la d'abord dans Paramètres de l'école.",
+                })
+                continue
+
+            montant = parse_montant(montant_frais)
+            if montant is None:
+                erreurs.append({"ligne": num_ligne, "message": f"Montant du frais invalide : « {montant_frais} »."})
+                continue
+
+            echeance, err = parse_date(echeance_brute)
+            if err:
+                erreurs.append({"ligne": num_ligne, "message": f"Date d'échéance invalide : {err}"})
+                continue
+            echeance = echeance or annee.date_fin
+
+            frais, cree = Frais.objects.get_or_create(
+                eleve=eleve, type_frais=type_frais, annee_scolaire=annee,
+                defaults={"montant": montant, "date_echeance": echeance},
+            )
+            if cree:
+                frais_crees += 1
+
+            montant_verse = parse_montant(montant_paye)
+            if montant_verse is None:
+                continue  # ligne "frais seul", sans paiement historique à enregistrer
+
+            date_versement, err = parse_date(date_paiement_brute)
+            if err:
+                erreurs.append({"ligne": num_ligne, "message": f"Date du paiement invalide : {err}"})
+                continue
+            date_versement = date_versement or echeance
+
+            mode = str(mode_paiement or "").strip().lower()
+            if mode not in modes_valides:
+                mode = Paiement.ModePaiement.ESPECES
+
+            mois = None
+            if mois_brut:
+                try:
+                    mois = (
+                        mois_brut.date().replace(day=1) if hasattr(mois_brut, "date")
+                        else datetime.strptime(str(mois_brut).strip(), "%m/%Y").date().replace(day=1)
+                    )
+                except ValueError:
+                    erreurs.append({"ligne": num_ligne, "message": f"Mois couvert invalide : « {mois_brut} » (format attendu MM/AAAA)."})
+                    continue
+
+            # Passe par PaiementSerializer (pas une création ORM directe) pour bénéficier des
+            # mêmes garde-fous qu'un encaissement normal (pas de double paiement sur un mois/une
+            # tranche déjà soldé·e, pas de dépassement du solde restant) — une ligne qui les
+            # viole (ex: total historique incohérent) est signalée comme erreur plutôt
+            # qu'importée telle quelle.
+            serializer = PaiementSerializer(data={
+                "frais": frais.id, "montant": str(montant_verse), "mode_paiement": mode,
+                "reference": str(reference or "").strip(), "mois": mois.isoformat() if mois else None,
+            })
+            if not serializer.is_valid():
+                premiere = next(iter(serializer.errors.values()))
+                erreurs.append({"ligne": num_ligne, "message": str(premiere[0] if isinstance(premiere, list) else premiere)})
+                continue
+            paiement = serializer.save(enregistre_par=request.user)
+            Paiement.objects.filter(pk=paiement.pk).update(date_paiement=date_versement)
+            paiements_crees += 1
+
+            # Même gel de réduction qu'un paiement normal (voir PaiementViewSet.perform_create) —
+            # sans ce correctif, un import historique laisserait `facteur_applique` à `None`
+            # indéfiniment, et la réduction COURANTE de l'élève s'appliquerait rétroactivement à
+            # un frais déjà soldé dans l'ancien logiciel.
+            facteur_actuel = frais._facteur_reduction_courant()
+            if frais.facteur_applique is None and facteur_actuel is not None:
+                frais.facteur_applique = facteur_actuel
+                frais.save(update_fields=["facteur_applique"])
+
+        return Response({
+            "frais_crees": frais_crees, "paiements_crees": paiements_crees,
+            "erreurs": erreurs, "total_lignes": len(lignes),
+        })
 
     @action(detail=False, methods=["get"], url_path="suivi-mensuel")
     def suivi_mensuel(self, request):

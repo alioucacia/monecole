@@ -276,7 +276,11 @@ class EleveProfileViewSet(viewsets.ModelViewSet):
     def reinscription(self, request):
         """Réinscrit en masse une sélection d'élèves dans une classe (généralement l'année
         suivante), avec création optionnelle d'un frais de réinscription pour chacun."""
-        from payments.models import Frais, TarifClasse, TypeFrais  # import différé pour éviter une dépendance circulaire
+        # Imports différés pour éviter une dépendance circulaire (grades.views importe déjà
+        # people.views — voir plus bas — donc l'inverse au niveau module créerait un cycle).
+        from payments.models import Frais, TarifClasse, TypeFrais
+        from grades.models import Periode
+        from grades.views import _decision_admission, _matieres_moyennes, _moyenne_generale
 
         serializer = ReinscriptionSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
@@ -290,9 +294,36 @@ class EleveProfileViewSet(viewsets.ModelViewSet):
 
         eleves = list(EleveProfile.objects.filter(
             pk__in=payload["eleves"], user__ecole_id=request.user.ecole_id, actif=True,
-        ))
+        ).select_related("classe", "classe__annee_scolaire", "user"))
         if len(eleves) != len(set(payload["eleves"])):
             raise ValidationError("Un ou plusieurs élèves sont introuvables ou déjà inactifs.")
+
+        # Passage en classe supérieure (niveau différent de la classe ACTUELLE de l'élève, avant
+        # réinscription) interdit à un élève qui n'a pas sa moyenne annuelle (voir
+        # `_decision_admission`/`ParametresEcole.moyenne_admission`) — un même niveau (redoublement,
+        # ou simple déplacement latéral entre classes du même niveau) reste toujours permis, quelle
+        # que soit la moyenne. `Classe.niveau` est un texte libre (pas de rang numérique dans le
+        # modèle) : on ne peut donc pas distinguer "plus haut" de "plus bas", mais en pratique une
+        # réinscription vers un AUTRE niveau ne se produit jamais vers un niveau inférieur — d'où
+        # ce raccourci (niveau différent = passage), plutôt qu'un vrai calcul de rang.
+        refuses = []
+        for eleve in eleves:
+            if not eleve.classe or eleve.classe.niveau == classe_destination.niveau:
+                continue
+            periodes = list(Periode.objects.filter(annee_scolaire=eleve.classe.annee_scolaire))
+            moyenne = _moyenne_generale(_matieres_moyennes(eleve, periodes))
+            if _decision_admission(moyenne, request.user.ecole) == "redouble":
+                refuses.append(eleve)
+        if refuses:
+            noms = ", ".join(f"{e.user.first_name} {e.user.last_name}" for e in refuses)
+            if len(refuses) == 1:
+                raise ValidationError(
+                    f"Impossible de réinscrire {noms} dans une classe supérieure, car il n'a pas eu sa moyenne."
+                )
+            raise ValidationError(
+                f"Impossible de réinscrire ces élèves dans une classe supérieure, car ils n'ont pas eu leur "
+                f"moyenne : {noms}."
+            )
 
         # Un élève déjà dans classe_destination (rare, mais possible) n'occupe pas de place
         # supplémentaire — seuls les nouveaux arrivants comptent contre l'effectif maximum.

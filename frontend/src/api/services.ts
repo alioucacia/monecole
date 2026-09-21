@@ -490,6 +490,18 @@ export const fraisApi = {
   remove: (id: number) => api.delete(`/payments/frais/${id}/`),
   genererPourClasse: (data: { classe: number; annee_scolaire: number; date_echeance: string; types_frais?: number[] }) =>
     api.post<{ crees: number; classe: string; eleves: number }>("/payments/frais/generer-pour-classe/", data),
+  /** Modèle Excel (.xlsx) à remplir pour l'import en masse de frais/paiements historiques (reprise
+   * de données depuis un autre logiciel) — voir importExcel. */
+  importExcelModele: (filename: string) => downloadFile("/payments/frais/import-excel-modele/", {}, filename),
+  /** Import en masse de frais + paiements historiques depuis un fichier Excel (.xlsx) — chaque
+   * ligne est traitée indépendamment, la réponse liste les lignes en échec avec leur motif. */
+  importExcel: (fichier: File) => {
+    const form = new FormData();
+    form.append("fichier", fichier);
+    return api.post<{ frais_crees: number; paiements_crees: number; total_lignes: number; erreurs: { ligne: number; message: string }[] }>(
+      "/payments/frais/import-excel/", form, { headers: { "Content-Type": "multipart/form-data" } }
+    );
+  },
   summary: (params?: Record<string, unknown>) => api.get<Record<string, unknown>>("/payments/frais/summary/", { params }),
   exportCsv: (params?: Record<string, unknown>) => downloadFile("/payments/frais/export/", params || {}, "frais_paiements.csv"),
   /** Fiche de paiement (PDF) d'un élève pour un frais donné — nécessite qu'un paiement ait déjà été enregistré. */

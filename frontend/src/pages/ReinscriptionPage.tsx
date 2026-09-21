@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 
-import { classesApi, elevesApi, typesFraisApi, unwrapList } from "../api/services";
+import { classesApi, elevesApi, resultatsApi, typesFraisApi, unwrapList } from "../api/services";
 import { extractBlobErrorMessage, extractErrorMessage } from "../api/client";
 import { Badge, Button, EmptyState, Input, PageHeader, Select, Spinner } from "../components/ui";
 import { ClasseOptions } from "../components/CycleSelect";
@@ -26,6 +26,12 @@ export default function ReinscriptionPage() {
   const [inactifs, setInactifs] = useState<EleveProfile[]>([]);
   const [selected, setSelected] = useState<Record<number, boolean>>({});
   const [loading, setLoading] = useState(false);
+  // Décision d'admission annuelle de chaque élève de la classe source (voir
+  // grades._decision_admission côté backend) — sert uniquement à avertir visuellement d'un
+  // élève qui n'a pas sa moyenne AVANT de cliquer sur "Réinscrire" : le serveur reste la seule
+  // source de vérité qui bloque réellement un passage en classe supérieure (voir
+  // EleveProfileViewSet.reinscription), ce badge n'est qu'un repère.
+  const [decisions, setDecisions] = useState<Record<number, "admis" | "repeche" | "redouble" | null>>({});
 
   // Recherche des élèves DÉJÀ réinscrits dans une classe (voir EleveProfile.statut_inscription,
   // mis à "reinscription" par handleReinscrire/l'action serveur `reinscription`) — section
@@ -67,6 +73,7 @@ export default function ReinscriptionPage() {
     if (!classeSourceId) {
       setEleves([]);
       setInactifs([]);
+      setDecisions({});
       return;
     }
     setLoading(true);
@@ -79,6 +86,12 @@ export default function ReinscriptionPage() {
       setInactifs(unwrapList(inactifsRes.data));
       setSelected(Object.fromEntries(actifs.map((el) => [el.id, true])));
     }).finally(() => setLoading(false));
+
+    const classeSource = classes.find((c) => c.id === Number(classeSourceId));
+    if (!classeSource) { setDecisions({}); return; }
+    resultatsApi.get(classeSource.id, { annee_scolaire: classeSource.annee_scolaire })
+      .then(({ data }) => setDecisions(Object.fromEntries(data.resultats.map((r) => [r.eleve_id, r.decision]))))
+      .catch(() => setDecisions({}));
   };
 
   useEffect(loadEleves, [classeSourceId]);
@@ -166,6 +179,12 @@ export default function ReinscriptionPage() {
   };
 
   const nbSelectionnes = Object.values(selected).filter(Boolean).length;
+  // Même raccourci que côté backend (voir EleveProfileViewSet.reinscription) : un niveau
+  // différent entre classe source et classe de destination est traité comme un passage en
+  // classe supérieure (redoublement/déplacement latéral = même niveau, toujours permis).
+  const classeSourceNiveau = classes.find((c) => c.id === Number(classeSourceId))?.niveau;
+  const classeDestNiveau = classes.find((c) => c.id === Number(classeDestId))?.niveau;
+  const estPassageNiveau = !!classeSourceNiveau && !!classeDestNiveau && classeSourceNiveau !== classeDestNiveau;
 
   return (
     <div>
@@ -249,6 +268,9 @@ export default function ReinscriptionPage() {
                   />
                   <span className="flex-1 text-sm font-medium text-slate-700">{el.user.first_name} {el.user.last_name}</span>
                   <span className="text-xs font-mono text-slate-400">{el.matricule}</span>
+                  {estPassageNiveau && decisions[el.id] === "redouble" && (
+                    <Badge color="rose">Moyenne insuffisante</Badge>
+                  )}
                   {el.statut_inscription === "reinscription" && (
                     <button
                       onClick={() => handleFicheReinscription(el)} disabled={ficheEnCours === el.id}
