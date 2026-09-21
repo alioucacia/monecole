@@ -1,13 +1,14 @@
 import { useEffect, useState, type FormEvent } from "react";
+import { Link } from "react-router-dom";
 
-import { usersApi } from "../api/services";
+import { elevesApi, unwrapList, usersApi } from "../api/services";
 import { extractErrorMessage } from "../api/client";
 import { Badge, Button, EmptyState, Input, Modal, PageHeader, Select, Spinner, Table } from "../components/ui";
 import { useAuth } from "../context/AuthContext";
 import { useConfirm } from "../context/ConfirmContext";
 import { useToast } from "../context/ToastContext";
 import { usePaginated } from "../hooks/usePaginated";
-import type { JournalUtilisateurEntry, Role, User } from "../types";
+import type { EleveProfile, JournalUtilisateurEntry, Role, User } from "../types";
 
 const ROLE_LABELS: Record<Role, string> = {
   superadmin: "Super Admin", admin: "Administrateur", directeur: "Directeur Général", teacher: "Enseignant", student: "Élève",
@@ -62,6 +63,12 @@ export default function ComptesEcolePage() {
   const [historiqueEntries, setHistoriqueEntries] = useState<JournalUtilisateurEntry[]>([]);
   const [historiqueLoading, setHistoriqueLoading] = useState(false);
   const [togglingId, setTogglingId] = useState<number | null>(null);
+
+  // Enfants rattachés à un compte parent (voir openEnfants) — accessible à l'admin ET à la
+  // comptabilité (lecture seule ici, comme le reste de cette page pour un non-admin).
+  const [enfantsTarget, setEnfantsTarget] = useState<User | null>(null);
+  const [enfantsListe, setEnfantsListe] = useState<EleveProfile[]>([]);
+  const [enfantsLoading, setEnfantsLoading] = useState(false);
 
   const { items, count, loading, hasNext, hasPrevious, goNext, goPrevious, reload } = usePaginated<User>(
     () => usersApi.list({
@@ -171,6 +178,16 @@ export default function ComptesEcolePage() {
     setHistoriqueTarget(u);
   };
 
+  const openEnfants = (u: User) => {
+    setEnfantsTarget(u);
+    setEnfantsListe([]);
+    setEnfantsLoading(true);
+    elevesApi.list({ parent: u.id, page_size: 100 })
+      .then(({ data }) => setEnfantsListe(unwrapList(data)))
+      .catch((err) => toast.error(extractErrorMessage(err)))
+      .finally(() => setEnfantsLoading(false));
+  };
+
   // Rafraîchissement automatique tant que la modale est ouverte (voir HISTORIQUE_REFRESH_MS) —
   // c'est le suivi « en temps réel » des mouvements d'un compte. Le premier chargement affiche
   // le spinner ; les rafraîchissements suivants remplacent la liste sans clignoter.
@@ -255,6 +272,11 @@ export default function ComptesEcolePage() {
                     <button onClick={() => openHistorique(u)} className="text-xs font-semibold text-brand-600 hover:underline whitespace-nowrap">
                       🕘 Historique
                     </button>
+                    {u.role === "parent" && (
+                      <button onClick={() => openEnfants(u)} className="text-xs font-semibold text-brand-600 hover:underline whitespace-nowrap">
+                        👶 Enfants
+                      </button>
+                    )}
                     {isAdmin && u.id !== moi?.id && (
                       <button
                         onClick={() => handleToggleActif(u)}
@@ -396,6 +418,41 @@ export default function ComptesEcolePage() {
             )}
             <div className="flex justify-end pt-2">
               <Button type="button" variant="secondary" onClick={() => setHistoriqueTarget(null)}>Fermer</Button>
+            </div>
+          </div>
+        )}
+      </Modal>
+
+      <Modal
+        open={!!enfantsTarget}
+        onClose={() => setEnfantsTarget(null)}
+        title={enfantsTarget ? `Enfants — ${enfantsTarget.full_name || enfantsTarget.username}` : "Enfants"}
+      >
+        {enfantsTarget && (
+          <div className="space-y-3">
+            {enfantsLoading ? (
+              <div className="flex justify-center py-10"><Spinner /></div>
+            ) : enfantsListe.length === 0 ? (
+              <p className="text-sm text-slate-400 py-6 text-center">Aucun élève rattaché à ce compte parent.</p>
+            ) : (
+              <ul className="divide-y divide-slate-100 -mx-1">
+                {enfantsListe.map((el) => (
+                  <li key={el.id} className="flex items-center justify-between gap-3 px-1 py-2.5">
+                    <div className="min-w-0">
+                      <p className="text-sm font-medium text-slate-700">{el.user.first_name} {el.user.last_name}</p>
+                      <p className="text-xs text-slate-400">
+                        {el.matricule} · {el.classe_nom || "Classe non assignée"}
+                      </p>
+                    </div>
+                    <Link to={`/eleves/${el.id}`} className="text-xs font-semibold text-brand-600 hover:underline whitespace-nowrap">
+                      👁️ Fiche
+                    </Link>
+                  </li>
+                ))}
+              </ul>
+            )}
+            <div className="flex justify-end pt-2">
+              <Button type="button" variant="secondary" onClick={() => setEnfantsTarget(null)}>Fermer</Button>
             </div>
           </div>
         )}

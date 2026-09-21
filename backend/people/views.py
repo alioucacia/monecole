@@ -67,7 +67,9 @@ class EleveProfileViewSet(viewsets.ModelViewSet):
     # mais pas le supprimer — voir IsAdminOrComptabiliteReadWriteNoDelete. Import Excel/export
     # CSV-PDF restent des actions séparées ci-dessous, toujours admin uniquement.
     permission_classes = [IsAdminOrComptabiliteReadWriteNoDelete]
-    filterset_fields = ["classe", "actif", "statut_inscription"]
+    # "parent" : permet de retrouver les enfants d'un compte parent donné (voir ComptesEcolePage.tsx
+    # → "Enfants") sans avoir à filtrer côté client sur la liste complète des élèves de l'école.
+    filterset_fields = ["classe", "actif", "statut_inscription", "parent"]
     search_fields = ["user__first_name", "user__last_name", "matricule"]
 
     def get_serializer_class(self):

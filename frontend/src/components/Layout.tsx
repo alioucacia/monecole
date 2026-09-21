@@ -101,7 +101,7 @@ const NAV_CATEGORIES: NavCategory[] = [
     items: [
       { to: "/personnel", label: "Ressources humaines", icon: "🧑‍💼", roles: ["admin", "directeur", "teacher", "comptabilite", "surveillance"] },
       { to: "/personnel-admin", label: "Personnel administratif", icon: "🗂️", roles: ["admin", "directeur"] },
-      { to: "/comptes-ecole", label: "Comptes de l'établissement", icon: "🔑", roles: ["admin", "directeur"] },
+      { to: "/comptes-ecole", label: "Comptes de l'établissement", icon: "🔑", roles: ["admin", "directeur", "comptabilite"] },
       { to: "/parametres-ecole", label: "Paramètres école", icon: "⚙️", roles: ["admin", "directeur"] },
     ],
   },
