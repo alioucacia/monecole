@@ -1,7 +1,7 @@
 import { useEffect, useState, type FormEvent } from "react";
 import { Link } from "react-router-dom";
 
-import { anneesApi, classesApi, elevesApi, fraisApi, paiementsApi, periodesApi, typesFraisApi, unwrapList } from "../api/services";
+import { anneesApi, classesApi, elevesApi, fraisApi, paiementsApi, periodesApi, tarifsClasseApi, typesFraisApi, unwrapList } from "../api/services";
 import { extractBlobErrorMessage, extractErrorMessage } from "../api/client";
 import { Badge, Button, EmptyState, Input, Modal, PageHeader, Select, Spinner, StatCard, Table } from "../components/ui";
 import { CycleSelect } from "../components/CycleSelect";
@@ -311,6 +311,27 @@ export default function PaymentsPage() {
   }, [fraisForm.annee_scolaire]);
 
   const typeFraisSelectionne = types.find((t) => t.id === Number(fraisForm.type_frais));
+
+  // Montant proposé pour "Nouveau frais" : reprend le tarif spécifique à la classe de l'élève
+  // choisi (voir Paiements → 💰 Tarifs par classe / TarifClasse) s'il y en a un pour ce type de
+  // frais + cette année scolaire, sinon le montant standard du type de frais. AVANT ce correctif,
+  // le montant proposé ici ignorait toujours les tarifs par classe (voir l'onChange de "Type de
+  // frais" ci-dessous, qui ne fait que reprendre `type.montant_standard` en attendant que cet
+  // effet le corrige) — un même type de frais paraissait donc coûter pareil dans toutes les
+  // classes, alors que le tarif par classe existait déjà bel et bien en base.
+  useEffect(() => {
+    if (!typeFraisSelectionne) return;
+    const eleve = eleves.find((e) => e.id === Number(fraisForm.eleve));
+    if (!eleve?.classe || !fraisForm.annee_scolaire) return;
+    tarifsClasseApi.list({
+      classe: eleve.classe, type_frais: typeFraisSelectionne.id, annee_scolaire: Number(fraisForm.annee_scolaire),
+    }).then(({ data }) => {
+      const tarif = unwrapList(data)[0];
+      const montant = tarif ? tarif.montant : typeFraisSelectionne.montant_standard;
+      setFraisForm((f) => (Number(f.type_frais) === typeFraisSelectionne.id ? { ...f, montant } : f));
+    }).catch(() => {});
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [fraisForm.type_frais, fraisForm.eleve, fraisForm.annee_scolaire]);
 
   const handleFraisSubmit = async (e: FormEvent) => {
     e.preventDefault();
