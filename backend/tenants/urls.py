@@ -10,9 +10,11 @@ from .views import (
     MonEcoleView,
     PaiementEcoleViewSet,
     ParametresPlateformeView,
+    PayerAbonnementDjomyView,
     PlanAbonnementViewSet,
     PlateformeBrandingView,
     RechercheGlobaleView,
+    VerifierPaiementDjomyView,
 )
 
 router = DefaultRouter()
@@ -25,6 +27,12 @@ router.register("modeles-message", ModeleMessageViewSet, basename="modele-messag
 
 urlpatterns = [
     path("mon-ecole/", MonEcoleView.as_view(), name="mon-ecole"),
+    path("mon-ecole/payer-abonnement/", PayerAbonnementDjomyView.as_view(), name="payer-abonnement-djomy"),
+    path(
+        "mon-ecole/transactions-djomy/<str:transaction_id>/verifier/",
+        VerifierPaiementDjomyView.as_view(),
+        name="verifier-paiement-djomy",
+    ),
     path("recherche-globale/", RechercheGlobaleView.as_view(), name="recherche-globale"),
     path("parametres-plateforme/", ParametresPlateformeView.as_view(), name="parametres-plateforme"),
     path("plateforme-branding/", PlateformeBrandingView.as_view(), name="plateforme-branding"),

@@ -15,7 +15,7 @@ from accounts.serializers import UserSerializer
 
 from .features import FONCTIONNALITES
 from .messages_templates import MODELES_MESSAGE
-from .models import Ecole, JournalActivite, ModeleMessage, ParametresPlateforme, PaiementEcole, PlanAbonnement
+from .models import Ecole, JournalActivite, ModeleMessage, ParametresPlateforme, PaiementEcole, PlanAbonnement, TransactionAbonnement
 from .serializers import (
     EcoleCreateSerializer,
     EcoleSerializer,
@@ -28,6 +28,7 @@ from .serializers import (
     PlanAbonnementSerializer,
     PlateformeBrandingSerializer,
     RechercheGlobaleResultSerializer,
+    TransactionAbonnementSerializer,
 )
 
 
@@ -449,6 +450,120 @@ class MonEcoleView(APIView):
         serializer.is_valid(raise_exception=True)
         serializer.save()
         return Response(serializer.data)
+
+
+class PayerAbonnementDjomyView(APIView):
+    """Permet à l'Administrateur d'une école d'initier en ligne le paiement de la période
+    d'abonnement actuellement due, via la passerelle Mobile Money Djomy — alternative en
+    self-service à l'encaissement manuel réservé au Super Admin (voir `PaiementEcoleViewSet`).
+    Ne crée PAS de `PaiementEcole` : la transaction reste « en attente » jusqu'à confirmation
+    (voir `VerifierPaiementDjomyView`), le paiement Djomy se terminant sur une page de paiement
+    externe (`redirectUrl`) et non de façon synchrone."""
+
+    permission_classes = [IsAdmin]
+
+    def post(self, request):
+        from rest_framework.exceptions import NotFound, ValidationError
+
+        from djomy import services as djomy_services
+
+        ecole = request.user.ecole
+        if ecole is None:
+            raise NotFound("Aucun établissement rattaché à ce compte.")
+
+        if ecole.statut_abonnement == "paye":
+            raise ValidationError("L'abonnement est déjà à jour — aucun paiement n'est dû actuellement.")
+
+        payer_number = (request.data.get("payer_number") or "").strip()
+        if not payer_number:
+            raise ValidationError({"payer_number": "Ce champ est requis."})
+
+        mois = ecole._mois_echeance_courante()
+        montant = ecole.abonnement_mensuel
+
+        try:
+            resultat = djomy_services.create_payment(
+                amount=float(montant),
+                payer_number=payer_number,
+                description=f"Abonnement {ecole.nom} — {mois:%m/%Y}",
+            )
+        except Exception as exc:  # noqa: BLE001 — erreur réseau/API Djomy, message renvoyé tel quel
+            return Response(
+                {"detail": f"Impossible d'initier le paiement Djomy : {exc}"},
+                status=status.HTTP_502_BAD_GATEWAY,
+            )
+
+        data = resultat.get("data", {})
+        transaction = TransactionAbonnement.objects.create(
+            ecole=ecole, mois=mois, montant=montant, payer_number=payer_number,
+            transaction_id=data["transactionId"], redirect_url=data.get("redirectUrl", ""),
+        )
+        return Response(TransactionAbonnementSerializer(transaction).data, status=status.HTTP_201_CREATED)
+
+
+class VerifierPaiementDjomyView(APIView):
+    """Interroge le statut réel d'une transaction Djomy auprès de leur API et, seulement si
+    elle est confirmée « réussie », crée le `PaiementEcole` correspondant — c'est le SEUL
+    déclencheur qui fait progresser `Ecole.statut_abonnement` suite à un paiement en ligne (voir
+    la docstring de `TransactionAbonnement`). Appelé en polling par le frontend après ouverture
+    de la page de paiement Djomy (`redirectUrl`)."""
+
+    permission_classes = [IsAdmin]
+
+    # Vocabulaire de statut Djomy non documenté publiquement (observé en sandbox : "CREATED") —
+    # on ne bascule à REUSSI/ECHOUE que sur une valeur explicitement reconnue parmi les plus
+    # probables, sinon la transaction reste EN_ATTENTE : jamais de faux positif qui débloquerait
+    # à tort l'accès d'une école qui n'a pas réellement payé.
+    STATUTS_REUSSIS = {"SUCCESS", "SUCCESSFUL", "COMPLETED", "PAID"}
+    STATUTS_ECHOUES = {"FAILED", "CANCELLED", "CANCELED", "EXPIRED", "ERROR", "REJECTED"}
+
+    def get(self, request, transaction_id):
+        from django.utils import timezone
+        from rest_framework.exceptions import NotFound
+
+        from djomy import services as djomy_services
+
+        ecole = request.user.ecole
+        transaction = TransactionAbonnement.objects.filter(ecole=ecole, transaction_id=transaction_id).first()
+        if transaction is None:
+            raise NotFound("Transaction introuvable.")
+
+        if transaction.statut != TransactionAbonnement.Statut.EN_ATTENTE:
+            return Response(TransactionAbonnementSerializer(transaction).data)
+
+        try:
+            data = djomy_services.get_payment_status(transaction_id)
+        except Exception as exc:  # noqa: BLE001 — erreur réseau/API Djomy, on retente au prochain polling
+            return Response(
+                {"detail": f"Impossible de vérifier le paiement Djomy : {exc}"},
+                status=status.HTTP_502_BAD_GATEWAY,
+            )
+
+        statut_djomy = (data.get("status") or "").upper()
+
+        if statut_djomy in self.STATUTS_REUSSIS:
+            paiement, _ = PaiementEcole.objects.get_or_create(
+                ecole=ecole, mois=transaction.mois,
+                defaults={
+                    "montant": transaction.montant,
+                    "mode_paiement": PaiementEcole.ModePaiement.MOBILE_MONEY,
+                    "reference": transaction.transaction_id,
+                },
+            )
+            transaction.statut = TransactionAbonnement.Statut.REUSSI
+            transaction.paiement = paiement
+            transaction.verifie_le = timezone.now()
+            transaction.save()
+            _journaliser(
+                request, JournalActivite.Action.PAIEMENT_ENREGISTRE, ecole,
+                f"{transaction.montant} GNF pour {transaction.mois:%m/%Y} (Djomy, {transaction.payer_number})",
+            )
+        elif statut_djomy in self.STATUTS_ECHOUES:
+            transaction.statut = TransactionAbonnement.Statut.ECHOUE
+            transaction.verifie_le = timezone.now()
+            transaction.save()
+
+        return Response(TransactionAbonnementSerializer(transaction).data)
 
 
 class ModeleMessageViewSet(viewsets.ModelViewSet):

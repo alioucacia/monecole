@@ -3,7 +3,10 @@ from rest_framework import serializers
 from core.validators import EXTENSIONS_IMAGE, TAILLE_MAX_IMAGE, valider_taille_fichier
 from .features import FONCTIONNALITES
 from .messages_templates import MODELES_MESSAGE
-from .models import Ecole, JournalActivite, ModeleMessage, ParametresEcole, ParametresPlateforme, PaiementEcole, PlanAbonnement
+from .models import (
+    Ecole, JournalActivite, ModeleMessage, ParametresEcole, ParametresPlateforme, PaiementEcole,
+    PlanAbonnement, TransactionAbonnement,
+)
 
 
 class PlanAbonnementSerializer(serializers.ModelSerializer):
@@ -90,6 +93,18 @@ class PaiementEcoleSerializer(serializers.ModelSerializer):
             "numero_facture", "enregistre_par", "enregistre_par_nom",
         ]
         read_only_fields = ["date_paiement", "numero_facture", "enregistre_par"]
+
+
+class TransactionAbonnementSerializer(serializers.ModelSerializer):
+    statut_display = serializers.CharField(source="get_statut_display", read_only=True)
+
+    class Meta:
+        model = TransactionAbonnement
+        fields = [
+            "id", "mois", "montant", "payer_number", "transaction_id", "redirect_url",
+            "statut", "statut_display", "cree_le", "verifie_le",
+        ]
+        read_only_fields = fields
 
 
 class EcoleSerializer(serializers.ModelSerializer):

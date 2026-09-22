@@ -1,12 +1,145 @@
 import { useEffect, useState, type FormEvent } from "react";
 
-import { anneesApi, modelesMessageApi, parametresEcoleApi, periodesApi, unwrapList } from "../api/services";
+import { abonnementDjomyApi, anneesApi, modelesMessageApi, parametresEcoleApi, periodesApi, unwrapList } from "../api/services";
 import { extractErrorMessage } from "../api/client";
-import { Badge, Button, Card, Input, PageHeader, Select, Spinner } from "../components/ui";
+import { Badge, Button, Card, Input, Modal, PageHeader, Select, Spinner } from "../components/ui";
 import { useAuth } from "../context/AuthContext";
 import { useConfirm } from "../context/ConfirmContext";
 import { useToast } from "../context/ToastContext";
-import type { AnneeScolaire, Ecole, ModeleMessage, Periode } from "../types";
+import type { AnneeScolaire, Ecole, ModeleMessage, Periode, TransactionAbonnement } from "../types";
+
+// Statuts pour lesquels un paiement est effectivement dû — masque le bouton quand l'abonnement
+// est déjà à jour ou suspendu (le Super Admin doit alors réactiver l'école lui-même).
+const STATUTS_ABONNEMENT_PAYABLES = new Set(["en_attente", "en_retard", "bloque"]);
+
+/** Paiement en ligne de l'abonnement (self-service) via la passerelle Mobile Money Djomy —
+ * initie une transaction (POST payer-abonnement), ouvre la page de paiement Djomy renvoyée
+ * (`redirect_url`) dans un nouvel onglet, puis vérifie périodiquement son statut jusqu'à
+ * confirmation : Djomy ne confirme jamais de façon synchrone (voir PayerAbonnementDjomyView
+ * côté backend), donc `onPaye` n'est appelé qu'une fois le paiement réellement confirmé. */
+function PayerAbonnementDjomySection({ ecole, onPaye }: { ecole: Ecole; onPaye: () => void }) {
+  const toast = useToast();
+  const [modalOpen, setModalOpen] = useState(false);
+  const [payerNumber, setPayerNumber] = useState("");
+  const [error, setError] = useState("");
+  const [initiating, setInitiating] = useState(false);
+  const [transaction, setTransaction] = useState<TransactionAbonnement | null>(null);
+  const [verifying, setVerifying] = useState(false);
+
+  useEffect(() => {
+    if (!transaction || transaction.statut !== "en_attente") return;
+    const interval = setInterval(async () => {
+      try {
+        const { data } = await abonnementDjomyApi.verifier(transaction.transaction_id);
+        setTransaction(data);
+        if (data.statut === "reussi") {
+          toast.success("Paiement confirmé — abonnement mis à jour.");
+          setModalOpen(false);
+          onPaye();
+        } else if (data.statut === "echoue") {
+          toast.error("Le paiement Djomy a échoué ou a été annulé.");
+        }
+      } catch {
+        // Erreur réseau/API ponctuelle — on retente simplement au prochain intervalle.
+      }
+    }, 5000);
+    return () => clearInterval(interval);
+  }, [transaction, toast, onPaye]);
+
+  const openModal = () => {
+    setPayerNumber("");
+    setError("");
+    setTransaction(null);
+    setModalOpen(true);
+  };
+
+  const handleSubmit = async (e: FormEvent) => {
+    e.preventDefault();
+    setInitiating(true);
+    setError("");
+    try {
+      const { data } = await abonnementDjomyApi.payer(payerNumber);
+      setTransaction(data);
+      if (data.redirect_url) window.open(data.redirect_url, "_blank", "noopener,noreferrer");
+    } catch (err) {
+      setError(extractErrorMessage(err));
+    } finally {
+      setInitiating(false);
+    }
+  };
+
+  const handleVerifierMaintenant = async () => {
+    if (!transaction) return;
+    setVerifying(true);
+    try {
+      const { data } = await abonnementDjomyApi.verifier(transaction.transaction_id);
+      setTransaction(data);
+      if (data.statut === "reussi") {
+        toast.success("Paiement confirmé — abonnement mis à jour.");
+        setModalOpen(false);
+        onPaye();
+      } else if (data.statut === "echoue") {
+        toast.error("Le paiement Djomy a échoué ou a été annulé.");
+      } else {
+        toast.info("Paiement toujours en attente de confirmation.");
+      }
+    } catch (err) {
+      toast.error(extractErrorMessage(err));
+    } finally {
+      setVerifying(false);
+    }
+  };
+
+  if (!STATUTS_ABONNEMENT_PAYABLES.has(ecole.statut_abonnement)) return null;
+
+  return (
+    <>
+      <Button type="button" variant="secondary" onClick={openModal} className="mt-3 w-full">
+        💳 Payer maintenant via Djomy
+      </Button>
+
+      <Modal open={modalOpen} onClose={() => setModalOpen(false)} title="Payer l'abonnement — Djomy">
+        {!transaction ? (
+          <form onSubmit={handleSubmit} className="space-y-4">
+            <p className="text-sm text-slate-500">
+              Montant à régler : <span className="font-semibold text-ink-900">{Number(ecole.abonnement_mensuel).toLocaleString("fr-FR")} GNF</span>
+            </p>
+            <Input
+              label="Numéro Mobile Money (payeur)" required placeholder="622000000"
+              value={payerNumber} onChange={(e) => setPayerNumber(e.target.value)}
+            />
+            {error && <p className="text-sm text-rose-600 bg-rose-50 border border-rose-100 rounded-xl px-3.5 py-2.5">{error}</p>}
+            <div className="flex justify-end gap-2">
+              <Button type="button" variant="secondary" onClick={() => setModalOpen(false)}>Annuler</Button>
+              <Button type="submit" disabled={initiating}>{initiating ? "Initialisation…" : "Payer"}</Button>
+            </div>
+          </form>
+        ) : (
+          <div className="space-y-4">
+            <p className="text-sm text-slate-600">
+              {transaction.statut === "en_attente" && "Une demande de paiement a été envoyée. Finalisez-la sur la page Djomy ouverte dans un nouvel onglet, puis revenez ici — la vérification se fait automatiquement."}
+              {transaction.statut === "reussi" && "✅ Paiement confirmé."}
+              {transaction.statut === "echoue" && "❌ Le paiement a échoué ou a été annulé."}
+            </p>
+            {transaction.redirect_url && transaction.statut === "en_attente" && (
+              <a href={transaction.redirect_url} target="_blank" rel="noopener noreferrer" className="text-sm font-semibold text-brand-600 hover:underline">
+                🔗 Rouvrir la page de paiement Djomy
+              </a>
+            )}
+            <div className="flex justify-end gap-2">
+              <Button type="button" variant="secondary" onClick={() => setModalOpen(false)}>Fermer</Button>
+              {transaction.statut === "en_attente" && (
+                <Button type="button" onClick={handleVerifierMaintenant} disabled={verifying}>
+                  {verifying ? "Vérification…" : "🔄 Vérifier le paiement"}
+                </Button>
+              )}
+            </div>
+          </div>
+        )}
+      </Modal>
+    </>
+  );
+}
 
 function Textarea({ label, value, onChange, rows = 3 }: { label: string; value: string; onChange: (v: string) => void; rows?: number }) {
   return (
@@ -582,6 +715,7 @@ export default function ParametresEcolePage() {
                 <p className="mt-2 text-rose-600 font-semibold">🚫 Accès bloqué — contactez l'administrateur de la plateforme pour régulariser.</p>
               )}
               <p className="mt-2">Ces champs sont gérés par le Super Admin de la plateforme.</p>
+              <PayerAbonnementDjomySection ecole={ecole} onPaye={load} />
             </div>
           )}
         </Card>

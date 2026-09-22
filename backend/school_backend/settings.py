@@ -3,12 +3,16 @@ Configuration Django pour le projet school_backend.
 """
 from datetime import time, timedelta
 from pathlib import Path
+import os
 
 import dj_database_url
 from decouple import Csv, config
 from django.core.exceptions import ImproperlyConfigured
+from dotenv import load_dotenv
 
 BASE_DIR = Path(__file__).resolve().parent.parent
+load_dotenv(BASE_DIR / ".env")
+
 
 DEBUG = config("DEBUG", default=True, cast=bool)
 # Valeur par défaut « pratique » réservée au développement (DEBUG=True) — en production, exiger
@@ -52,6 +56,7 @@ INSTALLED_APPS = [
     "support",
     "sms",
     'school_messaging',
+    "djomy",
 ]
 
 MIDDLEWARE = [
@@ -290,3 +295,11 @@ TWILIO_INDICATIF_DEFAUT = config("TWILIO_INDICATIF_DEFAUT", default="+224")
 # renseigner un numéro WhatsApp-activé (sandbox Twilio en test, numéro validé par Meta en
 # production) pour un envoi réel. Voir people/sms.py::send_whatsapp.
 TWILIO_WHATSAPP_FROM_NUMBER = config("TWILIO_WHATSAPP_FROM_NUMBER", default="")
+
+
+DJOMY_CLIENT_ID = os.getenv("DJOMY_CLIENT_ID")
+DJOMY_CLIENT_SECRET = os.getenv("DJOMY_CLIENT_SECRET")
+DJOMY_API_URL = os.getenv(
+    "DJOMY_API_URL",
+    "https://sandbox-api.djomy.africa"
+)

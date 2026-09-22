@@ -290,6 +290,21 @@ export interface PaiementEcole {
   enregistre_par_nom: string | null;
 }
 
+export type StatutTransactionDjomy = "en_attente" | "reussi" | "echoue";
+
+export interface TransactionAbonnement {
+  id: number;
+  mois: string;
+  montant: string;
+  payer_number: string;
+  transaction_id: string;
+  redirect_url: string;
+  statut: StatutTransactionDjomy;
+  statut_display: string;
+  cree_le: string;
+  verifie_le: string | null;
+}
+
 export interface Paginated<T> {
   count: number;
   next: string | null;

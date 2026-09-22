@@ -3,8 +3,9 @@ import type {
   AffectationTransport, AgentCantineInfo, Annonce, AnneeScolaire, Bulletin, CaisseRapport, CategorieDepense, CategoriePaiement, Classe, Creneau, Depense, Ecole, EcoleStatsDetail,
   EcoleStatsGlobales, EcoleUtilisateur, EleveProfile,
   Emprunt, Enseignement, EnseignantProfile, Fonctionnalite, Formule, Frais, InscriptionCantine, JournalActiviteEntry, JournalUtilisateurEntry, Livre, Matiere, Message, ModeleMessage, Note, 
-  Paginated,AlerteParent, AnalysePerformance, ChauffeurInfo, EleveBadge, EnseignantBadge, GroupeRevision, JustificatifAbsence, MessageIA, PaiementEcole, Paiement, PaieEnseignant, 
+  Paginated,AlerteParent, AnalysePerformance, ChauffeurInfo, EleveBadge, EnseignantBadge, GroupeRevision, JustificatifAbsence, MessageIA, PaiementEcole, Paiement, PaieEnseignant,
   ParametresPlateforme, Periode, PlanAbonnement, PlateformeBranding,PointageEnseignant, Presence, RechercheGlobaleResult, Reunion, Participant, Resultats, SauvegardeLog, SuiviMensuelClasse,
+  TransactionAbonnement,
   SuiviMensuelEleve, SupervisionData, TarifClasse, Ticket,TicketBus, TicketCantine, MessageTicket, Trajet, TypeFrais, User,
 } from "../types";
 
@@ -66,6 +67,11 @@ export const parametresEcoleApi = {
   // sait pas redésérialiser depuis une chaîne JSON envoyée en multipart (nécessaire, elle,
   // uniquement pour transporter le fichier) — un PATCH dédié au seul logo évite le conflit.
   updateLogo: (file: File) => api.patch<Ecole>("/tenants/mon-ecole/", toFormData({ logo: file }), multipartHeaders),
+};
+
+export const abonnementDjomyApi = {
+  payer: (payer_number: string) => api.post<TransactionAbonnement>("/tenants/mon-ecole/payer-abonnement/", { payer_number }),
+  verifier: (transactionId: string) => api.get<TransactionAbonnement>(`/tenants/mon-ecole/transactions-djomy/${transactionId}/verifier/`),
 };
 
 // ---- Paramètres plateforme (Super Admin) ----

@@ -315,6 +315,40 @@ class PaiementEcole(models.Model):
         return f"{self.ecole} — {self.mois:%m/%Y}"
 
 
+class TransactionAbonnement(models.Model):
+    """Paiement d'abonnement initié en ligne par l'Administrateur d'une école via la
+    passerelle Mobile Money Djomy (voir `djomy.services`) — distinct de `PaiementEcole`, qui
+    reste réservé aux paiements CONFIRMÉS. Une transaction n'aboutit à un `PaiementEcole` que
+    lorsque Djomy confirme le statut « réussi » (voir `tenants.views.VerifierPaiementDjomyView`) :
+    tant qu'elle est en attente ou a échoué, elle n'affecte jamais `Ecole.statut_abonnement`."""
+
+    class Statut(models.TextChoices):
+        EN_ATTENTE = "en_attente", "En attente"
+        REUSSI = "reussi", "Réussi"
+        ECHOUE = "echoue", "Échoué"
+
+    ecole = models.ForeignKey(Ecole, on_delete=models.CASCADE, related_name="transactions_djomy")
+    mois = models.DateField(help_text="Premier jour du mois que ce paiement doit couvrir")
+    montant = models.DecimalField(max_digits=10, decimal_places=2)
+    payer_number = models.CharField(max_length=30)
+    transaction_id = models.CharField(max_length=100, unique=True)
+    redirect_url = models.URLField(blank=True)
+    statut = models.CharField(max_length=15, choices=Statut.choices, default=Statut.EN_ATTENTE)
+    cree_le = models.DateTimeField(auto_now_add=True)
+    verifie_le = models.DateTimeField(null=True, blank=True)
+    paiement = models.OneToOneField(
+        "PaiementEcole", on_delete=models.SET_NULL, null=True, blank=True, related_name="transaction_djomy"
+    )
+
+    class Meta:
+        ordering = ["-cree_le"]
+        verbose_name = "Transaction Djomy"
+        verbose_name_plural = "Transactions Djomy"
+
+    def __str__(self):
+        return f"{self.ecole} — {self.transaction_id} ({self.statut})"
+
+
 class ParametresEcole(models.Model):
     """Paramètres pédagogiques et d'affichage propres à un établissement, réglables par
     son propre Administrateur (contrairement aux champs d'abonnement de `Ecole`, réservés

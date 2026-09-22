@@ -1,6 +1,6 @@
 from django.contrib import admin
 
-from .models import Ecole, JournalActivite, ParametresEcole, PaiementEcole, PlanAbonnement
+from .models import Ecole, JournalActivite, ParametresEcole, PaiementEcole, PlanAbonnement, TransactionAbonnement
 
 
 @admin.register(Ecole)
@@ -20,6 +20,13 @@ class PlanAbonnementAdmin(admin.ModelAdmin):
 class PaiementEcoleAdmin(admin.ModelAdmin):
     list_display = ["ecole", "mois", "montant", "mode_paiement", "date_paiement"]
     list_filter = ["mode_paiement"]
+
+
+@admin.register(TransactionAbonnement)
+class TransactionAbonnementAdmin(admin.ModelAdmin):
+    list_display = ["ecole", "mois", "montant", "statut", "transaction_id", "cree_le"]
+    list_filter = ["statut"]
+    search_fields = ["transaction_id", "payer_number"]
 
 
 @admin.register(ParametresEcole)
