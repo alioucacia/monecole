@@ -8,10 +8,32 @@ from rest_framework.views import APIView
 
 from accounts.models import User
 from accounts.serializers import UserSerializer
+from people.sms import send_sms
+from tenants.models import ParametresPlateforme
 from tenants.permissions import fonctionnalite_requise
 
 from .models import Message
 from .serializers import MessageSerializer
+
+LONGUEUR_MAX_SMS = 300
+
+
+def _notifier_par_sms(message: Message) -> None:
+    """Relaie le message au destinataire par SMS (NimbaSMS via `people.sms.send_sms`), si les
+    SMS sont activés dans les paramètres plateforme et que le destinataire a un téléphone.
+    Un échec d'envoi ne bloque jamais la création du message."""
+    destinataire = message.destinataire
+    if not destinataire.phone or not ParametresPlateforme.charger().sms_actif:
+        return
+    expediteur = message.expediteur.get_full_name() or message.expediteur.username
+    if message.type_message == Message.TypeMessage.TEXTE and message.contenu:
+        texte = message.contenu
+        if len(texte) > LONGUEUR_MAX_SMS:
+            texte = texte[:LONGUEUR_MAX_SMS - 1] + "…"
+        corps = f"Message de {expediteur} : {texte}"
+    else:
+        corps = f"{expediteur} vous a envoyé un message ({message.get_type_message_display().lower()}). Connectez-vous pour le consulter."
+    send_sms(destinataire.phone, corps)
 
 
 class MessageViewSet(viewsets.ModelViewSet):
@@ -37,7 +59,8 @@ class MessageViewSet(viewsets.ModelViewSet):
         destinataire = serializer.validated_data.get("destinataire")
         if destinataire and destinataire.ecole_id != self.request.user.ecole_id:
             raise PermissionDenied("Ce destinataire n'appartient pas à votre établissement.")
-        serializer.save(expediteur=self.request.user)
+        message = serializer.save(expediteur=self.request.user)
+        _notifier_par_sms(message)
 
     @action(detail=True, methods=["post"], url_path="marquer-lu")
     def marquer_lu(self, request, pk=None):

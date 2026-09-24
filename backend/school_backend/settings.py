@@ -273,8 +273,9 @@ SMS_PROVIDER = config("SMS_PROVIDER", default="")
 SMS_INDICATIF_DEFAUT = config("SMS_INDICATIF_DEFAUT", default="+224")
 
 # NimbaSMS (nimbasms.com) — SID + jeton secret, visibles depuis le tableau de bord NimbaSMS.
-NIMBASMS_SID = config("NIMBASMS_SID", default="")
-NIMBASMS_SECRET_TOKEN = config("NIMBASMS_SECRET_TOKEN", default="")
+# Les noms NIMBA_SERVICE_ID / NIMBA_SECRET_TOKEN (ceux du tableau de bord Nimba) sont aussi acceptés.
+NIMBASMS_SID = config("NIMBASMS_SID", default="") or config("NIMBA_SERVICE_ID", default="")
+NIMBASMS_SECRET_TOKEN = config("NIMBASMS_SECRET_TOKEN", default="") or config("NIMBA_SECRET_TOKEN", default="")
 NIMBASMS_SENDER_NAME = config("NIMBASMS_SENDER_NAME", default="Taly School")
 
 # Infobip (infobip.com) — clé API et URL de base PERSONNELLES à votre compte (Infobip attribue
