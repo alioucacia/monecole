@@ -614,7 +614,8 @@ class BulletinSendSmsView(APIView):
             f"Taly-School : le bulletin de {eleve.user.get_full_name()} ({label['nom']}) est disponible ici : "
             f"{lien} (lien valable 14 jours)."
         )
-        send_sms(telephone, message)
+        if not send_sms(telephone, message):
+            raise ValidationError("L'envoi du SMS a échoué — vérifiez le numéro ou le crédit SMS, puis réessayez.")
 
         return Response({"detail": f"Lien du bulletin envoyé par SMS au {telephone}."})
 
@@ -724,8 +725,8 @@ class ResultatsNotifierView(APIView):
         periodes, label = _resolve_periodes(request)
         resultats = _class_results(classe, periodes)
 
-        nb_notifies = notifier_classement(classe, label["nom"], resultats)
-        return Response({"notifies": nb_notifies, "effectif": len(resultats)})
+        bilan = notifier_classement(classe, label["nom"], resultats)
+        return Response({**bilan, "effectif": len(resultats)})
 
 
 class ResultatsPdfView(APIView):

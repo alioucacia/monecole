@@ -39,11 +39,12 @@ def _envoyer_sms(destinataire_phone: str, message: str) -> bool:
     return send_sms(destinataire_phone, message)
 
 
-def notifier_classement(classe, periode_nom: str, resultats: list) -> int:
+def notifier_classement(classe, periode_nom: str, resultats: list) -> dict:
     """`resultats` : liste renvoyée par `_class_results` (eleve_id, moyenne_generale, rang,
     decision...). Notifie chaque élève (self) et son parent s'il en a un — élèves sans moyenne
-    (aucune note saisie) ignorés silencieusement. Retourne le nombre d'élèves pour lesquels au
-    moins un canal a été envoyé avec succès."""
+    (aucune note saisie) ignorés silencieusement. Retourne `notifies` (élèves pour lesquels au
+    moins un canal a réussi), `sms_envoyes` et `sans_telephone` (élèves dont ni le compte ni
+    le parent n'a de numéro — aucun SMS possible)."""
     from people.models import EleveProfile
     from tenants.messages_templates import rendre_modele
 
@@ -55,6 +56,8 @@ def notifier_classement(classe, periode_nom: str, resultats: list) -> int:
     effectif = len(resultats)
 
     nb_notifies = 0
+    sms_envoyes = 0
+    sans_telephone = 0
     for r in resultats:
         if r["moyenne_generale"] is None:
             continue
@@ -72,11 +75,15 @@ def notifier_classement(classe, periode_nom: str, resultats: list) -> int:
             envoye = True
         if _envoyer_sms(eleve.user.phone, message):
             envoye = True
+            sms_envoyes += 1
         if eleve.parent_id:
             if _envoyer_email(eleve.parent.email, sujet, message):
                 envoye = True
             if _envoyer_sms(eleve.parent.phone, message):
                 envoye = True
+                sms_envoyes += 1
+        if not eleve.user.phone and not (eleve.parent_id and eleve.parent.phone):
+            sans_telephone += 1
         if envoye:
             nb_notifies += 1
-    return nb_notifies
+    return {"notifies": nb_notifies, "sms_envoyes": sms_envoyes, "sans_telephone": sans_telephone}

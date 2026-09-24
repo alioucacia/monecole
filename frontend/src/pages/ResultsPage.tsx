@@ -128,7 +128,14 @@ export default function ResultsPage() {
     setError("");
     try {
       const { data: resultat } = await resultatsApi.notifier(Number(classeId), selection);
-      toast.success(`${resultat.notifies}/${resultat.effectif} élève(s) notifié(s).`);
+      toast.success(
+        `${resultat.notifies}/${resultat.effectif} élève(s) notifié(s) — ${resultat.sms_envoyes} SMS envoyé(s).`
+      );
+      if (resultat.sans_telephone > 0) {
+        toast.error(
+          `${resultat.sans_telephone} élève(s) sans numéro de téléphone (ni élève ni parent) : aucun SMS possible.`
+        );
+      }
     } catch (err) {
       setError(extractErrorMessage(err));
     } finally {

@@ -431,7 +431,7 @@ export const resultatsApi = {
   // Notifie chaque élève (et son parent) de son classement par e-mail + SMS — voir
   // grades.notifications.notifier_classement côté backend.
   notifier: (classe: number, selection: PeriodeSelection) =>
-    api.post<{ notifies: number; effectif: number }>("/grades/resultats/notifier/", null, { params: { classe, ...selection } }),
+    api.post<{ notifies: number; effectif: number; sms_envoyes: number; sans_telephone: number }>("/grades/resultats/notifier/", null, { params: { classe, ...selection } }),
 };
 
 export const analysePerformanceApi = {
