@@ -64,12 +64,21 @@ def notifier_classement(classe, periode_nom: str, resultats: list) -> dict:
         eleve = eleves.get(r["eleve_id"])
         if not eleve:
             continue
-        sujet, message = rendre_modele(
-            ecole, "classement_eleve",
-            nom_complet=eleve.user.get_full_name(), periode=periode_nom,
-            rang=r["rang"], effectif=effectif, moyenne=r["moyenne_generale"],
-            decision=DECISION_LABELS.get(r["decision"], ""),
-        )
+        decision = DECISION_LABELS.get(r["decision"], "")
+        if r["decision"] == "admis":
+            sujet, message = rendre_modele(
+                ecole, "classement_eleve",
+                nom_complet=eleve.user.get_full_name(), periode=periode_nom,
+                rang=r["rang"], effectif=effectif, moyenne=r["moyenne_generale"], decision=decision,
+            )
+        else:
+            # Moyenne sous le seuil d'admission (repêché/redoublant) : pas de rang — le
+            # classement n'est communiqué qu'aux admis.
+            sujet, message = rendre_modele(
+                ecole, "classement_eleve_non_admis",
+                nom_complet=eleve.user.get_full_name(), periode=periode_nom,
+                moyenne=r["moyenne_generale"], decision=decision,
+            )
         envoye = False
         if _envoyer_email(eleve.user.email, sujet, message):
             envoye = True

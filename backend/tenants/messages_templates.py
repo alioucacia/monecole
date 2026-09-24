@@ -58,6 +58,19 @@ MODELES_MESSAGE = {
             "Rang : {rang}/{effectif} — Moyenne : {moyenne}/20 — {decision}."
         ),
     },
+    "classement_eleve_non_admis": {
+        "label": "Résultats de l'élève non admis",
+        "description": (
+            "Variante envoyée depuis « Résultats » à l'élève (et à son parent) dont la moyenne est "
+            "sous le seuil d'admission (repêchage ou redoublement) — sans rang, réservé aux admis."
+        ),
+        "jetons": ["{nom_complet}", "{periode}", "{moyenne}", "{decision}"],
+        "sujet_defaut": "{nom_ecole} — Résultats de {nom_complet}",
+        "contenu_defaut": (
+            "{nom_ecole} : résultats de {nom_complet} ({periode}).\n"
+            "Moyenne : {moyenne}/20 — {decision}."
+        ),
+    },
     "resultats_disponibles": {
         "label": "Résultats disponibles",
         "description": "Modèle de départ proposé dans « Nouvelle annonce » pour prévenir que les résultats/bulletins sont consultables.",
