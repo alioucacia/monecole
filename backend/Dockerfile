@@ -20,8 +20,10 @@ COPY . .
 
 # Fichiers statiques compressés + manifeste (whitenoise) générés à la construction de l'image,
 # pas au démarrage du conteneur — évite que plusieurs réplicas ne réécrivent le manifeste en
-# même temps au lancement.
-RUN python manage.py collectstatic --noinput
+# même temps au lancement. settings.py exige DATABASE_URL, absent à la construction (.env exclu
+# par .dockerignore) : on lui passe une URL factice, limitée à cette commande — collectstatic ne
+# se connecte jamais à la base, et le conteneur utilise la vraie DATABASE_URL à l'exécution.
+RUN DATABASE_URL=postgres://build:build@localhost:5432/build python manage.py collectstatic --noinput
 
 EXPOSE 8000
 
