@@ -276,7 +276,7 @@ SMS_INDICATIF_DEFAUT = config("SMS_INDICATIF_DEFAUT", default="+224")
 # Les noms NIMBA_SERVICE_ID / NIMBA_SECRET_TOKEN (ceux du tableau de bord Nimba) sont aussi acceptés.
 NIMBASMS_SID = config("NIMBASMS_SID", default="") or config("NIMBA_SERVICE_ID", default="")
 NIMBASMS_SECRET_TOKEN = config("NIMBASMS_SECRET_TOKEN", default="") or config("NIMBA_SECRET_TOKEN", default="")
-NIMBASMS_SENDER_NAME = config("NIMBASMS_SENDER_NAME", default="Taly School")
+NIMBASMS_SENDER_NAME = config("NIMBASMS_SENDER_NAME", default="TALY SCHOOL")
 
 # Infobip (infobip.com) — clé API et URL de base PERSONNELLES à votre compte (Infobip attribue
 # une URL du type "xxxxxxx.api.infobip.com" par compte, visible sur la page d'accueil du portail

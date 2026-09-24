@@ -74,8 +74,13 @@ def _envoyer_via_nimbasms(to: str, message: str, sid: str, token: str) -> bool:
 
     try:
         client = Client(sid, token)
-        sender_name = getattr(settings, "NIMBASMS_SENDER_NAME", "") or "Taly School"
-        client.messages.create(to=[_numero_e164(to)], sender_name=sender_name, message=message)
+        sender_name = getattr(settings, "NIMBASMS_SENDER_NAME", "") or "TALY SCHOOL"
+        reponse = client.messages.create(to=[_numero_e164(to)], sender_name=sender_name, message=message)
+        # La bibliothèque nimbasms ne lève pas d'exception sur une erreur HTTP (expéditeur non
+        # validé, solde épuisé, numéro invalide...) : il faut vérifier `ok` nous-mêmes.
+        if not reponse.ok:
+            logger.error("Échec de l'envoi SMS via NimbaSMS vers %s : HTTP %s %s", to, reponse.status_code, reponse.text)
+            return False
         logger.info("SMS envoyé via NimbaSMS à %s", to)
         return True
     except Exception:  # noqa: BLE001 — un échec NimbaSMS ne doit jamais faire planter l'appelant
