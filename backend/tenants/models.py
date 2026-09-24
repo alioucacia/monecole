@@ -330,6 +330,9 @@ class TransactionAbonnement(models.Model):
     ecole = models.ForeignKey(Ecole, on_delete=models.CASCADE, related_name="transactions_djomy")
     mois = models.DateField(help_text="Premier jour du mois que ce paiement doit couvrir")
     montant = models.DecimalField(max_digits=10, decimal_places=2)
+    nb_mois = models.PositiveSmallIntegerField(
+        default=1, help_text="Nombre de mois couverts par ce paiement — 1 (Mensuel) ou 12 (Annuel), choisi par l'Administrateur au moment de payer"
+    )
     payer_number = models.CharField(max_length=30)
     transaction_id = models.CharField(max_length=100, unique=True)
     redirect_url = models.URLField(blank=True)

@@ -296,6 +296,7 @@ export interface TransactionAbonnement {
   id: number;
   mois: string;
   montant: string;
+  nb_mois: number;
   payer_number: string;
   transaction_id: string;
   redirect_url: string;

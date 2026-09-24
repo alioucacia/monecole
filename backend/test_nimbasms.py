@@ -1,16 +1,35 @@
+from pathlib import Path
+from decouple import Config, RepositoryEnv
 from nimbasms import Client
-from decouple import config
 
-SID = config("NIMBASMS_SID")
-TOKEN = config("NIMBASMS_SECRET_TOKEN")
+BASE_DIR = Path(__file__).resolve().parent
+ENV_FILE = BASE_DIR / ".env"
+
+config = Config(RepositoryEnv(str(ENV_FILE)))
+
+SID = config("NIMBA_SERVICE_ID")
+TOKEN = config("NIMBA_SECRET_TOKEN")
 
 client = Client(SID, TOKEN)
 
-response = client.messages.create(
-    to=["+224624086668"],
-    sender_name="Taly School",
-    message="Test SMS depuis mon application Monecole."
-)
+numero = "+224624086668"
 
-print("Réponse NimbaSMS :")
-print(response)
+print("Envoi du SMS...")
+print("Destinataire :", numero)
+
+try:
+    response = client.messages.create(
+        to=[numero],
+        sender_name="TALY SCHOOL",
+        message="Test SMS depuis Taly School."
+    )
+
+    print()
+    print("Réponse Nimba :")
+    print("OK :", response.ok)
+    print("Données :", response.data)
+
+except Exception as e:
+    print()
+    print("ERREUR NIMBA :")
+    print(type(e).__name__, e)

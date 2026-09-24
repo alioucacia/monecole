@@ -21,6 +21,7 @@ function PayerAbonnementDjomySection({ ecole, onPaye }: { ecole: Ecole; onPaye: 
   const toast = useToast();
   const [modalOpen, setModalOpen] = useState(false);
   const [payerNumber, setPayerNumber] = useState("");
+  const [periode, setPeriode] = useState<"mensuel" | "annuel">("mensuel");
   const [error, setError] = useState("");
   const [initiating, setInitiating] = useState(false);
   const [transaction, setTransaction] = useState<TransactionAbonnement | null>(null);
@@ -48,6 +49,7 @@ function PayerAbonnementDjomySection({ ecole, onPaye }: { ecole: Ecole; onPaye: 
 
   const openModal = () => {
     setPayerNumber("");
+    setPeriode("mensuel");
     setError("");
     setTransaction(null);
     setModalOpen(true);
@@ -58,7 +60,7 @@ function PayerAbonnementDjomySection({ ecole, onPaye }: { ecole: Ecole; onPaye: 
     setInitiating(true);
     setError("");
     try {
-      const { data } = await abonnementDjomyApi.payer(payerNumber);
+      const { data } = await abonnementDjomyApi.payer(payerNumber, periode);
       setTransaction(data);
       if (data.redirect_url) window.open(data.redirect_url, "_blank", "noopener,noreferrer");
     } catch (err) {
@@ -95,14 +97,41 @@ function PayerAbonnementDjomySection({ ecole, onPaye }: { ecole: Ecole; onPaye: 
   return (
     <>
       <Button type="button" variant="secondary" onClick={openModal} className="mt-3 w-full">
-        💳 Payer maintenant via Djomy
+        Payer mon abonnement
       </Button>
 
       <Modal open={modalOpen} onClose={() => setModalOpen(false)} title="Payer l'abonnement — Djomy">
         {!transaction ? (
           <form onSubmit={handleSubmit} className="space-y-4">
+            <div>
+              <p className="text-sm font-medium text-ink-900 mb-2">Période à régler</p>
+              <div className="grid grid-cols-2 gap-2">
+                <button
+                  type="button"
+                  onClick={() => setPeriode("mensuel")}
+                  className={`rounded-xl border px-3 py-2 text-sm font-medium transition ${
+                    periode === "mensuel" ? "border-brand-600 bg-brand-50 text-brand-700" : "border-slate-200 text-slate-600 hover:border-slate-300"
+                  }`}
+                >
+                  Mensuel
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setPeriode("annuel")}
+                  className={`rounded-xl border px-3 py-2 text-sm font-medium transition ${
+                    periode === "annuel" ? "border-brand-600 bg-brand-50 text-brand-700" : "border-slate-200 text-slate-600 hover:border-slate-300"
+                  }`}
+                >
+                  Annuel
+                </button>
+              </div>
+            </div>
             <p className="text-sm text-slate-500">
-              Montant à régler : <span className="font-semibold text-ink-900">{Number(ecole.abonnement_mensuel).toLocaleString("fr-FR")} GNF</span>
+              Montant à régler :{" "}
+              <span className="font-semibold text-ink-900">
+                {(Number(ecole.abonnement_mensuel) * (periode === "annuel" ? 12 : 1)).toLocaleString("fr-FR")} GNF
+              </span>
+              {periode === "annuel" && <span className="text-slate-400"> (12 mois)</span>}
             </p>
             <Input
               label="Numéro Mobile Money (payeur)" required placeholder="622000000"

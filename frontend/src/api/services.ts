@@ -70,7 +70,8 @@ export const parametresEcoleApi = {
 };
 
 export const abonnementDjomyApi = {
-  payer: (payer_number: string) => api.post<TransactionAbonnement>("/tenants/mon-ecole/payer-abonnement/", { payer_number }),
+  payer: (payer_number: string, periode: "mensuel" | "annuel") =>
+    api.post<TransactionAbonnement>("/tenants/mon-ecole/payer-abonnement/", { payer_number, periode }),
   verifier: (transactionId: string) => api.get<TransactionAbonnement>(`/tenants/mon-ecole/transactions-djomy/${transactionId}/verifier/`),
 };
 

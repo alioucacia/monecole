@@ -101,7 +101,7 @@ class TransactionAbonnementSerializer(serializers.ModelSerializer):
     class Meta:
         model = TransactionAbonnement
         fields = [
-            "id", "mois", "montant", "payer_number", "transaction_id", "redirect_url",
+            "id", "mois", "montant", "nb_mois", "payer_number", "transaction_id", "redirect_url",
             "statut", "statut_display", "cree_le", "verifie_le",
         ]
         read_only_fields = fields

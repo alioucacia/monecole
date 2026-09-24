@@ -42,6 +42,11 @@ def _premier_du_mois_il_y_a(n_mois: int, depuis: date) -> date:
     return date(mois_total // 12, mois_total % 12 + 1, 1)
 
 
+def _premier_du_mois_dans(n_mois: int, depuis: date) -> date:
+    """Premier jour du mois situé `n_mois` mois après `depuis`."""
+    return _premier_du_mois_il_y_a(-n_mois, depuis)
+
+
 class PlanAbonnementViewSet(viewsets.ModelViewSet):
     """Plans tarifaires proposés aux établissements — gestion réservée au Super Admin."""
 
@@ -478,14 +483,19 @@ class PayerAbonnementDjomyView(APIView):
         if not payer_number:
             raise ValidationError({"payer_number": "Ce champ est requis."})
 
+        periode = request.data.get("periode") or "mensuel"
+        if periode not in ("mensuel", "annuel"):
+            raise ValidationError({"periode": "Doit être « mensuel » ou « annuel »."})
+        nb_mois = 12 if periode == "annuel" else 1
+
         mois = ecole._mois_echeance_courante()
-        montant = ecole.abonnement_mensuel
+        montant = ecole.abonnement_mensuel * nb_mois
 
         try:
             resultat = djomy_services.create_payment(
                 amount=float(montant),
                 payer_number=payer_number,
-                description=f"Abonnement {ecole.nom} — {mois:%m/%Y}",
+                description=f"Abonnement {ecole.nom} — {'Annuel' if nb_mois == 12 else 'Mensuel'} à partir de {mois:%m/%Y}",
             )
         except Exception as exc:  # noqa: BLE001 — erreur réseau/API Djomy, message renvoyé tel quel
             return Response(
@@ -495,7 +505,7 @@ class PayerAbonnementDjomyView(APIView):
 
         data = resultat.get("data", {})
         transaction = TransactionAbonnement.objects.create(
-            ecole=ecole, mois=mois, montant=montant, payer_number=payer_number,
+            ecole=ecole, mois=mois, montant=montant, nb_mois=nb_mois, payer_number=payer_number,
             transaction_id=data["transactionId"], redirect_url=data.get("redirectUrl", ""),
         )
         return Response(TransactionAbonnementSerializer(transaction).data, status=status.HTTP_201_CREATED)
@@ -542,21 +552,28 @@ class VerifierPaiementDjomyView(APIView):
         statut_djomy = (data.get("status") or "").upper()
 
         if statut_djomy in self.STATUTS_REUSSIS:
-            paiement, _ = PaiementEcole.objects.get_or_create(
-                ecole=ecole, mois=transaction.mois,
-                defaults={
-                    "montant": transaction.montant,
-                    "mode_paiement": PaiementEcole.ModePaiement.MOBILE_MONEY,
-                    "reference": transaction.transaction_id,
-                },
-            )
+            # Le paiement peut couvrir plusieurs mois consécutifs (option « Annuel », voir
+            # PayerAbonnementDjomyView) : un `PaiementEcole` est créé par mois couvert, chacun
+            # pour la part mensuelle du montant — c'est ce que lit `Ecole.statut_abonnement`
+            # (dernier `mois` payé + périodicité du plan) pour faire avancer l'échéance.
+            montant_mensuel = transaction.montant / transaction.nb_mois
+            dernier_paiement = None
+            for i in range(transaction.nb_mois):
+                dernier_paiement, _ = PaiementEcole.objects.get_or_create(
+                    ecole=ecole, mois=_premier_du_mois_dans(i, transaction.mois),
+                    defaults={
+                        "montant": montant_mensuel,
+                        "mode_paiement": PaiementEcole.ModePaiement.MOBILE_MONEY,
+                        "reference": transaction.transaction_id,
+                    },
+                )
             transaction.statut = TransactionAbonnement.Statut.REUSSI
-            transaction.paiement = paiement
+            transaction.paiement = dernier_paiement
             transaction.verifie_le = timezone.now()
             transaction.save()
             _journaliser(
                 request, JournalActivite.Action.PAIEMENT_ENREGISTRE, ecole,
-                f"{transaction.montant} GNF pour {transaction.mois:%m/%Y} (Djomy, {transaction.payer_number})",
+                f"{transaction.montant} GNF pour {transaction.nb_mois} mois à partir de {transaction.mois:%m/%Y} (Djomy, {transaction.payer_number})",
             )
         elif statut_djomy in self.STATUTS_ECHOUES:
             transaction.statut = TransactionAbonnement.Statut.ECHOUE
