@@ -94,7 +94,7 @@ def _envoyer_via_infobip(to: str, message: str, api_key: str, base_url: str) -> 
     try:
         # Infobip attend le numéro au format international SANS le "+" de tête.
         numero = _numero_e164(to).lstrip("+")
-        sender = getattr(settings, "INFOBIP_SENDER", "") or "Taly School"
+        sender = getattr(settings, "INFOBIP_SENDER", "") or "TALY SCHOOL"
         base = base_url if base_url.startswith("http") else f"https://{base_url}"
         reponse = requests.post(
             f"{base.rstrip('/')}/sms/2/text/advanced",

@@ -50,7 +50,7 @@ def get_access_token():
 
 
 
-def create_payment(amount, payer_number, description="Paiement Taly School"):
+def create_payment(amount, payer_number, description="Paiement TALY SCHOOL"):
     token = get_access_token()
 
     url = f"{settings.DJOMY_API_URL.rstrip('/')}/v1/payments/gateway"

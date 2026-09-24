@@ -285,7 +285,7 @@ NIMBASMS_SENDER_NAME = config("NIMBASMS_SENDER_NAME", default="TALY SCHOOL")
 # numéro dédié selon votre compte/pays — laissez vide pour utiliser le sender par défaut du compte.
 INFOBIP_API_KEY = config("INFOBIP_API_KEY", default="")
 INFOBIP_BASE_URL = config("INFOBIP_BASE_URL", default="")
-INFOBIP_SENDER = config("INFOBIP_SENDER", default="Taly School")
+INFOBIP_SENDER = config("INFOBIP_SENDER", default="TALY SCHOOL")
 
 # Twilio (console.twilio.com) — fournisseur historique, conservé disponible.
 TWILIO_ACCOUNT_SID = config("TWILIO_ACCOUNT_SID", default="")

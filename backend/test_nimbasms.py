@@ -21,7 +21,7 @@ try:
     response = client.messages.create(
         to=[numero],
         sender_name="TALY SCHOOL",
-        message="Test SMS depuis Taly School."
+        message="Test SMS depuis TALY SCHOOL."
     )
 
     print()
