@@ -5,6 +5,7 @@ import { anneesApi, classesApi, elevesApi, fraisApi, paiementsApi, periodesApi, 
 import { extractBlobErrorMessage, extractErrorMessage } from "../api/client";
 import { Badge, Button, EmptyState, Input, Modal, PageHeader, Select, Spinner, StatCard, Table } from "../components/ui";
 import { CycleSelect } from "../components/CycleSelect";
+import { StatutMensualiteBadge } from "../components/StatutMensualite";
 import { useAuth } from "../context/AuthContext";
 import { useConfirm } from "../context/ConfirmContext";
 import { useToast } from "../context/ToastContext";
@@ -581,7 +582,12 @@ export default function PaymentsPage() {
           <Table headers={["Élève", "Type", "Montant", "Payé", "Solde", "Échéance", "Statut", "Actions"]}>
             {items.map((f) => (
               <tr key={f.id}>
-                <td className="px-4 py-3 font-medium text-slate-700">{f.eleve_nom}</td>
+                <td className="px-4 py-3 font-medium text-slate-700">
+                  <span className="flex flex-col items-start">
+                    {f.eleve_nom}
+                    <StatutMensualiteBadge categorie={f.eleve_categorie_paiement} />
+                  </span>
+                </td>
                 <td className="px-4 py-3">{f.type_frais_nom}</td>
                 <td className="px-4 py-3">
                   {money(f.montant_du)}

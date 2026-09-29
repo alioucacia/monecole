@@ -5,6 +5,7 @@ import { classesApi, elevesApi, typesFraisApi, unwrapList, usersApi } from "../a
 import { extractBlobErrorMessage, extractErrorMessage } from "../api/client";
 import { Badge, Button, DeleteButton, EditButton, EmptyState, Input, Modal, PageHeader, RowActions, Select, Spinner, StatCard, Table } from "../components/ui";
 import { ClasseOptions, CycleSelect } from "../components/CycleSelect";
+import { StatutMensualiteBadge } from "../components/StatutMensualite";
 import { useAuth } from "../context/AuthContext";
 import { useConfirm, usePrompt } from "../context/ConfirmContext";
 import { useToast } from "../context/ToastContext";
@@ -354,9 +355,12 @@ export default function StudentsPage() {
                         {(eleve.user.first_name[0] || "?").toUpperCase()}
                       </div>
                     )}
-                    <span>
-                      {eleve.user.first_name} {eleve.user.last_name}
-                      {eleve.user.sexe && <span className="ml-1.5 text-xs text-slate-400">{eleve.user.sexe === "F" ? "♀" : "♂"}</span>}
+                    <span className="flex flex-col items-start">
+                      <span>
+                        {eleve.user.first_name} {eleve.user.last_name}
+                        {eleve.user.sexe && <span className="ml-1.5 text-xs text-slate-400">{eleve.user.sexe === "F" ? "♀" : "♂"}</span>}
+                      </span>
+                      <StatutMensualiteBadge categorie={eleve.categorie_paiement} />
                     </span>
                   </Link>
                 </td>

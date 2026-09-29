@@ -783,6 +783,7 @@ export interface Frais {
   id: number;
   eleve: number;
   eleve_nom: string;
+  eleve_categorie_paiement: CategoriePaiement;
   type_frais: number;
   type_frais_nom: string;
   type_frais_est_mensuel: boolean;

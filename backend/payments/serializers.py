@@ -149,6 +149,9 @@ class DepenseSerializer(serializers.ModelSerializer):
 
 class FraisSerializer(serializers.ModelSerializer):
     eleve_nom = serializers.CharField(source="eleve.user.get_full_name", read_only=True)
+    # Étiquette « Statut de paiement (mensualité) » sous le nom de l'élève (PaymentsPage) —
+    # distingue les élèves pris en charge par la Fondation.
+    eleve_categorie_paiement = serializers.CharField(source="eleve.categorie_paiement", read_only=True)
     type_frais_nom = serializers.CharField(source="type_frais.nom", read_only=True)
     type_frais_est_mensuel = serializers.BooleanField(source="type_frais.est_mensuel", read_only=True)
     type_frais_periodicite = serializers.CharField(source="type_frais.periodicite", read_only=True)
@@ -163,7 +166,7 @@ class FraisSerializer(serializers.ModelSerializer):
     class Meta:
         model = Frais
         fields = [
-            "id", "eleve", "eleve_nom", "type_frais", "type_frais_nom", "type_frais_est_mensuel",
+            "id", "eleve", "eleve_nom", "eleve_categorie_paiement", "type_frais", "type_frais_nom", "type_frais_est_mensuel",
             "type_frais_periodicite", "annee_scolaire",
             "montant", "montant_du", "date_echeance", "montant_paye", "solde", "statut", "paiements",
         ]
