@@ -29,6 +29,7 @@ export default function BulletinPage() {
   const [sendMessage, setSendMessage] = useState("");
 
   const needsSelector = user?.role === "admin" || user?.role === "teacher" || user?.role === "parent";
+  const smsAutorise = !user?.ecole_fonctionnalites_desactivees?.includes("sms_eleves_parents");
   // Tous les rôles voient désormais le même document : le vrai bulletin officiel (PDF, avec les
   // couleurs et le modèle réglés par l'école) — plus de carte interactive séparée pour
   // admin/enseignant, qui ne ressemblait pas à ce que voyaient élève/parent ni au PDF imprimé.
@@ -173,12 +174,16 @@ export default function BulletinPage() {
                 <Button variant="secondary" onClick={handleSendEmail} disabled={sendingEmail}>
                   {sendingEmail ? "Envoi…" : "📧 Envoyer par email"}
                 </Button>
-                <Button variant="secondary" onClick={handleSendSms} disabled={sendingSms}>
-                  {sendingSms ? "Envoi…" : "💬 Envoyer un lien SMS"}
-                </Button>
-                <Button variant="secondary" onClick={handleSendWhatsApp} disabled={sendingWhatsApp}>
-                  {sendingWhatsApp ? "Envoi…" : "🟢 Envoyer par WhatsApp"}
-                </Button>
+                {smsAutorise && (
+                  <>
+                    <Button variant="secondary" onClick={handleSendSms} disabled={sendingSms}>
+                      {sendingSms ? "Envoi…" : "💬 Envoyer un lien SMS"}
+                    </Button>
+                    <Button variant="secondary" onClick={handleSendWhatsApp} disabled={sendingWhatsApp}>
+                      {sendingWhatsApp ? "Envoi…" : "🟢 Envoyer par WhatsApp"}
+                    </Button>
+                  </>
+                )}
               </>
             )}
           </div>

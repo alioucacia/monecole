@@ -8,7 +8,7 @@ from rest_framework.views import APIView
 
 from accounts.models import User
 from accounts.serializers import UserSerializer
-from people.sms import send_sms
+from people.sms import ROLES_ELEVES_PARENTS, send_sms, sms_eleves_parents_autorise
 from tenants.models import ParametresPlateforme
 from tenants.permissions import fonctionnalite_requise
 
@@ -24,6 +24,8 @@ def _notifier_par_sms(message: Message) -> None:
     Un échec d'envoi ne bloque jamais la création du message."""
     destinataire = message.destinataire
     if not destinataire.phone or not ParametresPlateforme.charger().sms_actif:
+        return
+    if destinataire.role in ROLES_ELEVES_PARENTS and not sms_eleves_parents_autorise(destinataire.ecole):
         return
     expediteur = message.expediteur.get_full_name() or message.expediteur.username
     if message.type_message == Message.TypeMessage.TEXTE and message.contenu:

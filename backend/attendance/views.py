@@ -10,7 +10,7 @@ from rest_framework.response import Response
 
 from accounts.permissions import IsAdminOrSurveillance, IsAdminOrTeacherOrSurveillanceOrReadOnly
 from people.models import AlerteParent, EleveProfile
-from people.sms import send_sms
+from people.sms import send_sms, sms_eleves_parents_autorise
 from rest_framework.permissions import IsAuthenticated
 from tenants.messages_templates import rendre_modele
 from tenants.permissions import fonctionnalite_requise
@@ -129,7 +129,7 @@ class PresenceViewSet(viewsets.ModelViewSet):
                     )
                 except Exception:  # noqa: BLE001 — un échec d'e-mail ne doit pas bloquer le SMS ci-dessous
                     pass
-            if eleve.parent.phone and send_sms(eleve.parent.phone, alerte.message):
+            if eleve.parent.phone and sms_eleves_parents_autorise(ecole) and send_sms(eleve.parent.phone, alerte.message):
                 alerte.sms_envoye = True
                 alerte.save(update_fields=["sms_envoye"])
 

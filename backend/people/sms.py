@@ -32,6 +32,18 @@ def _numero_e164(numero: str, indicatif: str | None = None) -> str:
     return f"{indicatif}{nettoye.lstrip('0')}"
 
 
+ROLES_ELEVES_PARENTS = ("student", "parent")
+
+
+def sms_eleves_parents_autorise(ecole) -> bool:
+    """False si le Super Admin a désactivé les SMS aux élèves/parents pour cette école
+    (fonctionnalité `sms_eleves_parents`, voir tenants/features.py). À vérifier par chaque
+    appelant qui écrit à un élève ou à un parent, AVANT `send_sms`/`send_whatsapp` — ces deux
+    fonctions ne connaissent que le numéro, pas l'école ni le rôle du destinataire. Sans école
+    (compte plateforme), rien n'est bloqué."""
+    return ecole is None or ecole.a_fonctionnalite("sms_eleves_parents")
+
+
 def send_sms(to: str, message: str) -> bool:
     """Envoie un SMS à `to` via le fournisseur actif (`settings.SMS_PROVIDER`). Retourne True si
     l'envoi (ou la simulation) a réussi — False en cas d'échec réel (fournisseur configuré mais

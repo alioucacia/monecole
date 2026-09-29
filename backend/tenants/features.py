@@ -16,4 +16,9 @@ FONCTIONNALITES = {
     "groupes_revision": "Groupes de révision",
     "annonces": "Annonces internes",
     "visioconference": "Visioconférence",
+    # Pas un module avec ses propres écrans : coupe l'envoi de SMS/WhatsApp aux élèves et à leurs
+    # parents (résultats, bulletins, absences, impayés, annonces, messagerie, création de
+    # compte) — voir `people.sms.sms_eleves_parents_autorise`. Les SMS de sécurité (codes OTP)
+    # et ceux adressés au personnel restent envoyés.
+    "sms_eleves_parents": "SMS aux élèves et parents",
 }

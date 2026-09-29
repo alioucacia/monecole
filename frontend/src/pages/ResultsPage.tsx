@@ -129,7 +129,9 @@ export default function ResultsPage() {
     try {
       const { data: resultat } = await resultatsApi.notifier(Number(classeId), selection);
       toast.success(
-        `${resultat.notifies}/${resultat.effectif} élève(s) notifié(s) — ${resultat.sms_envoyes} SMS envoyé(s).`
+        resultat.sms_desactives
+          ? `${resultat.notifies}/${resultat.effectif} élève(s) notifié(s) par e-mail — SMS désactivés pour votre établissement.`
+          : `${resultat.notifies}/${resultat.effectif} élève(s) notifié(s) — ${resultat.sms_envoyes} SMS envoyé(s).`
       );
       if (resultat.sans_telephone > 0) {
         toast.error(

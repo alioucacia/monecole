@@ -10,7 +10,7 @@ from django.conf import settings
 from django.core.mail import send_mail
 
 from people.models import AlerteParent
-from people.sms import send_sms
+from people.sms import send_sms, sms_eleves_parents_autorise
 from tenants.messages_templates import rendre_modele
 
 from .models import Frais
@@ -70,7 +70,10 @@ def notifier_frais_impayes(ecole_id: int | None = None) -> int:
                 email_ok = nb_envoyes > 0
             except Exception:  # noqa: BLE001 — un échec d'email ne doit pas bloquer les autres familles
                 pass
-        sms_ok = send_sms(destinataire.phone, message) if destinataire.phone else False
+        sms_ok = (
+            send_sms(destinataire.phone, message)
+            if destinataire.phone and sms_eleves_parents_autorise(ecole) else False
+        )
 
         if email_ok or sms_ok:
             AlerteParent.objects.create(

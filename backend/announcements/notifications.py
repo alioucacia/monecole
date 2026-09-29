@@ -9,7 +9,7 @@ from django.conf import settings
 from django.core.mail import send_mail
 
 from accounts.models import User
-from people.sms import send_sms
+from people.sms import ROLES_ELEVES_PARENTS, send_sms, sms_eleves_parents_autorise
 from tenants.models import ParametresPlateforme
 
 from .models import Annonce
@@ -39,7 +39,7 @@ def envoyer_notifications_annonce(annonce: Annonce) -> dict:
     emails_envoyes = 0
     sms_envoyes = 0
 
-    for destinataire in _destinataires(annonce).iterator():
+    for destinataire in _destinataires(annonce).select_related("ecole").iterator():
         if annonce.envoyer_email and destinataire.email:
             try:
                 send_mail(
@@ -52,7 +52,10 @@ def envoyer_notifications_annonce(annonce: Annonce) -> dict:
                 emails_envoyes += 1
             except Exception:  # noqa: BLE001 — l'échec d'un envoi ne doit jamais bloquer les autres
                 pass
-        if annonce.envoyer_sms and parametres.sms_actif and destinataire.phone:
+        # École du destinataire, pas celle de l'annonce : une annonce plateforme (`ecole` vide)
+        # touche toutes les écoles, chacune avec son propre réglage.
+        sms_bloque = destinataire.role in ROLES_ELEVES_PARENTS and not sms_eleves_parents_autorise(destinataire.ecole)
+        if annonce.envoyer_sms and parametres.sms_actif and destinataire.phone and not sms_bloque:
             if send_sms(destinataire.phone, f"{annonce.titre} — {annonce.contenu}"):
                 sms_envoyes += 1
 

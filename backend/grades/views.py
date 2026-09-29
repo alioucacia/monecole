@@ -21,7 +21,7 @@ from academics.models import AnneeScolaire, Classe
 from accounts.permissions import IsAdminOrTeacherOrReadOnly
 from attendance.models import Presence
 from people.models import EleveProfile
-from people.sms import send_sms, send_whatsapp
+from people.sms import send_sms, send_whatsapp, sms_eleves_parents_autorise
 from people.views import _classe_pour_annee, _image_data_uri, _mm_px
 
 from .models import Note, Periode
@@ -604,6 +604,9 @@ class BulletinSendSmsView(APIView):
         annee_id = request.data.get("annee_scolaire")
         periodes, label = _resolve_periodes_by_ids(periode_id, annee_id, ecole_id=request.user.ecole_id)  # valide la sélection avant l'envoi
 
+        if not sms_eleves_parents_autorise(eleve.user.ecole):
+            raise ValidationError("L'envoi de SMS/WhatsApp aux élèves et parents est désactivé pour votre établissement.")
+
         telephone = eleve.parent.phone if eleve.parent else ""
         if not telephone:
             raise ValidationError("Aucun numéro de téléphone n'est disponible pour le parent de cet élève.")
@@ -637,6 +640,9 @@ class BulletinSendWhatsAppView(APIView):
         periode_id = request.data.get("periode")
         annee_id = request.data.get("annee_scolaire")
         periodes, label = _resolve_periodes_by_ids(periode_id, annee_id, ecole_id=request.user.ecole_id)  # valide la sélection avant l'envoi
+
+        if not sms_eleves_parents_autorise(eleve.user.ecole):
+            raise ValidationError("L'envoi de SMS/WhatsApp aux élèves et parents est désactivé pour votre établissement.")
 
         telephone = eleve.parent.phone if eleve.parent else ""
         if not telephone:

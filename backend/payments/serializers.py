@@ -5,7 +5,7 @@ from rest_framework import serializers
 
 from core.validators import EXTENSIONS_DOCUMENT, TAILLE_MAX_DOCUMENT, valider_taille_fichier
 
-from .models import CategorieDepense, Depense, Frais, Paiement, TarifClasse, TypeFrais
+from .models import USAGES_INSCRIPTION, CategorieDepense, Depense, Frais, Paiement, TarifClasse, TypeFrais
 
 
 class CategorieDepenseSerializer(serializers.ModelSerializer):
@@ -53,7 +53,9 @@ class PaiementSerializer(serializers.ModelSerializer):
         read_only_fields = ["date_paiement", "enregistre_par"]
 
     def _deja_verse(self, frais, **filtres) -> Decimal:
-        qs = Paiement.objects.filter(frais=frais, **filtres)
+        # Sur le frais ET ses éventuels doublons (voir Frais.equivalents) : un mois / une
+        # inscription déjà payé·e via un autre frais identique de l'élève compte aussi.
+        qs = Paiement.objects.filter(frais__in=frais.equivalents(), **filtres)
         if self.instance:
             qs = qs.exclude(pk=self.instance.pk)
         return qs.aggregate(total=Sum("montant"))["total"] or Decimal("0")
@@ -73,6 +75,9 @@ class PaiementSerializer(serializers.ModelSerializer):
         #    payer pour CE mois précis (le montant dû tient compte de la réduction — voir
         #    Frais.montant_du). `restant` exclut le paiement en cours d'édition le cas échéant
         #    (voir `_deja_verse`), donc reste correct aussi bien en création qu'en modification.
+        if frais.type_frais.est_mensuel and not mois:
+            # Sans mois précisé, le versement échappait au contrôle mois par mois ci-dessous.
+            raise serializers.ValidationError({"mois": "Précisez le mois payé pour ce frais mensuel."})
         if mois and frais.type_frais.est_mensuel:
             restant = frais.montant_du - self._deja_verse(frais, mois=mois)
             if frais.montant_du > 0 and restant <= 0:
@@ -102,11 +107,12 @@ class PaiementSerializer(serializers.ModelSerializer):
 
         # 3) Tout le reste (annuel, autre, ou un paiement sans mois/tranche précisé·e) : le frais
         #    dans son ensemble ne doit pas recevoir de paiement au-delà de son solde restant.
-        if frais.solde <= 0:
+        restant = frais.montant_du - self._deja_verse(frais)
+        if restant <= 0:
             raise serializers.ValidationError({"montant": "Ce frais est déjà intégralement payé."})
-        if montant is not None and montant > frais.solde:
+        if montant is not None and montant > restant:
             raise serializers.ValidationError({
-                "montant": f"Le montant dépasse le solde restant ({frais.solde} GNF)."
+                "montant": f"Le montant dépasse le solde restant ({restant} GNF)."
             })
         return attrs
 
@@ -156,3 +162,28 @@ class FraisSerializer(serializers.ModelSerializer):
             "type_frais_periodicite", "annee_scolaire",
             "montant", "montant_du", "date_echeance", "montant_paye", "solde", "statut", "paiements",
         ]
+
+    def validate(self, attrs):
+        eleve = attrs.get("eleve", getattr(self.instance, "eleve", None))
+        type_frais = attrs.get("type_frais", getattr(self.instance, "type_frais", None))
+        annee = attrs.get("annee_scolaire", getattr(self.instance, "annee_scolaire", None))
+        filtre = Frais.filtre_equivalents(eleve, type_frais, annee) if eleve and type_frais and annee else None
+        if filtre is None:
+            return attrs
+        doublons = Frais.objects.filter(filtre)
+        if self.instance:
+            doublons = doublons.exclude(pk=self.instance.pk)
+        existant = doublons.select_related("type_frais").first()
+        if existant:
+            if type_frais.usage in USAGES_INSCRIPTION:
+                message = (
+                    f"Cet élève a déjà un frais d'inscription/réinscription (« {existant.type_frais.nom} ») "
+                    f"pour l'année {annee.libelle}."
+                )
+            else:
+                message = (
+                    f"Cet élève a déjà un frais « {existant.type_frais.nom} » pour l'année {annee.libelle}"
+                    + (" — il couvre tous les mois de l'année : encaissez chaque mois dessus." if type_frais.est_mensuel else ".")
+                )
+            raise serializers.ValidationError({"type_frais": message})
+        return attrs

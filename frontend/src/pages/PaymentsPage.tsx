@@ -785,11 +785,12 @@ export default function PaymentsPage() {
             {paiementTarget.type_frais_est_mensuel && (
               <div>
                 <Select
-                  label="Mois de scolarité payé (optionnel)"
+                  label="Mois de scolarité payé"
+                  required
                   value={paiementForm.mois}
                   onChange={(e) => setPaiementForm({ ...paiementForm, mois: e.target.value })}
                 >
-                  <option value="">— Aucun mois précis —</option>
+                  <option value="">— Choisir un mois —</option>
                   {(() => {
                     const annee = annees.find((a) => a.id === paiementTarget.annee_scolaire);
                     if (!annee) return null;

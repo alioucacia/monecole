@@ -15,7 +15,7 @@ l'utilisateur dès sa première connexion, dans sa messagerie."""
 from django.conf import settings
 from django.core.mail import send_mail
 
-from people.sms import send_sms
+from people.sms import send_sms, sms_eleves_parents_autorise
 
 
 def _envoyer_email(destinataire_email: str, sujet: str, message: str) -> bool:
@@ -31,10 +31,12 @@ def _envoyer_email(destinataire_email: str, sujet: str, message: str) -> bool:
         return False
 
 
-def _envoyer_sms(destinataire_phone: str, message: str) -> bool:
+def _envoyer_sms(ecole, destinataire_phone: str, message: str) -> bool:
     from tenants.models import ParametresPlateforme
 
     if not destinataire_phone:
+        return False
+    if not sms_eleves_parents_autorise(ecole):
         return False
     if not ParametresPlateforme.charger().sms_actif:
         return False
@@ -92,7 +94,7 @@ def notifier_creation_compte_eleve(
         identifiant=eleve_user.username, mot_de_passe=mot_de_passe_eleve,
     )
     _envoyer_email(eleve_user.email, sujet_eleve, message_eleve)
-    _envoyer_sms(eleve_user.phone, message_eleve)
+    _envoyer_sms(ecole, eleve_user.phone, message_eleve)
     _envoyer_message_interne(expediteur, eleve_user, message_eleve)
 
     if not parent_user:
@@ -115,5 +117,5 @@ def notifier_creation_compte_eleve(
             identifiant=eleve_user.username, mot_de_passe=mot_de_passe_eleve,
         )
     _envoyer_email(parent_user.email, sujet_parent, message_parent)
-    _envoyer_sms(parent_user.phone, message_parent)
+    _envoyer_sms(ecole, parent_user.phone, message_parent)
     _envoyer_message_interne(expediteur, parent_user, message_parent)

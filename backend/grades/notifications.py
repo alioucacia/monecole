@@ -7,7 +7,7 @@ bloque jamais le reste) que pour la création de compte (`accounts.notifications
 from django.conf import settings
 from django.core.mail import send_mail
 
-from people.sms import send_sms
+from people.sms import send_sms, sms_eleves_parents_autorise
 
 DECISION_LABELS = {
     "admis": "Admis(e)",
@@ -43,12 +43,14 @@ def notifier_classement(classe, periode_nom: str, resultats: list) -> dict:
     """`resultats` : liste renvoyée par `_class_results` (eleve_id, moyenne_generale, rang,
     decision...). Notifie chaque élève (self) et son parent s'il en a un — élèves sans moyenne
     (aucune note saisie) ignorés silencieusement. Retourne `notifies` (élèves pour lesquels au
-    moins un canal a réussi), `sms_envoyes` et `sans_telephone` (élèves dont ni le compte ni
-    le parent n'a de numéro — aucun SMS possible)."""
+    moins un canal a réussi), `sms_envoyes`, `sans_telephone` (élèves dont ni le compte ni
+    le parent n'a de numéro — aucun SMS possible) et `sms_desactives` (SMS aux élèves/parents
+    coupés par le Super Admin pour cette école : seuls les e-mails partent)."""
     from people.models import EleveProfile
     from tenants.messages_templates import rendre_modele
 
     ecole = classe.annee_scolaire.ecole
+    sms_autorise = sms_eleves_parents_autorise(ecole)
     ids = [r["eleve_id"] for r in resultats if r["moyenne_generale"] is not None]
     eleves = {
         e.id: e for e in EleveProfile.objects.filter(id__in=ids).select_related("user", "parent")
@@ -82,17 +84,20 @@ def notifier_classement(classe, periode_nom: str, resultats: list) -> dict:
         envoye = False
         if _envoyer_email(eleve.user.email, sujet, message):
             envoye = True
-        if _envoyer_sms(eleve.user.phone, message):
+        if sms_autorise and _envoyer_sms(eleve.user.phone, message):
             envoye = True
             sms_envoyes += 1
         if eleve.parent_id:
             if _envoyer_email(eleve.parent.email, sujet, message):
                 envoye = True
-            if _envoyer_sms(eleve.parent.phone, message):
+            if sms_autorise and _envoyer_sms(eleve.parent.phone, message):
                 envoye = True
                 sms_envoyes += 1
-        if not eleve.user.phone and not (eleve.parent_id and eleve.parent.phone):
+        if sms_autorise and not eleve.user.phone and not (eleve.parent_id and eleve.parent.phone):
             sans_telephone += 1
         if envoye:
             nb_notifies += 1
-    return {"notifies": nb_notifies, "sms_envoyes": sms_envoyes, "sans_telephone": sans_telephone}
+    return {
+        "notifies": nb_notifies, "sms_envoyes": sms_envoyes, "sans_telephone": sans_telephone,
+        "sms_desactives": not sms_autorise,
+    }

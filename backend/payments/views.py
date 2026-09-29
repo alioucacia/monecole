@@ -5,6 +5,7 @@ from io import BytesIO
 
 import openpyxl
 from openpyxl.utils import get_column_letter
+from django.db import transaction
 from django.db.models import ProtectedError, Sum
 from django.http import HttpResponse
 from django.shortcuts import get_object_or_404
@@ -20,7 +21,7 @@ from xhtml2pdf import pisa
 from accounts.permissions import IsAdmin, IsAdminOrComptabilite, IsAdminOrComptabiliteOrReadOnly
 from people.views import _image_data_uri, _mm_px
 
-from .models import CategorieDepense, Depense, Frais, Paiement, TarifClasse, TypeFrais
+from .models import USAGES_INSCRIPTION, CategorieDepense, Depense, Frais, Paiement, TarifClasse, TypeFrais
 from .serializers import CategorieDepenseSerializer, DepenseSerializer, FraisSerializer, PaiementSerializer, TarifClasseSerializer, TypeFraisSerializer
 
 
@@ -575,10 +576,15 @@ class FraisViewSet(viewsets.ModelViewSet):
                 continue
             echeance = echeance or annee.date_fin
 
-            frais, cree = Frais.objects.get_or_create(
-                eleve=eleve, type_frais=type_frais, annee_scolaire=annee,
-                defaults={"montant": montant, "date_echeance": echeance},
-            )
+            filtre = Frais.filtre_equivalents(eleve, type_frais, annee)
+            existant = Frais.objects.filter(filtre).first() if filtre is not None else None
+            if existant:
+                frais, cree = existant, False
+            else:
+                frais, cree = Frais.objects.get_or_create(
+                    eleve=eleve, type_frais=type_frais, annee_scolaire=annee,
+                    defaults={"montant": montant, "date_echeance": echeance},
+                )
             if cree:
                 frais_crees += 1
 
@@ -740,17 +746,28 @@ class FraisViewSet(viewsets.ModelViewSet):
             Frais.objects.filter(eleve__in=eleves, annee_scolaire=annee, type_frais__in=types_frais)
             .values_list("eleve_id", "type_frais_id")
         )
+        # Une seule inscription/réinscription par élève et par année, tous types confondus (voir
+        # Frais.filtre_equivalents) — y compris entre deux types générés dans ce même appel.
+        deja_inscrits = set(
+            Frais.objects.filter(eleve__in=eleves, annee_scolaire=annee, type_frais__usage__in=USAGES_INSCRIPTION)
+            .values_list("eleve_id", flat=True)
+        )
 
-        a_creer = [
-            Frais(
-                eleve=eleve, type_frais=type_frais, annee_scolaire=annee,
-                montant=tarifs.get(type_frais.id, type_frais.montant_standard), date_echeance=date_echeance,
-            )
-            for eleve in eleves
-            for type_frais in types_frais
-            if (eleve.id, type_frais.id) not in existants
-            and not (type_frais.est_mensuel and eleve.facteur_mensualite == 0)
-        ]
+        a_creer = []
+        for eleve in eleves:
+            for type_frais in types_frais:
+                if (eleve.id, type_frais.id) in existants:
+                    continue
+                if type_frais.est_mensuel and eleve.facteur_mensualite == 0:
+                    continue
+                if type_frais.usage in USAGES_INSCRIPTION:
+                    if eleve.id in deja_inscrits:
+                        continue
+                    deja_inscrits.add(eleve.id)
+                a_creer.append(Frais(
+                    eleve=eleve, type_frais=type_frais, annee_scolaire=annee,
+                    montant=tarifs.get(type_frais.id, type_frais.montant_standard), date_echeance=date_echeance,
+                ))
         Frais.objects.bulk_create(a_creer)
         return Response({"crees": len(a_creer), "classe": classe.nom, "eleves": len(eleves)})
 
@@ -1002,6 +1019,18 @@ class PaiementViewSet(viewsets.ModelViewSet):
             # supprimé par erreur fausse l'historique et le suivi mensuel de l'élève.
             return [IsAdmin()]
         return super().get_permissions()
+
+    def create(self, request, *args, **kwargs):
+        # Verrouille l'élève pendant validation + enregistrement : deux encaissements simultanés
+        # du même mois (double clic, deux guichets) verraient sinon chacun le mois encore impayé
+        # et passeraient tous les deux les garde-fous de PaiementSerializer.validate.
+        from people.models import EleveProfile
+
+        frais_id = str(request.data.get("frais", ""))
+        with transaction.atomic():
+            if frais_id.isdigit():
+                list(EleveProfile.objects.select_for_update().filter(frais__pk=int(frais_id)).values_list("pk", flat=True))
+            return super().create(request, *args, **kwargs)
 
     def perform_create(self, serializer):
         from accounts.models import JournalUtilisateur

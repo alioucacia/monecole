@@ -361,7 +361,12 @@ class EleveProfileViewSet(viewsets.ModelViewSet):
             eleve.statut_inscription = EleveProfile.StatutInscription.REINSCRIPTION
             eleve.save(update_fields=["classe", "statut_inscription"])
             enregistrer_historique_classe(eleve, classe_destination)
-            if type_frais:
+            # Pas de second frais si l'élève a déjà son inscription/réinscription pour cette année
+            # (réinscription relancée, ou élève inscrit cette année-même) — voir
+            # Frais.filtre_equivalents : il pourrait sinon la payer deux fois.
+            if type_frais and not Frais.objects.filter(
+                Frais.filtre_equivalents(eleve, type_frais, classe_destination.annee_scolaire)
+            ).exists():
                 # `montant` reste le tarif STANDARD (celui de la classe) — c'est `Frais.montant_du`
                 # qui applique ensuite, à la volée, la réduction propre à la catégorie de paiement
                 # de CET élève (ex: Fondation 100% => montant_du = 0, malgré un `montant` plein

@@ -61,6 +61,9 @@ class TypeFrais(models.Model):
         super().save(*args, **kwargs)
 
 
+USAGES_INSCRIPTION = (TypeFrais.Usage.INSCRIPTION, TypeFrais.Usage.REINSCRIPTION)
+
+
 class TarifClasse(models.Model):
     """Montant spécifique d'un type de frais pour une classe donnée, sur une année scolaire —
     permet de paramétrer des tarifs différents par classe (ex: scolarité plus élevée en
@@ -103,6 +106,28 @@ class Frais(models.Model):
 
     def __str__(self):
         return f"{self.type_frais} - {self.eleve} ({self.montant})"
+
+    @staticmethod
+    def filtre_equivalents(eleve, type_frais, annee_scolaire) -> models.Q | None:
+        """Critère des frais qui couvrent la MÊME obligation que (eleve, type_frais, annee) — un
+        seul doit exister, sinon chaque doublon permettrait de repayer le même mois / la même
+        inscription (les garde-fous de PaiementSerializer ne voyaient que le frais visé) :
+        - inscription / réinscription : une seule par élève et par année, tous types confondus ;
+        - mensuel, tranche, annuel : un seul frais de ce type par élève et par année (un frais
+          mensuel couvre déjà tous les mois de l'année, via `Paiement.mois`) ;
+        - autre / ponctuel : `None`, plusieurs frais du même type restent permis."""
+        base = models.Q(eleve=eleve, annee_scolaire=annee_scolaire)
+        if type_frais.usage in USAGES_INSCRIPTION:
+            return base & models.Q(type_frais__usage__in=USAGES_INSCRIPTION)
+        if type_frais.periodicite != TypeFrais.Periodicite.AUTRE:
+            return base & models.Q(type_frais=type_frais)
+        return None
+
+    def equivalents(self):
+        """Ce frais et ses éventuels doublons (données antérieures au blocage des doublons) —
+        voir `filtre_equivalents`."""
+        filtre = self.filtre_equivalents(self.eleve, self.type_frais, self.annee_scolaire)
+        return Frais.objects.filter(filtre) if filtre is not None else Frais.objects.filter(pk=self.pk)
 
     def _facteur_reduction_courant(self) -> Decimal | None:
         """Le facteur de réduction ACTUELLEMENT applicable à ce frais selon son usage — deux
