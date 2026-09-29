@@ -96,7 +96,7 @@ export default function PerformanceAnalysisPage() {
                   <div key={m.matiere_id} className="bg-white rounded-xl p-3 border border-rose-100">
                     <div className="flex items-center justify-between mb-1">
                       <span className="font-semibold text-slate-700">{m.matiere_nom}</span>
-                      <span className="font-bold text-rose-600">{m.moyenne}/20</span>
+                      <span className="font-bold text-rose-600">{m.moyenne}/{data.bareme}</span>
                     </div>
                     <p className="text-xs text-slate-500">{m.conseil}</p>
                   </div>
@@ -130,7 +130,7 @@ export default function PerformanceAnalysisPage() {
                     <span className="font-medium text-slate-700 truncate">{m.matiere_nom}</span>
                   </div>
                   <div className="flex items-center gap-3 shrink-0">
-                    <span className="text-sm text-slate-500">{m.moyenne !== null ? `${m.moyenne}/20` : "—"}</span>
+                    <span className="text-sm text-slate-500">{m.moyenne !== null ? `${m.moyenne}/${data.bareme}` : "—"}</span>
                     <Badge color={NIVEAU_STYLES[m.niveau].color}>{NIVEAU_STYLES[m.niveau].label}</Badge>
                   </div>
                 </li>

@@ -320,7 +320,7 @@ export default function EcoleDetailPage() {
               <h3 className="font-bold text-ink-900 mb-4">Paramètres pédagogiques</h3>
               <div className="space-y-2 text-sm">
                 <div className="flex justify-between"><span className="text-slate-500">Devise</span><span className="font-semibold">{ecole.parametres.devise}</span></div>
-                <div className="flex justify-between"><span className="text-slate-500">Barème de notation</span><span className="font-semibold">/{ecole.parametres.bareme_notation}</span></div>
+                <div className="flex justify-between"><span className="text-slate-500">Barème de notation</span><span className="font-semibold">/10 Primaire · /20 Collège-Lycée</span></div>
                 <div className="flex justify-between"><span className="text-slate-500">Moyenne de passage</span><span className="font-semibold">{ecole.parametres.moyenne_admission}</span></div>
               </div>
             </Card>

@@ -69,6 +69,19 @@ def deviner_cycle(niveau: str) -> str | None:
     return None
 
 
+CYCLES_SUR_10 = ("prescolaire", "primaire")
+
+
+def bareme_du_cycle(cycle: str | None) -> int:
+    """10 pour le Préscolaire et le Primaire, 20 sinon (Collège, Lycée, cycle inconnu)."""
+    return 10 if cycle in CYCLES_SUR_10 else 20
+
+
+def bareme_de_classe(classe) -> int:
+    """Barème d'une classe éventuellement absente (élève non affecté) — 20 par défaut."""
+    return classe.bareme if classe else 20
+
+
 class Classe(models.Model):
     class Cycle(models.TextChoices):
         PRESCOLAIRE = "prescolaire", "Préscolaire"
@@ -105,6 +118,14 @@ class Classe(models.Model):
         if not self.cycle:
             self.cycle = deviner_cycle(self.niveau) or ""
         super().save(*args, **kwargs)
+
+    @property
+    def bareme(self) -> int:
+        """Note maximale des évaluations de cette classe : sur 10 en Préscolaire/Primaire, sur
+        20 en Collège/Lycée (et par défaut, cycle non renseigné). Les notes sont saisies et
+        stockées sur ce barème — voir grades.views pour la conversion des seuils (admission,
+        mentions, appréciations), toujours exprimés sur 20."""
+        return bareme_du_cycle(self.cycle)
 
     @property
     def effectif(self):

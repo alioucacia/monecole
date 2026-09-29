@@ -150,7 +150,7 @@ export default function ResultsPage() {
     ? Math.round((moyennesValides.reduce((s, r) => s + (r.moyenne_generale || 0), 0) / moyennesValides.length) * 100) / 100
     : null;
   const tauxReussite = data?.resultats.length
-    ? Math.round((moyennesValides.filter((r) => (r.moyenne_generale || 0) >= 10).length / data.resultats.length) * 1000) / 10
+    ? Math.round((moyennesValides.filter((r) => (r.moyenne_generale || 0) >= data.bareme / 2).length / data.resultats.length) * 1000) / 10
     : null;
 
   return (
@@ -201,7 +201,7 @@ export default function ResultsPage() {
         <>
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-6">
             <StatCard label="Effectif" value={data.effectif} icon="🎓" accent="brand" />
-            <StatCard label="Moyenne de classe" value={moyenneClasse !== null ? `${moyenneClasse}/20` : "—"} icon="📊" accent="teal" />
+            <StatCard label="Moyenne de classe" value={moyenneClasse !== null ? `${moyenneClasse}/${data.bareme}` : "—"} icon="📊" accent="teal" />
             <StatCard label="Taux de réussite (≥10)" value={tauxReussite !== null ? `${tauxReussite}%` : "—"} icon="✅" accent="green" />
           </div>
 
@@ -220,7 +220,7 @@ export default function ResultsPage() {
                       <td className="px-4 py-3 font-bold text-ink-900">{r.rang ?? "—"}</td>
                       <td className="px-4 py-3 font-mono text-xs text-slate-500">{r.matricule}</td>
                       <td className="px-4 py-3 font-medium text-slate-700">{r.nom_complet}</td>
-                      <td className="px-4 py-3 font-semibold">{r.moyenne_generale !== null ? `${r.moyenne_generale}/20` : "—"}</td>
+                      <td className="px-4 py-3 font-semibold">{r.moyenne_generale !== null ? `${r.moyenne_generale}/${data.bareme}` : "—"}</td>
                       <td className="px-4 py-3">
                         {r.mention && <Badge color={MENTION_COLORS[r.mention] || "slate"}>{r.mention}</Badge>}
                       </td>

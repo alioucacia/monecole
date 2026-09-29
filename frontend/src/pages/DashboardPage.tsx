@@ -3,6 +3,7 @@ import { Bar, BarChart, CartesianGrid, Cell, Pie, PieChart, ResponsiveContainer,
 import { Link, Navigate } from "react-router-dom";
 
 import { dashboardApi } from "../api/services";
+import { baremeDuCycle } from "../bareme";
 import { Badge, Card, EmptyState, PageHeader, Spinner, StatCard } from "../components/ui";
 import { useAuth } from "../context/AuthContext";
 
@@ -227,7 +228,7 @@ function TeacherDashboard({ data }: { data: Record<string, any> }) {
             {data.dernieres_notes.map((n: any) => (
               <li key={n.id} className="py-3 flex items-center justify-between text-sm">
                 <span>{n.eleve__first_name} {n.eleve__last_name} — {n.matiere__nom}</span>
-                <Badge>{n.valeur}/20</Badge>
+                <Badge>{n.valeur}/{baremeDuCycle(n.eleve__classe__cycle)}</Badge>
               </li>
             ))}
           </ul>
@@ -241,7 +242,7 @@ function StudentDashboard({ data }: { data: Record<string, any> }) {
   return (
     <div className="space-y-6">
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-        <StatCard label="Moyenne générale" value={data.moyenne_generale !== null ? `${data.moyenne_generale}/20` : "—"} icon="📊" accent="brand" />
+        <StatCard label="Moyenne générale" value={data.moyenne_generale !== null ? `${data.moyenne_generale}/${data.bareme ?? 20}` : "—"} icon="📊" accent="brand" />
         <StatCard label="Taux de présence" value={data.taux_presence !== null ? `${data.taux_presence}%` : "—"} icon="✅" accent="green" />
         <StatCard label="Solde à payer" value={money(data.solde_frais)} icon="💳" accent={Number(data.solde_frais) > 0 ? "rose" : "green"} />
       </div>

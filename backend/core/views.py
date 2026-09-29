@@ -130,7 +130,10 @@ class DashboardView(APIView):
 
         dernieres_notes = list(
             Note.objects.filter(enseignant=user).order_by("-date")[:5]
-            .values("id", "eleve__user__first_name", "eleve__user__last_name", "matiere__nom", "valeur", "date")
+            .values(
+                "id", "eleve__user__first_name", "eleve__user__last_name", "matiere__nom", "valeur", "date",
+                "eleve__classe__cycle",  # barème de la note (sur 10 en Primaire — voir Classe.bareme)
+            )
         )
 
         return {
@@ -191,6 +194,8 @@ class DashboardView(APIView):
 
         return {
             "moyenne_generale": moyenne_generale,
+            # Barème de la classe (sur 10 en Primaire, sur 20 au Collège — voir Classe.bareme).
+            "bareme": eleve.classe.bareme if eleve.classe else 20,
             "taux_presence": taux_presence,
             "solde_frais": solde_frais - paye_frais,
             "prochains_creneaux": prochains_creneaux,

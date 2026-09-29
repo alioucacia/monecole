@@ -15,6 +15,7 @@ def _contexte_scolaire(eleve) -> str:
     modèles de l'app `grades` pour éviter un cycle (grades.models importe déjà people.models)."""
     from academics.models import AnneeScolaire
     from grades.models import Periode
+    from academics.models import bareme_de_classe
     from grades.views import _matieres_moyennes, _moyenne_generale
 
     if not eleve.user.ecole_id:
@@ -30,13 +31,14 @@ def _contexte_scolaire(eleve) -> str:
         return "Aucune note enregistrée pour le moment."
 
     moyenne_generale = _moyenne_generale(matieres_moy)
+    bareme = bareme_de_classe(eleve.classe)
     faibles = sorted(
-        ((m.nom, moy) for m, (moy, _notes) in matieres_moy.items() if moy is not None and moy < 10),
+        ((m.nom, moy) for m, (moy, _notes) in matieres_moy.items() if moy is not None and moy < bareme / 2),
         key=lambda x: x[1],
     )
-    lignes = [f"Moyenne générale : {moyenne_generale if moyenne_generale is not None else '—'}/20."]
+    lignes = [f"Moyenne générale : {moyenne_generale if moyenne_generale is not None else '—'}/{bareme}."]
     if faibles:
-        lignes.append("Matières en difficulté : " + ", ".join(f"{nom} ({moy}/20)" for nom, moy in faibles) + ".")
+        lignes.append("Matières en difficulté : " + ", ".join(f"{nom} ({moy}/{bareme})" for nom, moy in faibles) + ".")
     else:
         lignes.append("Aucune matière en dessous de la moyenne actuellement — beau travail !")
     return " ".join(lignes)

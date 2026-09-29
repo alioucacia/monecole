@@ -314,7 +314,7 @@ class EleveProfileViewSet(viewsets.ModelViewSet):
                 continue
             periodes = list(Periode.objects.filter(annee_scolaire=eleve.classe.annee_scolaire))
             moyenne = _moyenne_generale(_matieres_moyennes(eleve, periodes))
-            if _decision_admission(moyenne, request.user.ecole) == "redouble":
+            if _decision_admission(moyenne, request.user.ecole, eleve.classe.bareme) == "redouble":
                 refuses.append(eleve)
         if refuses:
             noms = ", ".join(f"{e.user.first_name} {e.user.last_name}" for e in refuses)

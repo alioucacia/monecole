@@ -17,7 +17,7 @@ from rest_framework.response import Response
 from rest_framework.views import APIView
 from xhtml2pdf import pisa
 
-from academics.models import AnneeScolaire, Classe
+from academics.models import AnneeScolaire, Classe, bareme_de_classe
 from accounts.permissions import IsAdminOrTeacherOrReadOnly
 from attendance.models import Presence
 from people.models import EleveProfile
@@ -65,7 +65,7 @@ class PeriodeViewSet(viewsets.ModelViewSet):
 
 
 class NoteViewSet(viewsets.ModelViewSet):
-    queryset = Note.objects.select_related("eleve__user", "matiere", "enseignant", "periode")
+    queryset = Note.objects.select_related("eleve__user", "eleve__classe", "matiere", "enseignant", "periode")
     serializer_class = NoteSerializer
     permission_classes = [IsAdminOrTeacherOrReadOnly]
     filterset_fields = {
@@ -148,18 +148,29 @@ def _devise_html(texte):
     )
 
 
-def _appreciation(moyenne):
+def _sur_20(moyenne, bareme=20):
+    """Ramène une moyenne exprimée sur `bareme` (10 en Préscolaire/Primaire, voir
+    Classe.bareme) sur 20 — les seuils (APPRECIATIONS, MENTIONS, admission, repêchage) sont
+    tous exprimés sur 20 : un 5/10 vaut ainsi 10/20 (« admis »)."""
+    if moyenne is None or bareme == 20:
+        return moyenne
+    return Decimal(moyenne) * 20 / Decimal(bareme)
+
+
+def _appreciation(moyenne, bareme=20):
     if moyenne is None:
         return None
+    moyenne = _sur_20(moyenne, bareme)
     for seuil, label in APPRECIATIONS:
         if moyenne >= seuil:
             return label
     return "Insuffisant"
 
 
-def _mention_generale(moyenne):
+def _mention_generale(moyenne, bareme=20):
     if moyenne is None:
         return None
+    moyenne = _sur_20(moyenne, bareme)
     for seuil, label in MENTIONS:
         if moyenne >= seuil:
             return label
@@ -200,14 +211,16 @@ def _moyenne_generale(matieres_moyennes):
     return round(total / coeffs, 2) if coeffs > 0 else None
 
 
-def _decision_admission(moyenne, ecole):
+def _decision_admission(moyenne, ecole, bareme=20):
     """« admis » / « repeche » / « redouble » selon le seuil d'admission paramétré par l'école
     (Ecole.parametres.moyenne_admission, 10/20 par défaut) — un repêchage étant accordé jusqu'à
     2 points sous ce seuil. Factorisé ici pour que `_build_bulletin` (bulletin individuel) et
     `_class_results` (classement de classe, voir ResultsPage/« Admis »/« Redoublants ») utilisent
-    exactement la même règle."""
+    exactement la même règle. Seuil et repêchage sont sur 20 : une moyenne sur 10 (Primaire)
+    est d'abord ramenée sur 20 (voir `_sur_20`)."""
     if moyenne is None:
         return None
+    moyenne = _sur_20(moyenne, bareme)
     seuil_admission = Decimal("10")
     if ecole and getattr(ecole, "parametres", None):
         seuil_admission = ecole.parametres.moyenne_admission
@@ -223,6 +236,7 @@ def _class_results(classe, periodes):
     ensemble de périodes."""
     eleves = EleveProfile.objects.filter(classe=classe).select_related("user")
     ecole = classe.annee_scolaire.ecole
+    bareme = classe.bareme
     computed = [(el, _moyenne_generale(_matieres_moyennes(el, periodes))) for el in eleves]
     computed.sort(key=lambda x: (x[1] is None, -(x[1] or Decimal("0"))))
 
@@ -236,8 +250,9 @@ def _class_results(classe, periodes):
             "nom_complet": el.user.get_full_name(),
             "moyenne_generale": moyenne,
             "rang": rang if moyenne is not None else None,
-            "mention": _mention_generale(moyenne),
-            "decision": _decision_admission(moyenne, ecole),
+            "mention": _mention_generale(moyenne, bareme),
+            "decision": _decision_admission(moyenne, ecole, bareme),
+            "bareme": bareme,
         })
     return resultats
 
@@ -266,6 +281,11 @@ def _absences_summary(eleve, periodes):
 
 def _build_bulletin(eleve, periodes, periode_label):
     matieres_moy = _matieres_moyennes(eleve, periodes)
+    # La classe de CETTE période (pas forcément celle d'aujourd'hui si l'élève a changé de
+    # classe depuis) — un bulletin d'une année passée doit afficher la classe de l'époque, et
+    # son barème (sur 10 en Primaire, sur 20 au Collège : voir Classe.bareme).
+    classe_periode = _classe_pour_annee(eleve, periodes[0].annee_scolaire) if periodes else eleve.classe
+    bareme = bareme_de_classe(classe_periode)
 
     matieres_data = []
     for matiere, (moyenne, notes) in matieres_moy.items():
@@ -304,7 +324,7 @@ def _build_bulletin(eleve, periodes, periode_label):
             "coefficient": matiere.coefficient,
             "moyenne": moyenne,
             "moyenne_classe": moyenne_classe,
-            "appreciation": _appreciation(moyenne),
+            "appreciation": _appreciation(moyenne, bareme),
             "detail_periodes": detail_periodes,
             "notes": [
                 {"id": n.id, "type_evaluation": n.type_evaluation, "valeur": n.valeur,
@@ -367,14 +387,11 @@ def _build_bulletin(eleve, periodes, periode_label):
                     break
         recap_periodes.append({
             "nom": p.nom, "moyenne": moyenne_p, "rang": rang_p,
-            "effectif": effectif_p, "appreciation": _appreciation(moyenne_p),
+            "effectif": effectif_p, "appreciation": _appreciation(moyenne_p, bareme),
         })
 
-    bareme_notation = 20
     ecole = eleve.user.ecole if eleve.user.ecole_id else None
-    if ecole and getattr(ecole, "parametres", None):
-        bareme_notation = ecole.parametres.bareme_notation
-    decision = _decision_admission(moyenne_generale, ecole)
+    decision = _decision_admission(moyenne_generale, ecole, bareme)
 
     modele_bulletin = eleve.user.ecole.modele_bulletin if eleve.user.ecole_id else 1
     # Cadre photo du modèle « Officiel » (5, carré 18×18mm) distinct des 4 autres (portrait
@@ -382,9 +399,6 @@ def _build_bulletin(eleve, periodes, periode_label):
     # recadrée pour le bon format, sinon xhtml2pdf l'étire pour remplir le cadre (il ignore
     # silencieusement `object-fit`) et la déforme.
     taille_photo_bulletin = _mm_px(18, 18) if modele_bulletin == 5 else _mm_px(19, 23)
-    # La classe de CETTE période (pas forcément celle d'aujourd'hui si l'élève a changé de
-    # classe depuis) — un bulletin d'une année passée doit afficher la classe de l'époque.
-    classe_periode = _classe_pour_annee(eleve, periodes[0].annee_scolaire) if periodes else eleve.classe
 
     return {
         "eleve": {
@@ -423,7 +437,7 @@ def _build_bulletin(eleve, periodes, periode_label):
         "entete_devise_html": _devise_html(
             eleve.user.ecole.entete_devise if eleve.user.ecole_id else "Travail - Justice - Solidarité"
         ),
-        "bareme_notation": bareme_notation,
+        "bareme_notation": bareme,
         "photo_data_uri": _image_data_uri(eleve.user.photo, taille_photo_bulletin),
         "absences": _absences_summary(eleve, periodes),
         "periode": periode_label,
@@ -432,7 +446,7 @@ def _build_bulletin(eleve, periodes, periode_label):
         "colonnes_totaux": colonnes_totaux,
         "total_coefficient": total_coefficient,
         "moyenne_generale": moyenne_generale,
-        "mention": _mention_generale(moyenne_generale),
+        "mention": _mention_generale(moyenne_generale, bareme),
         "rang": rang,
         "effectif_classe": effectif,
         "recap_periodes": recap_periodes,
@@ -708,6 +722,7 @@ class ResultatsView(APIView):
             "classe": {"id": classe.id, "nom": classe.nom},
             "periode": label,
             "effectif": len(resultats),
+            "bareme": classe.bareme,
             "resultats": resultats,
         })
 
@@ -753,7 +768,7 @@ class ResultatsPdfView(APIView):
         moyennes_valides = [r["moyenne_generale"] for r in resultats if r["moyenne_generale"] is not None]
         moyenne_classe = round(sum(moyennes_valides) / len(moyennes_valides), 2) if moyennes_valides else None
         taux_reussite = (
-            round(len([m for m in moyennes_valides if m >= 10]) / len(resultats) * 100, 1) if resultats else None
+            round(len([m for m in moyennes_valides if m >= classe.bareme / 2]) / len(resultats) * 100, 1) if resultats else None
         )
 
         html = render_to_string("grades/resultats_pdf.html", {
@@ -763,6 +778,7 @@ class ResultatsPdfView(APIView):
             "effectif": len(resultats),
             "moyenne_classe": moyenne_classe,
             "taux_reussite": taux_reussite,
+            "bareme": classe.bareme,
             "ecole_nom": request.user.ecole.nom if request.user.ecole_id else "Taly-School",
             "ecole_logo_data_uri": (
                 _image_data_uri(request.user.ecole.logo, _mm_px(16, 16), mode="contain")
@@ -810,6 +826,7 @@ class AttestationHonneurPdfView(APIView):
             "classe": classe,
             "periode": label,
             "laureats": laureats,
+            "bareme": classe.bareme,
             "effectif": len(resultats),
             "date_edition": timezone.localdate(),
             "ecole_nom": request.user.ecole.nom if request.user.ecole_id else "Taly-School",
@@ -834,10 +851,10 @@ CONSEILS_PAR_NIVEAU = {
 }
 
 
-def _niveau_matiere(moyenne, moyenne_classe):
+def _niveau_matiere(moyenne, moyenne_classe, bareme=20):
     if moyenne is None:
         return "aucune_note"
-    if moyenne < 10:
+    if moyenne < Decimal(bareme) / 2:
         return "faible"
     if moyenne_classe is not None and moyenne < moyenne_classe:
         return "moyen"
@@ -864,6 +881,7 @@ class AnalysePerformanceView(APIView):
 
         periodes, label = _resolve_periodes(request)
         matieres_moy = _matieres_moyennes(eleve, periodes)
+        bareme = bareme_de_classe(_classe_pour_annee(eleve, periodes[0].annee_scolaire) if periodes else eleve.classe)
 
         analyse = []
         for matiere, (moyenne, _notes) in matieres_moy.items():
@@ -879,7 +897,7 @@ class AnalysePerformanceView(APIView):
                 if moyennes_classe:
                     moyenne_classe = round(sum(moyennes_classe) / len(moyennes_classe), 2)
 
-            niveau = _niveau_matiere(moyenne, moyenne_classe)
+            niveau = _niveau_matiere(moyenne, moyenne_classe, bareme)
             analyse.append({
                 "matiere_id": matiere.id,
                 "matiere_nom": matiere.nom,
@@ -894,6 +912,7 @@ class AnalysePerformanceView(APIView):
         return Response({
             "eleve": {"id": eleve.id, "nom_complet": eleve.user.get_full_name()},
             "periode": label,
+            "bareme": bareme,
             "matieres": analyse,
             "points_faibles": [a for a in analyse if a["niveau"] == "faible"][:3],
             "points_forts": [a for a in analyse if a["niveau"] == "bon"][:3],
@@ -918,7 +937,7 @@ class ResultatsExportView(APIView):
         response = HttpResponse(content_type="text/csv; charset=utf-8-sig")
         response["Content-Disposition"] = f'attachment; filename="resultats_{classe.nom}.csv"'
         writer = csv.writer(response, delimiter=";")
-        writer.writerow(["Rang", "Matricule", "Nom complet", "Moyenne générale /20", "Mention", "Décision"])
+        writer.writerow(["Rang", "Matricule", "Nom complet", f"Moyenne générale /{classe.bareme}", "Mention", "Décision"])
         for r in resultats:
             writer.writerow([
                 r["rang"] or "", r["matricule"], r["nom_complet"],

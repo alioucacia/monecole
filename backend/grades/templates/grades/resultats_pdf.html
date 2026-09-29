@@ -35,7 +35,7 @@
                 <div class="label">Effectif</div>
             </td>
             <td width="33%" class="box">
-                <div class="value">{% if moyenne_classe %}{{ moyenne_classe }}/20{% else %}—{% endif %}</div>
+                <div class="value">{% if moyenne_classe %}{{ moyenne_classe }}/{{ bareme }}{% else %}—{% endif %}</div>
                 <div class="label">Moyenne de classe</div>
             </td>
             <td width="33%" class="box">
@@ -61,7 +61,7 @@
                 <td class="center">{{ r.rang|default:"—" }}</td>
                 <td>{{ r.matricule }}</td>
                 <td>{{ r.nom_complet }}</td>
-                <td class="center">{% if r.moyenne_generale %}{{ r.moyenne_generale }}/20{% else %}—{% endif %}</td>
+                <td class="center">{% if r.moyenne_generale %}{{ r.moyenne_generale }}/{{ bareme }}{% else %}—{% endif %}</td>
                 <td>{{ r.mention|default:"—" }}</td>
             </tr>
             {% endfor %}

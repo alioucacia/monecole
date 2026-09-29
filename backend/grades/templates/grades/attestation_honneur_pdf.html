@@ -52,7 +52,7 @@
                     </div>
                     <div class="details">
                         <span class="pill">Rang {{ l.rang }}{% if effectif %} / {{ effectif }}{% endif %}</span>
-                        <span class="pill">Moyenne {{ l.moyenne_generale }}/20</span>
+                        <span class="pill">Moyenne {{ l.moyenne_generale }}/{{ bareme }}</span>
                         {% if l.mention %}<span class="pill">{{ l.mention }}</span>{% endif %}
                     </div>
 

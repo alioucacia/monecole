@@ -398,7 +398,7 @@ export default function StudentDetailPage() {
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-6">
         <StatCard
           label="Moyenne générale (année en cours)"
-          value={bulletin?.moyenne_generale !== null && bulletin?.moyenne_generale !== undefined ? `${bulletin.moyenne_generale}/20` : "—"}
+          value={bulletin?.moyenne_generale !== null && bulletin?.moyenne_generale !== undefined ? `${bulletin.moyenne_generale}/${bulletin.bareme_notation}` : "—"}
           icon="📊" accent="brand"
         />
         <StatCard
@@ -522,7 +522,7 @@ export default function StudentDetailPage() {
                   <td className="px-4 py-3 font-medium text-slate-700">{n.matiere_nom}</td>
                   <td className="px-4 py-3 text-slate-500">{n.periode_nom}</td>
                   <td className="px-4 py-3 text-slate-500 capitalize">{n.type_evaluation}</td>
-                  <td className="px-4 py-3 font-semibold">{n.valeur}/20</td>
+                  <td className="px-4 py-3 font-semibold">{n.valeur}/{n.bareme}</td>
                   <td className="px-4 py-3 text-slate-500">{n.coefficient}</td>
                   <td className="px-4 py-3 text-slate-500 text-xs">{new Date(n.date).toLocaleDateString("fr-FR")}</td>
                 </tr>

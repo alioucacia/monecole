@@ -531,6 +531,8 @@ export interface Note {
   periode_nom: string;
   type_evaluation: "devoir" | "composition" | "interrogation" | "projet";
   valeur: string;
+  /** Note maximale : 10 en Préscolaire/Primaire, 20 en Collège/Lycée. */
+  bareme: number;
   coefficient: number;
   date: string;
   commentaire: string;
@@ -567,6 +569,7 @@ export interface AnalyseMatiere {
 export interface AnalysePerformance {
   eleve: { id: number; nom_complet: string };
   periode: PeriodeLabel;
+  bareme: number;
   matieres: AnalyseMatiere[];
   points_faibles: AnalyseMatiere[];
   points_forts: AnalyseMatiere[];
@@ -587,6 +590,7 @@ export interface Bulletin {
   mention: string | null;
   rang: number | null;
   effectif_classe: number | null;
+  bareme_notation: number;
 }
 
 export interface ResultatEleve {
@@ -605,6 +609,7 @@ export interface Resultats {
   classe: { id: number; nom: string };
   periode: PeriodeLabel;
   effectif: number;
+  bareme: number;
   resultats: ResultatEleve[];
 }
 

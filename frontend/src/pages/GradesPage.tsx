@@ -3,6 +3,7 @@ import { useEffect, useState, type FormEvent } from "react";
 import { classesApi, elevesApi, enseignementsApi, notesApi, periodesApi, unwrapList } from "../api/services";
 import { extractErrorMessage } from "../api/client";
 import { Badge, Button, DeleteButton, EditButton, EmptyState, Input, Modal, PageHeader, RowActions, Select, Spinner, Table } from "../components/ui";
+import { baremeDuCycle } from "../bareme";
 import { CycleSelect } from "../components/CycleSelect";
 import { useAuth } from "../context/AuthContext";
 import { useConfirm } from "../context/ConfirmContext";
@@ -65,6 +66,8 @@ export default function GradesPage() {
 
   const matieresDisponibles = enseignements.filter((e) => !classeFilter || e.classe === Number(classeFilter));
   const classesFiltrees = classes.filter((c) => !cycleFiltre || c.cycle === cycleFiltre);
+  // Note maximale de la saisie : sur 10 en Préscolaire/Primaire, sur 20 au Collège/Lycée.
+  const baremeSaisie = editing?.bareme ?? baremeDuCycle(classes.find((c) => c.id === Number(classeFilter))?.cycle);
 
   const openCreate = () => {
     setEditing(null);
@@ -159,7 +162,7 @@ export default function GradesPage() {
                 <td className="px-4 py-3 font-medium text-slate-700">{note.eleve_nom}</td>
                 <td className="px-4 py-3">{note.matiere_nom}</td>
                 <td className="px-4 py-3"><Badge>{TYPE_LABELS[note.type_evaluation]}</Badge></td>
-                <td className="px-4 py-3 font-semibold">{note.valeur}/20</td>
+                <td className="px-4 py-3 font-semibold">{note.valeur}/{note.bareme}</td>
                 <td className="px-4 py-3">{note.coefficient}</td>
                 <td className="px-4 py-3">{note.periode_nom}</td>
                 <td className="px-4 py-3 text-slate-500">{new Date(note.date).toLocaleDateString("fr-FR")}</td>
@@ -205,7 +208,7 @@ export default function GradesPage() {
             {Object.entries(TYPE_LABELS).map(([value, label]) => <option key={value} value={value}>{label}</option>)}
           </Select>
           <div className="grid grid-cols-2 gap-4">
-            <Input label="Note (/20)" type="number" min={0} max={20} step="0.25" required value={form.valeur} onChange={(e) => setForm({ ...form, valeur: e.target.value })} />
+            <Input label={`Note (/${baremeSaisie})`} type="number" min={0} max={baremeSaisie} step="0.25" required value={form.valeur} onChange={(e) => setForm({ ...form, valeur: e.target.value })} />
             <Input label="Coefficient" type="number" min={1} required value={form.coefficient} onChange={(e) => setForm({ ...form, coefficient: Number(e.target.value) })} />
           </div>
           <Input label="Date" type="date" required value={form.date} onChange={(e) => setForm({ ...form, date: e.target.value })} />

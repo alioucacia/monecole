@@ -1,5 +1,7 @@
 from rest_framework import serializers
 
+from academics.models import bareme_de_classe
+
 from .models import Note, Periode
 
 
@@ -16,13 +18,29 @@ class NoteSerializer(serializers.ModelSerializer):
     matiere_nom = serializers.CharField(source="matiere.nom", read_only=True)
     enseignant_nom = serializers.CharField(source="enseignant.get_full_name", read_only=True, default=None)
     periode_nom = serializers.CharField(source="periode.nom", read_only=True)
+    # Note maximale : 10 en Préscolaire/Primaire, 20 en Collège/Lycée (voir Classe.bareme).
+    bareme = serializers.SerializerMethodField()
 
     class Meta:
         model = Note
         fields = [
             "id", "eleve", "eleve_nom", "matiere", "matiere_nom", "enseignant", "enseignant_nom",
-            "periode", "periode_nom", "type_evaluation", "valeur", "coefficient", "date", "commentaire",
+            "periode", "periode_nom", "type_evaluation", "valeur", "bareme", "coefficient", "date", "commentaire",
         ]
+
+    def get_bareme(self, obj) -> int:
+        return bareme_de_classe(obj.eleve.classe)
+
+    def validate(self, attrs):
+        eleve = attrs.get("eleve", getattr(self.instance, "eleve", None))
+        valeur = attrs.get("valeur", getattr(self.instance, "valeur", None))
+        if eleve is not None and valeur is not None:
+            bareme = bareme_de_classe(eleve.classe)
+            if valeur > bareme:
+                raise serializers.ValidationError({
+                    "valeur": f"La note ne peut pas dépasser {bareme} : la classe de cet élève est notée sur {bareme}."
+                })
+        return attrs
 
     def create(self, validated_data):
         request = self.context.get("request")

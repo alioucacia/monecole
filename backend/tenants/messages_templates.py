@@ -51,11 +51,11 @@ MODELES_MESSAGE = {
     "classement_eleve": {
         "label": "Classement de l'élève",
         "description": "Envoyé à l'élève (et à son parent) avec son rang, sa moyenne et sa décision d'admission, depuis « Résultats ».",
-        "jetons": ["{nom_complet}", "{periode}", "{rang}", "{effectif}", "{moyenne}", "{decision}"],
+        "jetons": ["{nom_complet}", "{periode}", "{rang}", "{effectif}", "{moyenne}", "{bareme}", "{decision}"],
         "sujet_defaut": "{nom_ecole} — Résultats de {nom_complet}",
         "contenu_defaut": (
             "{nom_ecole} : résultats de {nom_complet} ({periode}).\n"
-            "Rang : {rang}/{effectif} — Moyenne : {moyenne}/20 — {decision}."
+            "Rang : {rang}/{effectif} — Moyenne : {moyenne}/{bareme} — {decision}."
         ),
     },
     "classement_eleve_non_admis": {
@@ -64,11 +64,11 @@ MODELES_MESSAGE = {
             "Variante envoyée depuis « Résultats » à l'élève (et à son parent) dont la moyenne est "
             "sous le seuil d'admission (repêchage ou redoublement) — sans rang, réservé aux admis."
         ),
-        "jetons": ["{nom_complet}", "{periode}", "{moyenne}", "{decision}"],
+        "jetons": ["{nom_complet}", "{periode}", "{moyenne}", "{bareme}", "{decision}"],
         "sujet_defaut": "{nom_ecole} — Résultats de {nom_complet}",
         "contenu_defaut": (
             "{nom_ecole} : résultats de {nom_complet} ({periode}).\n"
-            "Moyenne : {moyenne}/20 — {decision}."
+            "Moyenne : {moyenne}/{bareme} — {decision}."
         ),
     },
     "resultats_disponibles": {

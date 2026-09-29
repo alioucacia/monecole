@@ -581,10 +581,13 @@ export default function ParametresEcolePage() {
             <h3 className="font-bold text-ink-900 mb-4">Notation & ponctualité</h3>
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
               <Input label="Devise" value={form.devise} onChange={(e) => setForm({ ...form, devise: e.target.value })} />
-              <Input label="Barème de notation" type="number" min={10} max={100} value={form.bareme_notation} onChange={(e) => setForm({ ...form, bareme_notation: Number(e.target.value) })} />
-              <Input label="Moyenne de passage" type="number" step="0.01" min={0} value={form.moyenne_admission} onChange={(e) => setForm({ ...form, moyenne_admission: e.target.value })} />
+              <Input label="Moyenne de passage (sur 20)" type="number" step="0.01" min={0} max={20} value={form.moyenne_admission} onChange={(e) => setForm({ ...form, moyenne_admission: e.target.value })} />
               <Input label="Heure limite de ponctualité" type="time" value={form.heure_limite_ponctualite} onChange={(e) => setForm({ ...form, heure_limite_ponctualite: e.target.value })} className="sm:col-span-1" />
             </div>
+            <p className="text-xs text-slate-500 mt-3">
+              Barème de notation fixé par le cycle de la classe : <strong>sur 10</strong> en Préscolaire et Primaire,{" "}
+              <strong>sur 20</strong> au Collège et au Lycée. La moyenne de passage s'applique aux deux (5/10 = 10/20).
+            </p>
           </Card>
 
           <Card>

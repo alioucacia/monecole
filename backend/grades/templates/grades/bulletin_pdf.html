@@ -496,14 +496,14 @@
                         {% for r in b.recap_periodes %}
                         <tr>
                             <td>{{ r.nom }}</td>
-                            <td>{{ r.moyenne|default:"—" }}/20</td>
+                            <td>{{ r.moyenne|default:"—" }}/{{ b.bareme_notation }}</td>
                             <td>{% if r.rang %}{{ r.rang }}{% if r.effectif %} / {{ r.effectif }}{% endif %}{% else %}—{% endif %}</td>
                             <td>{{ r.appreciation|default:"—" }}</td>
                         </tr>
                         {% endfor %}
                         <tr class="annuelle">
                             <td>Moyenne annuelle</td>
-                            <td>{{ b.moyenne_generale|default:"—" }}/20</td>
+                            <td>{{ b.moyenne_generale|default:"—" }}/{{ b.bareme_notation }}</td>
                             <td>{% if b.rang %}{{ b.rang }} / {{ b.effectif_classe }}{% else %}—{% endif %}</td>
                             <td>{{ b.mention|default:"—" }}</td>
                         </tr>
@@ -514,9 +514,9 @@
             <td style="width: 37%; vertical-align: top;">
                 <table class="stats" cellspacing="0" cellpadding="0">
                     <tr><td colspan="2" class="stats-titre">Statistiques de classe</td></tr>
-                    <tr><td class="label">Meilleure moyenne</td><td class="valeur">{% if b.meilleure_moyenne %}{{ b.meilleure_moyenne }}/20{% else %}—{% endif %}</td></tr>
-                    <tr><td class="label">Moyenne de classe</td><td class="valeur">{% if b.moyenne_classe_generale %}{{ b.moyenne_classe_generale }}/20{% else %}—{% endif %}</td></tr>
-                    <tr><td class="label">Plus faible moyenne</td><td class="valeur">{% if b.plus_faible_moyenne %}{{ b.plus_faible_moyenne }}/20{% else %}—{% endif %}</td></tr>
+                    <tr><td class="label">Meilleure moyenne</td><td class="valeur">{% if b.meilleure_moyenne %}{{ b.meilleure_moyenne }}/{{ b.bareme_notation }}{% else %}—{% endif %}</td></tr>
+                    <tr><td class="label">Moyenne de classe</td><td class="valeur">{% if b.moyenne_classe_generale %}{{ b.moyenne_classe_generale }}/{{ b.bareme_notation }}{% else %}—{% endif %}</td></tr>
+                    <tr><td class="label">Plus faible moyenne</td><td class="valeur">{% if b.plus_faible_moyenne %}{{ b.plus_faible_moyenne }}/{{ b.bareme_notation }}{% else %}—{% endif %}</td></tr>
                     <tr><td colspan="2" class="stats-titre">Assiduité</td></tr>
                     <tr><td class="label">Absences justifiées</td><td class="valeur">{{ b.absences.absences_justifiees }}</td></tr>
                     <tr><td class="label">Absences injustifiées</td><td class="valeur">{{ b.absences.absences_injustifiees }}</td></tr>
