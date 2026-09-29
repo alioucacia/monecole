@@ -576,7 +576,7 @@ class FraisViewSet(viewsets.ModelViewSet):
                 continue
             echeance = echeance or annee.date_fin
 
-            filtre = Frais.filtre_equivalents(eleve, type_frais, annee)
+            filtre = Frais.filtre_equivalents(eleve, type_frais, annee, echeance)
             existant = Frais.objects.filter(filtre).first() if filtre is not None else None
             if existant:
                 frais, cree = existant, False

@@ -109,6 +109,11 @@ class PaiementSerializer(serializers.ModelSerializer):
         #    dans son ensemble ne doit pas recevoir de paiement au-delà de son solde restant.
         restant = frais.montant_du - self._deja_verse(frais)
         if restant <= 0:
+            if frais.montant_paye < frais.montant_du and frais.type_frais.periodicite == TypeFrais.Periodicite.AUTRE:
+                raise serializers.ValidationError({
+                    "montant": f"Le mois {frais.date_echeance.strftime('%m/%Y')} est déjà payé pour "
+                               f"« {frais.type_frais.nom} » (via un autre frais de cet élève)."
+                })
             raise serializers.ValidationError({"montant": "Ce frais est déjà intégralement payé."})
         if montant is not None and montant > restant:
             raise serializers.ValidationError({
@@ -167,7 +172,8 @@ class FraisSerializer(serializers.ModelSerializer):
         eleve = attrs.get("eleve", getattr(self.instance, "eleve", None))
         type_frais = attrs.get("type_frais", getattr(self.instance, "type_frais", None))
         annee = attrs.get("annee_scolaire", getattr(self.instance, "annee_scolaire", None))
-        filtre = Frais.filtre_equivalents(eleve, type_frais, annee) if eleve and type_frais and annee else None
+        echeance = attrs.get("date_echeance", getattr(self.instance, "date_echeance", None))
+        filtre = Frais.filtre_equivalents(eleve, type_frais, annee, echeance) if eleve and type_frais and annee else None
         if filtre is None:
             return attrs
         doublons = Frais.objects.filter(filtre)
@@ -179,6 +185,12 @@ class FraisSerializer(serializers.ModelSerializer):
                 message = (
                     f"Cet élève a déjà un frais d'inscription/réinscription (« {existant.type_frais.nom} ») "
                     f"pour l'année {annee.libelle}."
+                )
+            elif type_frais.periodicite == TypeFrais.Periodicite.AUTRE:
+                statut = "déjà payé" if existant.statut == "paye" else "déjà enregistré"
+                message = (
+                    f"Le mois {echeance.strftime('%m/%Y')} est {statut} pour « {existant.type_frais.nom} » "
+                    f"chez cet élève (année {annee.libelle}) — un seul frais par mois."
                 )
             else:
                 message = (
