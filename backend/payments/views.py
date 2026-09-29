@@ -707,7 +707,8 @@ class FraisViewSet(viewsets.ModelViewSet):
         """Génère en masse les frais de tous les élèves actifs d'une classe, pour une ou plusieurs
         types de frais (tous ceux de l'école si non précisé), sur une année scolaire — en reprenant
         le tarif paramétré pour cette classe (`TarifClasse`) si un existe, sinon le montant standard
-        du type de frais. N'écrase jamais un frais déjà existant pour (élève, type de frais, année).
+        du type de frais. N'écrase jamais un frais déjà existant pour (élève, type de frais, année) —
+        ou, pour un type Mensuel/Autre, pour le même mois d'échéance.
 
         Pour un type de frais mensuel, un élève exonéré de mensualité (Fondation gratuite, ou
         inscription/réinscription seulement — `EleveProfile.facteur_mensualite == 0`) n'a aucun
@@ -741,10 +742,24 @@ class FraisViewSet(viewsets.ModelViewSet):
             for t in TarifClasse.objects.filter(classe=classe, annee_scolaire=annee, type_frais__in=types_frais)
         }
 
+        try:
+            echeance = date.fromisoformat(str(date_echeance))
+        except ValueError:
+            raise ValidationError("'date_echeance' doit être une date au format AAAA-MM-JJ.")
+
         eleves = list(EleveProfile.objects.filter(classe=classe, actif=True))
+        # Mensuel / Autre : un frais par mois d'échéance (voir Frais.filtre_equivalents) — seul un
+        # frais du MÊME mois bloque la génération, sinon le mois suivant ne pouvait jamais être
+        # généré (ni donc encaissé). Tranche / Annuel : un seul frais de ce type pour l'année.
+        par_mois = {TypeFrais.Periodicite.MENSUEL, TypeFrais.Periodicite.AUTRE}
+        existants_qs = Frais.objects.filter(eleve__in=eleves, annee_scolaire=annee, type_frais__in=types_frais)
         existants = set(
-            Frais.objects.filter(eleve__in=eleves, annee_scolaire=annee, type_frais__in=types_frais)
-            .values_list("eleve_id", "type_frais_id")
+            existants_qs.exclude(type_frais__periodicite__in=par_mois).values_list("eleve_id", "type_frais_id")
+        ) | set(
+            existants_qs.filter(
+                type_frais__periodicite__in=par_mois,
+                date_echeance__year=echeance.year, date_echeance__month=echeance.month,
+            ).values_list("eleve_id", "type_frais_id")
         )
         # Une seule inscription/réinscription par élève et par année, tous types confondus (voir
         # Frais.filtre_equivalents) — y compris entre deux types générés dans ce même appel.

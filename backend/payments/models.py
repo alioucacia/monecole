@@ -113,16 +113,18 @@ class Frais(models.Model):
         seul doit exister, sinon chaque doublon permettrait de repayer le même mois / la même
         inscription (les garde-fous de PaiementSerializer ne voyaient que le frais visé) :
         - inscription / réinscription : une seule par élève et par année, tous types confondus ;
-        - mensuel, tranche, annuel : un seul frais de ce type par élève et par année (un frais
-          mensuel couvre déjà tous les mois de l'année, via `Paiement.mois`) ;
-        - autre / ponctuel : un seul frais de ce type par élève et par MOIS d'échéance — beaucoup
-          d'écoles gèrent la scolarité ainsi (un frais « Autre » par mois, le mois étant celui de
-          l'échéance) plutôt qu'avec un type Mensuel : sans cette règle, rien n'empêchait de
-          créer et payer deux fois le même mois. `None` si l'échéance n'est pas connue."""
+        - tranche, annuel : un seul frais de ce type par élève et par année ;
+        - mensuel, autre / ponctuel : un seul frais de ce type par élève et par MOIS d'échéance —
+          les écoles créent un frais par mois (le formulaire demande le mois d'échéance, et
+          « Générer pour la classe » est relancé chaque mois) : sans cette règle, rien
+          n'empêchait de créer et payer deux fois le même mois, mais une règle « un par an »
+          empêchait au contraire de créer les mois suivants. `None` si l'échéance n'est pas
+          connue. Pour un frais mensuel, le mois PAYÉ (`Paiement.mois`) est en plus contrôlé
+          sur tous les frais de ce type de l'année (voir PaiementSerializer.validate)."""
         base = models.Q(eleve=eleve, annee_scolaire=annee_scolaire)
         if type_frais.usage in USAGES_INSCRIPTION:
             return base & models.Q(type_frais__usage__in=USAGES_INSCRIPTION)
-        if type_frais.periodicite != TypeFrais.Periodicite.AUTRE:
+        if type_frais.periodicite not in (TypeFrais.Periodicite.AUTRE, TypeFrais.Periodicite.MENSUEL):
             return base & models.Q(type_frais=type_frais)
         if date_echeance:
             return base & models.Q(

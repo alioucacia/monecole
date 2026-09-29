@@ -8,6 +8,12 @@ from core.validators import EXTENSIONS_DOCUMENT, TAILLE_MAX_DOCUMENT, valider_ta
 from .models import USAGES_INSCRIPTION, CategorieDepense, Depense, Frais, Paiement, TarifClasse, TypeFrais
 
 
+MOIS_FR = [
+    "janvier", "février", "mars", "avril", "mai", "juin",
+    "juillet", "août", "septembre", "octobre", "novembre", "décembre",
+]
+
+
 class CategorieDepenseSerializer(serializers.ModelSerializer):
     class Meta:
         model = CategorieDepense
@@ -52,10 +58,12 @@ class PaiementSerializer(serializers.ModelSerializer):
         ]
         read_only_fields = ["date_paiement", "enregistre_par"]
 
-    def _deja_verse(self, frais, **filtres) -> Decimal:
+    def _deja_verse(self, frais, frais_concernes=None, **filtres) -> Decimal:
         # Sur le frais ET ses éventuels doublons (voir Frais.equivalents) : un mois / une
         # inscription déjà payé·e via un autre frais identique de l'élève compte aussi.
-        qs = Paiement.objects.filter(frais__in=frais.equivalents(), **filtres)
+        if frais_concernes is None:
+            frais_concernes = frais.equivalents()
+        qs = Paiement.objects.filter(frais__in=frais_concernes, **filtres)
         if self.instance:
             qs = qs.exclude(pk=self.instance.pk)
         return qs.aggregate(total=Sum("montant"))["total"] or Decimal("0")
@@ -79,10 +87,15 @@ class PaiementSerializer(serializers.ModelSerializer):
             # Sans mois précisé, le versement échappait au contrôle mois par mois ci-dessous.
             raise serializers.ValidationError({"mois": "Précisez le mois payé pour ce frais mensuel."})
         if mois and frais.type_frais.est_mensuel:
-            restant = frais.montant_du - self._deja_verse(frais, mois=mois)
+            # Tous les frais de ce type de l'élève pour l'année (un frais par mois d'échéance est
+            # permis) : un mois payé sur l'un ne peut pas être repayé sur un autre.
+            meme_type = Frais.objects.filter(
+                eleve_id=frais.eleve_id, type_frais_id=frais.type_frais_id, annee_scolaire_id=frais.annee_scolaire_id,
+            )
+            restant = frais.montant_du - self._deja_verse(frais, frais_concernes=meme_type, mois=mois)
             if frais.montant_du > 0 and restant <= 0:
                 raise serializers.ValidationError({
-                    "mois": f"Le mois {mois.strftime('%m/%Y')} est déjà intégralement payé pour ce frais."
+                    "mois": f"Le mois {mois.strftime('%m/%Y')} est déjà intégralement payé pour « {frais.type_frais.nom} »."
                 })
             if montant is not None and montant > restant:
                 raise serializers.ValidationError({
@@ -189,16 +202,15 @@ class FraisSerializer(serializers.ModelSerializer):
                     f"Cet élève a déjà un frais d'inscription/réinscription (« {existant.type_frais.nom} ») "
                     f"pour l'année {annee.libelle}."
                 )
-            elif type_frais.periodicite == TypeFrais.Periodicite.AUTRE:
-                statut = "déjà payé" if existant.statut == "paye" else "déjà enregistré"
+            elif type_frais.periodicite in (TypeFrais.Periodicite.AUTRE, TypeFrais.Periodicite.MENSUEL):
+                statut = " (déjà payé)" if existant.statut == "paye" else ""
+                nom_mois = MOIS_FR[echeance.month - 1]
+                de_mois = f"d'{nom_mois}" if nom_mois[0] in "aeiouy" else f"de {nom_mois}"
                 message = (
-                    f"Le mois {echeance.strftime('%m/%Y')} est {statut} pour « {existant.type_frais.nom} » "
-                    f"chez cet élève (année {annee.libelle}) — un seul frais par mois."
+                    f"Cet élève a déjà un frais « {existant.type_frais.nom} » pour le mois {de_mois} "
+                    f"{echeance.year}{statut} pour cette année {annee.libelle}."
                 )
             else:
-                message = (
-                    f"Cet élève a déjà un frais « {existant.type_frais.nom} » pour l'année {annee.libelle}"
-                    + (" — il couvre tous les mois de l'année : encaissez chaque mois dessus." if type_frais.est_mensuel else ".")
-                )
+                message = f"Cet élève a déjà un frais « {existant.type_frais.nom} » pour l'année {annee.libelle}."
             raise serializers.ValidationError({"type_frais": message})
         return attrs
