@@ -65,3 +65,27 @@ class DocumentOfficiel(models.Model):
     def code_court(self) -> str:
         """Code lisible imprimé sous le QR, à saisir à la main si le QR ne peut être scanné."""
         return self.token.hex[:10].upper()
+
+
+
+class RapportAnnuel(models.Model):
+    """Rapport annuel PDF d'une école pour une année scolaire (voir core/rapport_annuel.py) —
+    généré automatiquement quand l'année se termine (commande `generer_rapports_annuels`) ou à
+    la demande depuis la page « Rapports annuels ». Un seul par école et par année : le
+    régénérer remplace le fichier."""
+
+    ecole = models.ForeignKey("tenants.Ecole", on_delete=models.CASCADE, related_name="rapports_annuels")
+    annee_scolaire = models.ForeignKey("academics.AnneeScolaire", on_delete=models.CASCADE, related_name="rapports_annuels")
+    fichier = models.FileField(upload_to="rapports_annuels/")
+    genere_le = models.DateTimeField(auto_now=True)
+    automatique = models.BooleanField(default=False, help_text="Généré par la tâche de fin d'année (sinon à la demande)")
+    provisoire = models.BooleanField(default=False, help_text="Généré avant la fin de l'année scolaire")
+
+    class Meta:
+        ordering = ["-annee_scolaire__date_debut"]
+        constraints = [models.UniqueConstraint(fields=["ecole", "annee_scolaire"], name="unique_rapport_annuel_ecole_annee")]
+        verbose_name = "Rapport annuel"
+        verbose_name_plural = "Rapports annuels"
+
+    def __str__(self):
+        return f"Rapport annuel {self.annee_scolaire} — {self.ecole}"

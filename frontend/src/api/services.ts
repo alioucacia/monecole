@@ -874,3 +874,20 @@ export const rendezVousApi = {
   enseignants: (eleveId: number) =>
     api.get<{ id: number; nom: string; matieres: string[] }[]>("/people/rendez-vous/enseignants/", { params: { eleve: eleveId } }),
 };
+
+// --- Rapports annuels ------------------------------------------------------------------------
+
+export interface LigneRapportAnnuel {
+  annee_scolaire_id: number;
+  annee_scolaire: string;
+  date_fin: string;
+  terminee: boolean;
+  rapport: { genere_le: string; automatique: boolean; provisoire: boolean } | null;
+}
+
+export const rapportsAnnuelsApi = {
+  list: () => api.get<LigneRapportAnnuel[]>("/dashboard/rapports-annuels/"),
+  generer: (anneeScolaireId: number) =>
+    api.post<{ annee_scolaire_id: number; genere_le: string; provisoire: boolean }>("/dashboard/rapports-annuels/", { annee_scolaire: anneeScolaireId }),
+  pdf: (anneeScolaireId: number, filename: string) => downloadFile(`/dashboard/rapports-annuels/${anneeScolaireId}/pdf/`, {}, filename),
+};

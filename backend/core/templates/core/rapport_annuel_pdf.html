@@ -1,0 +1,184 @@
+{% load montants %}<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8" />
+<style>
+    /* Rapport annuel (voir core/rapport_annuel.py). Pièges xhtml2pdf : largeurs en mm, jamais de
+       padding horizontal sur une <td> étroite — les marges passent par la page (@page). */
+    @page { size: A4; margin: 14mm 14mm 16mm 14mm;
+        @frame pied { -pdf-frame-content: pied; bottom: 6mm; margin-left: 14mm; margin-right: 14mm; height: 8mm; } }
+    body { font-family: Helvetica, Arial, sans-serif; color: #1f2937; font-size: 9px; }
+    h1 { font-size: 20px; color: {{ couleur_principale }}; margin: 0; }
+    h2 { font-size: 12px; color: #ffffff; background-color: {{ couleur_principale }}; padding: 2mm 3mm; margin: 6mm 0 2mm 0; -pdf-keep-with-next: true; }
+    .sous-titre { font-size: 11px; color: {{ couleur_secondaire }}; font-weight: bold; margin: 1mm 0 0 0; }
+    .muted { color: #6b7280; }
+    .provisoire { color: #b45309; font-weight: bold; }
+
+    table.entete { width: 182mm; border-bottom: 2px solid {{ couleur_secondaire }}; padding-bottom: 3mm; }
+    table.kpi { width: 182mm; }
+    .kpi td { width: 45mm; border: 0.6pt solid #e5e7eb; background-color: #f8fafc; padding: 2.5mm; text-align: center; }
+    .kpi .valeur { font-size: 16px; font-weight: bold; color: {{ couleur_principale }}; }
+    .kpi .libelle { font-size: 8px; color: #6b7280; text-transform: uppercase; }
+
+    table.data { width: 182mm; border-collapse: collapse; }
+    .data th { background-color: #f1f5f9; color: #334155; font-size: 8px; text-transform: uppercase; text-align: left; padding: 1.6mm; border-bottom: 0.8pt solid #cbd5e1; }
+    .data td { padding: 1.4mm 1.6mm; border-bottom: 0.4pt solid #e5e7eb; }
+    .data .num { text-align: right; }
+    .data tr.total td { font-weight: bold; background-color: #f8fafc; border-top: 0.8pt solid #cbd5e1; }
+    .bon { color: #047857; font-weight: bold; }
+    .moyen { color: #b45309; font-weight: bold; }
+    .faible { color: #b91c1c; font-weight: bold; }
+    .barre { background-color: {{ couleur_secondaire }}; height: 3mm; }
+    .note { font-size: 8px; color: #6b7280; margin-top: 1.5mm; }
+</style>
+</head>
+<body>
+
+<div id="pied" class="muted" style="text-align: center; font-size: 7.5px;">
+    Rapport annuel {{ annee.libelle }} — {{ ecole.nom }} — généré le {{ date_generation|date:"d/m/Y" }} — page <pdf:pagenumber /> / <pdf:pagecount />
+</div>
+
+<table class="entete"><tr>
+    <td style="width: 24mm;">{% if logo_data_uri %}<img src="{{ logo_data_uri }}" style="width: 20mm; height: 20mm;" />{% endif %}</td>
+    <td style="width: 158mm;">
+        <h1>RAPPORT ANNUEL {{ annee.libelle }}</h1>
+        <p class="sous-titre">{{ ecole.nom }}</p>
+        <p class="muted">{% if ecole.adresse %}{{ ecole.adresse }} — {% endif %}Année scolaire du {{ annee.date_debut|date:"d/m/Y" }} au {{ annee.date_fin|date:"d/m/Y" }}</p>
+        {% if provisoire %}<p class="provisoire">Bilan provisoire : l'année scolaire n'est pas terminée.</p>{% endif %}
+    </td>
+</tr></table>
+
+<h2>Chiffres clés</h2>
+<table class="kpi"><tr>
+    <td><p class="valeur">{{ eleves.total }}</p><p class="libelle">Élèves</p></td>
+    <td><p class="valeur">{% if resultats.taux_reussite is not None %}{{ resultats.taux_reussite }} %{% else %}—{% endif %}</p><p class="libelle">Taux de réussite</p></td>
+    <td><p class="valeur">{% if absences.taux_absence is not None %}{{ absences.taux_absence }} %{% else %}—{% endif %}</p><p class="libelle">Taux d'absences</p></td>
+    <td><p class="valeur">{% if resultats.moyenne_sur_20 is not None %}{{ resultats.moyenne_sur_20 }}/20{% else %}—{% endif %}</p><p class="libelle">Moyenne générale</p></td>
+</tr><tr>
+    <td><p class="valeur">{{ finances.recettes|montant }}</p><p class="libelle">Recettes (GNF)</p></td>
+    <td><p class="valeur">{{ finances.depenses|montant }}</p><p class="libelle">Dépenses (GNF)</p></td>
+    <td><p class="valeur">{{ statistiques.enseignants }}</p><p class="libelle">Enseignants</p></td>
+    <td><p class="valeur">{{ statistiques.classes }}</p><p class="libelle">Classes</p></td>
+</tr></table>
+
+<h2>1. Élèves</h2>
+<table class="data">
+    <tr><th>Effectif total</th><th>Filles</th><th>Garçons</th><th>Nouveaux inscrits</th><th>Réinscrits</th><th>Départs en cours d'année</th></tr>
+    <tr><td>{{ eleves.total }}</td><td>{{ eleves.filles }}</td><td>{{ eleves.garcons }}</td><td>{{ eleves.nouveaux }}</td><td>{{ eleves.reinscrits }}</td><td>{{ eleves.sortis }}</td></tr>
+</table>
+
+<h2>2. Résultats par classe</h2>
+<table class="data">
+    <tr><th>Classe</th><th class="num">Effectif</th><th class="num">Moyenne</th><th class="num">Admis</th><th class="num">Repêchés</th><th class="num">Redoublants</th><th class="num">Réussite</th><th class="num">Absences</th></tr>
+    {% for c in classes %}
+    <tr>
+        <td>{{ c.classe }}</td>
+        <td class="num">{{ c.effectif }}</td>
+        <td class="num">{% if c.moyenne is not None %}{{ c.moyenne }}/{{ c.bareme }}{% else %}—{% endif %}</td>
+        <td class="num">{{ c.admis }}</td><td class="num">{{ c.repeches }}</td><td class="num">{{ c.redoublants }}</td>
+        <td class="num {% if c.taux_reussite is None %}{% elif c.taux_reussite >= 75 %}bon{% elif c.taux_reussite >= 50 %}moyen{% else %}faible{% endif %}">{% if c.taux_reussite is not None %}{{ c.taux_reussite }} %{% else %}—{% endif %}</td>
+        <td class="num">{% if c.taux_absence is not None %}{{ c.taux_absence }} %{% else %}—{% endif %}</td>
+    </tr>
+    {% empty %}
+    <tr><td colspan="8" class="muted">Aucune classe pour cette année scolaire.</td></tr>
+    {% endfor %}
+    <tr class="total">
+        <td>Établissement</td><td class="num">{{ eleves.total }}</td>
+        <td class="num">{% if resultats.moyenne_sur_20 is not None %}{{ resultats.moyenne_sur_20 }}/20{% else %}—{% endif %}</td>
+        <td class="num">{{ resultats.admis }}</td><td></td><td></td>
+        <td class="num">{% if resultats.taux_reussite is not None %}{{ resultats.taux_reussite }} %{% else %}—{% endif %}</td>
+        <td class="num">{% if absences.taux_absence is not None %}{{ absences.taux_absence }} %{% else %}—{% endif %}</td>
+    </tr>
+</table>
+<p class="note">Réussite : élèves admis (moyenne annuelle au moins égale à la moyenne de passage) parmi les élèves notés. Moyenne de l'établissement ramenée sur 20.</p>
+
+<h2>3. Évolution des résultats</h2>
+<table class="data">
+    <tr><th style="width: 40mm;">Période</th><th style="width: 30mm;" class="num">Moyenne /20</th><th style="width: 30mm;" class="num">Réussite</th><th style="width: 82mm;"></th></tr>
+    {% for e in evolution %}
+    <tr>
+        <td>{{ e.periode }}</td>
+        <td class="num">{% if e.moyenne_sur_20 is not None %}{{ e.moyenne_sur_20 }}{% else %}—{% endif %}</td>
+        <td class="num">{% if e.taux_reussite is not None %}{{ e.taux_reussite }} %{% else %}—{% endif %}</td>
+        <td>{% if e.barre_mm %}<table style="width: {{ e.barre_mm }}mm;"><tr><td class="barre">&nbsp;</td></tr></table>{% endif %}</td>
+    </tr>
+    {% empty %}
+    <tr><td colspan="4" class="muted">Aucune période définie pour cette année scolaire.</td></tr>
+    {% endfor %}
+</table>
+{% if annee_precedente %}
+<table class="data" style="margin-top: 3mm;">
+    <tr><th>Comparaison</th><th class="num">Effectif</th><th class="num">Moyenne /20</th><th class="num">Réussite</th></tr>
+    <tr><td>{{ annee_precedente.libelle }} (année précédente)</td><td class="num">{{ annee_precedente.effectif }}</td>
+        <td class="num">{% if annee_precedente.moyenne_sur_20 is not None %}{{ annee_precedente.moyenne_sur_20 }}{% else %}—{% endif %}</td>
+        <td class="num">{% if annee_precedente.taux_reussite is not None %}{{ annee_precedente.taux_reussite }} %{% else %}—{% endif %}</td></tr>
+    <tr><td><b>{{ annee.libelle }}</b></td><td class="num"><b>{{ eleves.total }}</b></td>
+        <td class="num"><b>{% if resultats.moyenne_sur_20 is not None %}{{ resultats.moyenne_sur_20 }}{% else %}—{% endif %}</b></td>
+        <td class="num"><b>{% if resultats.taux_reussite is not None %}{{ resultats.taux_reussite }} %{% else %}—{% endif %}</b></td></tr>
+</table>
+{% endif %}
+
+<h2>4. Absences</h2>
+<table class="data">
+    <tr><th>Relevés de présence</th><th>Absences</th><th>dont justifiées</th><th>Retards</th><th>Taux d'absences</th><th>Taux de retards</th></tr>
+    <tr><td>{{ absences.total }}</td><td>{{ absences.absents }}</td><td>{{ absences.justifiees }}</td><td>{{ absences.retards }}</td>
+        <td>{% if absences.taux_absence is not None %}{{ absences.taux_absence }} %{% else %}—{% endif %}</td>
+        <td>{% if absences.taux_retard is not None %}{{ absences.taux_retard }} %{% else %}—{% endif %}</td></tr>
+</table>
+
+<h2>5. Finances</h2>
+<table class="data">
+    <tr><th style="width: 120mm;">Recettes (frais encaissés pour l'année)</th><th class="num" style="width: 62mm;">Montant (GNF)</th></tr>
+    {% for r in finances.recettes_par_type %}<tr><td>{{ r.libelle }}</td><td class="num">{{ r.montant|montant }}</td></tr>{% endfor %}
+    <tr class="total"><td>Total des recettes</td><td class="num">{{ finances.recettes|montant }}</td></tr>
+    <tr><td class="muted">Montant total dû / impayés restants</td><td class="num muted">{{ finances.montant_du|montant }} / {{ finances.impayes|montant }}</td></tr>
+    <tr><td class="muted">Taux de recouvrement</td><td class="num muted">{% if finances.taux_recouvrement is not None %}{{ finances.taux_recouvrement }} %{% else %}—{% endif %}</td></tr>
+</table>
+<table class="data" style="margin-top: 3mm;">
+    <tr><th style="width: 120mm;">Dépenses</th><th class="num" style="width: 62mm;">Montant (GNF)</th></tr>
+    {% for d in finances.depenses_par_categorie %}<tr><td>{{ d.libelle }}</td><td class="num">{{ d.montant|montant }}</td></tr>{% endfor %}
+    <tr class="total"><td>Total des dépenses</td><td class="num">{{ finances.depenses|montant }}</td></tr>
+    <tr class="total"><td>Solde de l'année (recettes − dépenses)</td><td class="num {% if finances.solde < 0 %}faible{% else %}bon{% endif %}">{{ finances.solde|montant }}</td></tr>
+</table>
+
+<h2>6. Enseignants</h2>
+<table class="data">
+    <tr><th>Enseignant</th><th>Classes</th><th class="num">Présence</th><th class="num">Ponctualité</th><th class="num">Programme</th><th class="num">Moyenne /20</th><th class="num">Volume</th></tr>
+    {% for e in enseignants %}
+    <tr>
+        <td>{{ e.nom_complet }}</td>
+        <td>{{ e.classes|join:", " }}</td>
+        <td class="num">{% if e.presence.taux_presence is not None %}{{ e.presence.taux_presence }} %{% else %}—{% endif %}</td>
+        <td class="num">{% if e.presence.taux_ponctualite is not None %}{{ e.presence.taux_ponctualite }} %{% else %}—{% endif %}</td>
+        <td class="num">{% if e.programme.pourcentage is not None %}{{ e.programme.pourcentage }} %{% else %}—{% endif %}</td>
+        <td class="num">{% if e.resultats.moyenne_sur_20 is not None %}{{ e.resultats.moyenne_sur_20 }}{% else %}—{% endif %}</td>
+        <td class="num">{{ e.volume.heures_hebdo_prevues }} h/sem.</td>
+    </tr>
+    {% empty %}
+    <tr><td colspan="7" class="muted">Aucun enseignant affecté à une classe cette année.</td></tr>
+    {% endfor %}
+</table>
+
+<h2>7. Statistiques générales</h2>
+<table class="data">
+    <tr><td style="width: 120mm;">Classes</td><td class="num">{{ statistiques.classes }}</td></tr>
+    <tr><td>Élèves par classe (moyenne)</td><td class="num">{{ statistiques.eleves_par_classe|default:"—" }}</td></tr>
+    <tr><td>Matières enseignées</td><td class="num">{{ statistiques.matieres }}</td></tr>
+    <tr><td>Enseignants</td><td class="num">{{ statistiques.enseignants }}</td></tr>
+    <tr><td>Périodes d'évaluation</td><td class="num">{{ statistiques.periodes }}</td></tr>
+    <tr><td>Évaluations organisées</td><td class="num">{{ statistiques.evaluations }}</td></tr>
+    <tr><td>Notes saisies</td><td class="num">{{ statistiques.notes_saisies }}</td></tr>
+    <tr><td>Bulletins officiels émis</td><td class="num">{{ statistiques.bulletins_emis }}</td></tr>
+    <tr><td>Rendez-vous parents ↔ enseignants</td><td class="num">{{ statistiques.rendez_vous }}</td></tr>
+</table>
+
+<table style="width: 182mm; margin-top: 12mm;"><tr>
+    <td style="width: 100mm;"></td>
+    <td style="width: 82mm; text-align: center;">
+        <p style="border-top: 0.6pt solid #9ca3af; padding-top: 1.5mm; font-weight: bold;">Le Chef d'Établissement</p>
+        <p class="muted">Cachet &amp; signature</p>
+    </td>
+</tr></table>
+
+</body>
+</html>

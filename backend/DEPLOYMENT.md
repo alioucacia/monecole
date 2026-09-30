@@ -84,6 +84,7 @@ Exemple de configuration cron (`/etc/cron.d/ecole-manager`, sur l'hôte qui exé
 ```cron
 0 6 * * * root cd /chemin/vers/le/projet && docker compose -f docker-compose.prod.yml --env-file .env.prod run --rm backend python manage.py backup_daily >> /var/log/ecole-manager/backup.log 2>&1
 0 7 * * * root cd /chemin/vers/le/projet && docker compose -f docker-compose.prod.yml --env-file .env.prod run --rm backend python manage.py notifier_impayes >> /var/log/ecole-manager/notifier.log 2>&1
+30 6 * * * root cd /chemin/vers/le/projet && docker compose -f docker-compose.prod.yml --env-file .env.prod run --rm backend python manage.py generer_rapports_annuels >> /var/log/ecole-manager/rapports.log 2>&1
 ```
 
 Sans conteneurs (backend lancé directement dans un virtualenv) :

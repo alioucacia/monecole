@@ -61,6 +61,7 @@ import VerifyBadgePage from "./pages/VerifyBadgePage";
 import VerifyDocumentPage from "./pages/VerifyDocumentPage";
 import ProgrammesPage from "./pages/ProgrammesPage";
 import RendezVousPage from "./pages/RendezVousPage";
+import RapportsAnnuelsPage from "./pages/RapportsAnnuelsPage";
 import EvaluationEnseignantsPage from "./pages/EvaluationEnseignantsPage";
 import { OngletNavigateur } from "./components/OngletNavigateur";
 
@@ -205,6 +206,14 @@ export default function App() {
           element={
             <ProtectedRoute roles={["admin", "directeur"]}>
               <PersonnelAdminPage />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/rapports-annuels"
+          element={
+            <ProtectedRoute roles={["admin", "directeur"]}>
+              <RapportsAnnuelsPage />
             </ProtectedRoute>
           }
         />

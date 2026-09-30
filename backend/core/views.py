@@ -448,3 +448,80 @@ class DocumentVerifyView(APIView):
             "donnees": document.donnees,
             "version_plus_recente": plus_recent.emis_le if plus_recent else None,
         })
+
+
+
+class RapportsAnnuelsView(APIView):
+    """Rapports annuels de l'école (direction : Administrateur, Directeur Général en lecture).
+    GET : une ligne par année scolaire, avec le rapport archivé s'il existe.
+    POST {annee_scolaire} : génère (ou régénère) le rapport de cette année — provisoire si
+    l'année n'est pas terminée."""
+
+    def get_permissions(self):
+        from accounts.permissions import IsAdmin
+
+        return [IsAdmin()]
+
+    def get(self, request):
+        from datetime import date
+
+        from academics.models import AnneeScolaire
+
+        from .models import RapportAnnuel
+
+        rapports = {r.annee_scolaire_id: r for r in RapportAnnuel.objects.filter(ecole_id=request.user.ecole_id)}
+        lignes = []
+        for annee in AnneeScolaire.objects.filter(ecole_id=request.user.ecole_id).order_by("-date_debut"):
+            rapport = rapports.get(annee.id)
+            lignes.append({
+                "annee_scolaire_id": annee.id, "annee_scolaire": annee.libelle,
+                "date_fin": annee.date_fin, "terminee": annee.date_fin < date.today(),
+                "rapport": {
+                    "genere_le": rapport.genere_le, "automatique": rapport.automatique, "provisoire": rapport.provisoire,
+                } if rapport else None,
+            })
+        return Response(lignes)
+
+    def post(self, request):
+        from django.shortcuts import get_object_or_404
+        from rest_framework.exceptions import ValidationError
+
+        from academics.models import AnneeScolaire
+
+        from .rapport_annuel import generer_et_enregistrer
+
+        annee_id = request.data.get("annee_scolaire")
+        if not annee_id:
+            raise ValidationError("Choisissez une année scolaire.")
+        annee = get_object_or_404(AnneeScolaire, pk=annee_id, ecole_id=request.user.ecole_id)
+        rapport = generer_et_enregistrer(request.user.ecole, annee)
+        return Response({"annee_scolaire_id": annee.id, "genere_le": rapport.genere_le, "provisoire": rapport.provisoire})
+
+
+class RapportAnnuelPdfView(APIView):
+    """Téléchargement du rapport annuel archivé d'une année (généré à la volée s'il n'existe pas
+    encore)."""
+
+    def get_permissions(self):
+        from accounts.permissions import IsAdmin
+
+        return [IsAdmin()]
+
+    def get(self, request, annee_id):
+        from django.http import HttpResponse
+        from django.shortcuts import get_object_or_404
+
+        from academics.models import AnneeScolaire
+
+        from .models import RapportAnnuel
+        from .rapport_annuel import generer_et_enregistrer
+
+        annee = get_object_or_404(AnneeScolaire, pk=annee_id, ecole_id=request.user.ecole_id)
+        rapport = RapportAnnuel.objects.filter(ecole_id=request.user.ecole_id, annee_scolaire=annee).first()
+        if rapport is None or not rapport.fichier:
+            rapport = generer_et_enregistrer(request.user.ecole, annee)
+        with rapport.fichier.open("rb") as f:
+            contenu = f.read()
+        reponse = HttpResponse(contenu, content_type="application/pdf")
+        reponse["Content-Disposition"] = f'attachment; filename="rapport_annuel_{annee.libelle}.pdf"'
+        return reponse

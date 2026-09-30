@@ -102,6 +102,7 @@ const NAV_CATEGORIES: NavCategory[] = [
     label: "Administration",
     items: [
       { to: "/personnel", label: "Ressources humaines", icon: "🧑‍💼", roles: ["admin", "directeur", "teacher", "comptabilite", "surveillance"] },
+      { to: "/rapports-annuels", label: "Rapports annuels", icon: "📑", roles: ["admin", "directeur"] },
       { to: "/evaluation-enseignants", label: "Évaluation des enseignants", icon: "📊", roles: ["admin", "directeur"] },
       { to: "/personnel-admin", label: "Personnel administratif", icon: "🗂️", roles: ["admin", "directeur"] },
       { to: "/comptes-ecole", label: "Comptes de l'établissement", icon: "🔑", roles: ["admin", "directeur", "comptabilite"] },
