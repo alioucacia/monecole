@@ -707,11 +707,6 @@ def _annee_active(user):
     return AnneeScolaire.objects.filter(ecole_id=user.ecole_id, active=True).first()
 
 
-def _annee_active_libelle(user):
-    annee = _annee_active(user)
-    return annee.libelle if annee else ""
-
-
 def _classe_pour_annee(eleve, annee_scolaire):
     """Classe de l'élève pour l'année scolaire concernée (celle du bulletin/certificat/reçu en
     cours de génération), pas forcément sa classe ACTUELLE si elle a changé depuis — voir
@@ -941,21 +936,31 @@ class EnseignantBadgeViewSet(viewsets.ModelViewSet):
 
     @action(detail=True, methods=["get"], url_path="pdf")
     def pdf(self, request, pk=None):
+        """Carte professionnelle de l'enseignant (portrait 54 × 85,6 mm, centrée sur une A4) —
+        dessinée en image par `people.carte_enseignant`, sur le modèle fourni par l'école."""
+        from .carte_enseignant import carte_enseignant_data_uri
+
         badge = self.get_object()
         enseignant = badge.enseignant
-        nom_complet = enseignant.user.get_full_name()
-        html = render_to_string("people/badge_pdf.html", {
-            "role_label": "ENSEIGNANT",
-            "accent": "enseignant",
+        user = enseignant.user
+        ecole = user.ecole if user.ecole_id else None
+        nom_complet = user.get_full_name()
+        carte = carte_enseignant_data_uri({
             "nom_complet": nom_complet,
             "initiales": _initials(nom_complet),
+            "fonction": enseignant.specialite or "Enseignant",
+            "telephone": user.phone,
+            "email": user.email,
             "matricule": enseignant.matricule,
-            "sous_titre2": enseignant.specialite or "Enseignant",
-            "ecole_nom": _ecole_nom(enseignant.user),
-            "annee_scolaire": _annee_active_libelle(enseignant.user),
-            "photo_data_uri": _image_data_uri(enseignant.user.photo, _mm_px(19, 23)),
-            "qr_data_uri": _qr_data_uri(_badge_verify_url(badge.qr_token)),
+            "adresse": (ecole.adresse or ecole.ville) if ecole else "",
+            "ecole_nom": _ecole_nom(user),
+            "sous_titre": "Carte professionnelle",
+            "photo": user.photo,
+            "logo": ecole.logo if ecole else None,
+            **_couleurs_ecole(ecole),
         })
+        # Même mise en page que la carte élève seule (carte centrée sur une A4).
+        html = render_to_string("people/badge_eleve_pdf.html", {"carte_data_uri": carte})
         buffer = BytesIO()
         pisa.CreatePDF(html, dest=buffer, encoding="utf-8")
         response = HttpResponse(buffer.getvalue(), content_type="application/pdf")
