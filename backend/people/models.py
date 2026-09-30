@@ -324,3 +324,43 @@ class AlerteParent(models.Model):
 
     class Meta:
         ordering = ["-cree_le"]
+
+
+class RendezVous(models.Model):
+    """Demande de rendez-vous d'un parent auprès d'un enseignant de son enfant — l'enseignant
+    l'accepte ou la refuse (avec un message facultatif), le parent peut l'annuler. Voir
+    RendezVousViewSet."""
+
+    class Motif(models.TextChoices):
+        RESULTATS = "resultats", "Résultats scolaires"
+        COMPORTEMENT = "comportement", "Comportement"
+        ABSENCES = "absences", "Absences / retards"
+        ORIENTATION = "orientation", "Orientation"
+        AUTRE = "autre", "Autre"
+
+    class Statut(models.TextChoices):
+        EN_ATTENTE = "en_attente", "En attente"
+        ACCEPTE = "accepte", "Accepté"
+        REFUSE = "refuse", "Refusé"
+        ANNULE = "annule", "Annulé"
+
+    ecole = models.ForeignKey("tenants.Ecole", on_delete=models.CASCADE, related_name="rendez_vous")
+    parent = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name="rendez_vous_demandes")
+    enseignant = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name="rendez_vous_recus")
+    eleve = models.ForeignKey(EleveProfile, on_delete=models.CASCADE, related_name="rendez_vous")
+    date = models.DateField()
+    heure = models.TimeField()
+    motif = models.CharField(max_length=20, choices=Motif.choices, default=Motif.RESULTATS)
+    message = models.CharField(max_length=500, blank=True, help_text="Précision du parent")
+    statut = models.CharField(max_length=12, choices=Statut.choices, default=Statut.EN_ATTENTE)
+    reponse = models.CharField(max_length=500, blank=True, help_text="Message de l'enseignant (ex: autre créneau proposé)")
+    cree_le = models.DateTimeField(auto_now_add=True)
+    repondu_le = models.DateTimeField(null=True, blank=True)
+
+    class Meta:
+        ordering = ["-date", "-heure"]
+        verbose_name = "Rendez-vous"
+        verbose_name_plural = "Rendez-vous"
+
+    def __str__(self):
+        return f"{self.parent} → {self.enseignant} le {self.date:%d/%m/%Y} à {self.heure:%H:%M}"

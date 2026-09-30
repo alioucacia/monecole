@@ -39,10 +39,11 @@ from tenants.permissions import fonctionnalite_requise
 from . import assistant_ia
 from .models import (
     AlerteParent, EleveBadge, EleveProfile, EnseignantBadge, EnseignantProfile,
-    GroupeRevision, MessageIA, PaieEnseignant, PointageEnseignant,
+    GroupeRevision, MessageIA, PaieEnseignant, PointageEnseignant, RendezVous,
     enregistrer_historique_classe,
 )
 from .serializers import (
+    RendezVousSerializer,
     AlerteParentSerializer,
     CategoriePaiementSerializer,
     EleveBadgeSerializer,
@@ -1340,3 +1341,109 @@ class EvaluationEnseignantsView(APIView):
         enseignants = EnseignantProfile.objects.filter(user__ecole_id=request.user.ecole_id, user__is_active=True).select_related("user")
         lignes = sorted((evaluer_enseignant(e, annee) for e in enseignants), key=lambda l: l["nom_complet"].lower())
         return Response({"annee_scolaire": annee.libelle, "annee_scolaire_id": annee.id, "enseignants": lignes})
+
+
+
+def _notifier_rendez_vous(expediteur, destinataire, sujet: str, texte: str):
+    """Prévient l'autre partie d'un rendez-vous : message interne + e-mail (best-effort, un
+    échec n'empêche jamais l'action elle-même)."""
+    from .notifications import _envoyer_email, _envoyer_message_interne
+
+    _envoyer_message_interne(expediteur, destinataire, texte)
+    _envoyer_email(destinataire.email, sujet, texte)
+
+
+class RendezVousViewSet(viewsets.ModelViewSet):
+    """Rendez-vous parents ↔ enseignants.
+
+    - Parent : demande un rendez-vous à un enseignant de la classe de son enfant (voir
+      `enseignants` pour la liste proposée), voit ses demandes, peut les annuler.
+    - Enseignant : voit les demandes qui lui sont adressées, les accepte ou les refuse
+      (avec un message facultatif, ex : autre créneau proposé).
+    - Administrateur / Directeur Général : voient tous les rendez-vous de l'école (lecture)."""
+
+    serializer_class = RendezVousSerializer
+    permission_classes = [IsAuthenticated]
+    http_method_names = ["get", "post", "head", "options"]
+    filterset_fields = ["statut", "enseignant", "eleve"]
+
+    def get_queryset(self):
+        user = self.request.user
+        qs = RendezVous.objects.select_related("parent", "enseignant", "eleve__user", "eleve__classe").filter(
+            ecole_id=user.ecole_id,
+        )
+        if user.role == "parent":
+            return qs.filter(parent=user)
+        if user.role == "teacher":
+            return qs.filter(enseignant=user)
+        if user.role in ("admin", "directeur"):
+            return qs
+        return qs.none()
+
+    def perform_create(self, serializer):
+        if self.request.user.role != "parent":
+            raise PermissionDenied("Seuls les parents peuvent demander un rendez-vous.")
+        rdv = serializer.save(parent=self.request.user, ecole=self.request.user.ecole)
+        _notifier_rendez_vous(
+            rdv.parent, rdv.enseignant, "Nouvelle demande de rendez-vous",
+            f"Demande de rendez-vous de {rdv.parent.get_full_name()} (parent de {rdv.eleve.user.get_full_name()}) "
+            f"le {rdv.date:%d/%m/%Y} à {rdv.heure:%H:%M} — motif : {rdv.get_motif_display()}."
+            + (f" Précision : {rdv.message}" if rdv.message else "")
+            + " Répondez depuis la page Rendez-vous.",
+        )
+
+    def _repondre(self, request, statut):
+        from django.utils import timezone
+
+        rdv = self.get_object()
+        if request.user.id != rdv.enseignant_id:
+            raise PermissionDenied("Seul l'enseignant concerné peut répondre à cette demande.")
+        if rdv.statut != RendezVous.Statut.EN_ATTENTE:
+            raise ValidationError("Cette demande a déjà reçu une réponse ou a été annulée.")
+        rdv.statut = statut
+        rdv.reponse = (request.data.get("reponse") or "").strip()[:500]
+        rdv.repondu_le = timezone.now()
+        rdv.save(update_fields=["statut", "reponse", "repondu_le"])
+        verbe = "accepté" if statut == RendezVous.Statut.ACCEPTE else "refusé"
+        _notifier_rendez_vous(
+            rdv.enseignant, rdv.parent, f"Rendez-vous {verbe}",
+            f"{rdv.enseignant.get_full_name()} a {verbe} votre rendez-vous du {rdv.date:%d/%m/%Y} à {rdv.heure:%H:%M} "
+            f"({rdv.get_motif_display()})." + (f" Message : {rdv.reponse}" if rdv.reponse else ""),
+        )
+        return Response(self.get_serializer(rdv).data)
+
+    @action(detail=True, methods=["post"], url_path="accepter")
+    def accepter(self, request, pk=None):
+        return self._repondre(request, RendezVous.Statut.ACCEPTE)
+
+    @action(detail=True, methods=["post"], url_path="refuser")
+    def refuser(self, request, pk=None):
+        return self._repondre(request, RendezVous.Statut.REFUSE)
+
+    @action(detail=True, methods=["post"], url_path="annuler")
+    def annuler(self, request, pk=None):
+        rdv = self.get_object()
+        if request.user.id != rdv.parent_id:
+            raise PermissionDenied("Seul le parent qui a demandé ce rendez-vous peut l'annuler.")
+        if rdv.statut not in (RendezVous.Statut.EN_ATTENTE, RendezVous.Statut.ACCEPTE):
+            raise ValidationError("Ce rendez-vous ne peut plus être annulé.")
+        rdv.statut = RendezVous.Statut.ANNULE
+        rdv.save(update_fields=["statut"])
+        _notifier_rendez_vous(
+            rdv.parent, rdv.enseignant, "Rendez-vous annulé",
+            f"{rdv.parent.get_full_name()} a annulé le rendez-vous du {rdv.date:%d/%m/%Y} à {rdv.heure:%H:%M}.",
+        )
+        return Response(self.get_serializer(rdv).data)
+
+    @action(detail=False, methods=["get"], url_path="enseignants")
+    def enseignants(self, request):
+        """Enseignants proposés au parent pour un enfant (`eleve`) : ceux de sa classe, avec leurs
+        matières."""
+        from academics.models import Enseignement
+
+        eleve = get_object_or_404(EleveProfile, pk=request.query_params.get("eleve"), parent=request.user)
+        par_enseignant = {}
+        for e in Enseignement.objects.filter(classe_id=eleve.classe_id).select_related("enseignant", "matiere"):
+            ligne = par_enseignant.setdefault(e.enseignant_id, {"id": e.enseignant_id, "nom": e.enseignant.get_full_name(), "matieres": []})
+            ligne["matieres"].append(e.matiere.nom)
+        return Response(sorted(par_enseignant.values(), key=lambda l: l["nom"]))

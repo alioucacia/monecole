@@ -60,6 +60,7 @@ import TransportPage from "./pages/TransportPage";
 import VerifyBadgePage from "./pages/VerifyBadgePage";
 import VerifyDocumentPage from "./pages/VerifyDocumentPage";
 import ProgrammesPage from "./pages/ProgrammesPage";
+import RendezVousPage from "./pages/RendezVousPage";
 import EvaluationEnseignantsPage from "./pages/EvaluationEnseignantsPage";
 import { OngletNavigateur } from "./components/OngletNavigateur";
 
@@ -204,6 +205,14 @@ export default function App() {
           element={
             <ProtectedRoute roles={["admin", "directeur"]}>
               <PersonnelAdminPage />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/rendez-vous"
+          element={
+            <ProtectedRoute roles={["admin", "directeur", "teacher", "parent"]}>
+              <RendezVousPage />
             </ProtectedRoute>
           }
         />

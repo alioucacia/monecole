@@ -838,3 +838,39 @@ export const evaluationEnseignantsApi = {
       "/people/evaluation-enseignants/", { params: { enseignant: enseignantId } },
     ),
 };
+
+// --- Rendez-vous parents ↔ enseignants ---------------------------------------------------------
+
+export type StatutRendezVous = "en_attente" | "accepte" | "refuse" | "annule";
+
+export interface RendezVous {
+  id: number;
+  parent: number;
+  parent_nom: string;
+  enseignant: number;
+  enseignant_nom: string;
+  eleve: number;
+  eleve_nom: string;
+  classe_nom: string | null;
+  date: string;
+  heure: string;
+  motif: "resultats" | "comportement" | "absences" | "orientation" | "autre";
+  motif_display: string;
+  message: string;
+  statut: StatutRendezVous;
+  statut_display: string;
+  reponse: string;
+  cree_le: string;
+  repondu_le: string | null;
+}
+
+export const rendezVousApi = {
+  list: (params?: Record<string, unknown>) =>
+    api.get<Paginated<RendezVous> | RendezVous[]>("/people/rendez-vous/", { params: { page_size: 200, ...params } }),
+  create: (data: Record<string, unknown>) => api.post<RendezVous>("/people/rendez-vous/", data),
+  accepter: (id: number, reponse: string) => api.post<RendezVous>(`/people/rendez-vous/${id}/accepter/`, { reponse }),
+  refuser: (id: number, reponse: string) => api.post<RendezVous>(`/people/rendez-vous/${id}/refuser/`, { reponse }),
+  annuler: (id: number) => api.post<RendezVous>(`/people/rendez-vous/${id}/annuler/`),
+  enseignants: (eleveId: number) =>
+    api.get<{ id: number; nom: string; matieres: string[] }[]>("/people/rendez-vous/enseignants/", { params: { eleve: eleveId } }),
+};

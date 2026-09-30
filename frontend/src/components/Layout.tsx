@@ -91,6 +91,7 @@ const NAV_CATEGORIES: NavCategory[] = [
   {
     label: "Communication",
     items: [
+      { to: "/rendez-vous", label: "Rendez-vous", icon: "📅", roles: ["admin", "directeur", "teacher", "parent"] },
       { to: "/messagerie", label: "Messagerie", icon: "✉️", roles: ["admin", "directeur", "teacher", "student", "parent", "comptabilite", "surveillance"], feature: "messagerie" },
       { to: "/visioconference", label: "Visioconférence", icon: "📹", roles: ["admin", "directeur", "teacher", "student", "parent", "comptabilite", "surveillance"], feature: "visioconference" },
       { to: "/annonces", label: "Annonces", icon: "📢", roles: ["admin", "directeur", "teacher", "student", "parent", "comptabilite", "surveillance"], feature: "annonces" },

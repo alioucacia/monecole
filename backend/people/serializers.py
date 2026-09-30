@@ -7,6 +7,7 @@ from core.validators import EXTENSIONS_IMAGE, TAILLE_MAX_IMAGE, valider_taille_f
 from tenants.quotas import verifier_quota_plan
 
 from .models import (
+    RendezVous,
     AlerteParent, EleveBadge, EleveProfile, EnseignantBadge, EnseignantProfile,
     GroupeRevision, MessageIA, PaieEnseignant, PointageEnseignant,
     enregistrer_historique_classe, generer_matricule_eleve, generer_matricule_enseignant,
@@ -411,3 +412,45 @@ class MessageIASerializer(serializers.ModelSerializer):
 
 class MessageIACreateSerializer(serializers.Serializer):
     message = serializers.CharField(max_length=2000, allow_blank=False)
+
+
+class RendezVousSerializer(serializers.ModelSerializer):
+    parent_nom = serializers.CharField(source="parent.get_full_name", read_only=True)
+    enseignant_nom = serializers.CharField(source="enseignant.get_full_name", read_only=True)
+    eleve_nom = serializers.CharField(source="eleve.user.get_full_name", read_only=True)
+    classe_nom = serializers.CharField(source="eleve.classe.nom", read_only=True, default=None)
+    motif_display = serializers.CharField(source="get_motif_display", read_only=True)
+    statut_display = serializers.CharField(source="get_statut_display", read_only=True)
+
+    class Meta:
+        model = RendezVous
+        fields = [
+            "id", "parent", "parent_nom", "enseignant", "enseignant_nom", "eleve", "eleve_nom", "classe_nom",
+            "date", "heure", "motif", "motif_display", "message", "statut", "statut_display", "reponse",
+            "cree_le", "repondu_le",
+        ]
+        read_only_fields = ["parent", "statut", "reponse", "cree_le", "repondu_le"]
+
+    def validate(self, attrs):
+        from datetime import datetime
+
+        from django.utils import timezone
+
+        from academics.models import Enseignement
+
+        request = self.context["request"]
+        eleve = attrs["eleve"]
+        enseignant = attrs["enseignant"]
+        if eleve.parent_id != request.user.id:
+            raise serializers.ValidationError({"eleve": "Cet élève n'est pas votre enfant."})
+        if not eleve.classe_id or not Enseignement.objects.filter(enseignant=enseignant, classe_id=eleve.classe_id).exists():
+            raise serializers.ValidationError({"enseignant": "Cet enseignant n'enseigne pas dans la classe de votre enfant."})
+        maintenant = timezone.localtime()
+        if datetime.combine(attrs["date"], attrs["heure"]) <= maintenant.replace(tzinfo=None):
+            raise serializers.ValidationError({"date": "Choisissez une date et une heure à venir."})
+        if RendezVous.objects.filter(
+            enseignant=enseignant, date=attrs["date"], heure=attrs["heure"],
+            statut__in=[RendezVous.Statut.EN_ATTENTE, RendezVous.Statut.ACCEPTE],
+        ).exists():
+            raise serializers.ValidationError({"heure": "Ce créneau est déjà réservé chez cet enseignant. Choisissez une autre heure."})
+        return attrs

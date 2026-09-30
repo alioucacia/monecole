@@ -3,7 +3,7 @@ from rest_framework.routers import DefaultRouter
 from django.urls import include, path
 
 from .views import (
-    AlerteParentViewSet, AssistantIAView, BadgeVerifyView, EvaluationEnseignantsView, EleveBadgeViewSet, EleveProfileViewSet,
+    AlerteParentViewSet, AssistantIAView, BadgeVerifyView, EvaluationEnseignantsView, RendezVousViewSet, EleveBadgeViewSet, EleveProfileViewSet,
     EnseignantBadgeViewSet, EnseignantProfileViewSet, GroupeRevisionViewSet,
     PaieEnseignantViewSet, PointageEnseignantViewSet,
 )
@@ -12,6 +12,7 @@ router = DefaultRouter()
 router.register("eleves", EleveProfileViewSet, basename="eleve")
 router.register("enseignants", EnseignantProfileViewSet, basename="enseignant")
 router.register("badges", EleveBadgeViewSet, basename="badge")
+router.register("rendez-vous", RendezVousViewSet, basename="rendez-vous")
 router.register("badges-enseignants", EnseignantBadgeViewSet, basename="badge-enseignant")
 router.register("pointages-enseignants", PointageEnseignantViewSet, basename="pointage-enseignant")
 router.register("paies-enseignants", PaieEnseignantViewSet, basename="paie-enseignant")
