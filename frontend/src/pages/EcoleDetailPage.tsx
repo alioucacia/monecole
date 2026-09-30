@@ -1,7 +1,7 @@
 import { useEffect, useState, type FormEvent } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 
-import { ecolesApi, fonctionnalitesApi, paiementsEcolesApi, unwrapList } from "../api/services";
+import { ecolesApi, fonctionnalitesApi, paiementsEcolesApi, resumeNotificationAdmin, unwrapList } from "../api/services";
 import { extractBlobErrorMessage, extractErrorMessage } from "../api/client";
 import { useAuth } from "../context/AuthContext";
 import { usePrompt } from "../context/ConfirmContext";
@@ -135,11 +135,13 @@ export default function EcoleDetailPage() {
     setCreerAdminSaving(true);
     setCreerAdminError("");
     try {
-      await ecolesApi.creerAdmin(ecole.id, creerAdminForm);
+      const { data: cree } = await ecolesApi.creerAdmin(ecole.id, creerAdminForm);
       const { data } = await ecolesApi.utilisateurs(ecole.id);
       setUtilisateurs(data);
       setCreerAdminOuvert(false);
       toast.success("Compte Administrateur créé.");
+      const resume = resumeNotificationAdmin(cree.notification);
+      if (resume.texte) (resume.ok ? toast.success : toast.warning)(resume.texte, 9000);
     } catch (err) {
       setCreerAdminError(extractErrorMessage(err));
     } finally {

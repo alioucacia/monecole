@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState, type FormEvent } from "react";
 import { Link } from "react-router-dom";
 import { Bar, BarChart, CartesianGrid, Line, LineChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 
-import { ecolesApi, paiementsEcolesApi, plansAbonnementApi, unwrapList } from "../api/services";
+import { ecolesApi, paiementsEcolesApi, plansAbonnementApi, resumeNotificationAdmin, unwrapList } from "../api/services";
 import { extractErrorMessage } from "../api/client";
 import { Badge, Button, Card, EmptyState, Input, Modal, PageHeader, Select, Spinner, StatCard, Table } from "../components/ui";
 import { useConfirm } from "../context/ConfirmContext";
@@ -32,7 +32,7 @@ const emptyEcoleForm = {
   nom: "", adresse: "", ville: "", pays: "Guinée", telephone: "", email: "",
   directeur_nom: "", type_etablissement: "", annee_scolaire_libelle: anneeScolaireSuggeree(), actif: true,
   plan: "", abonnement_mensuel: "", jour_echeance: 5, jours_grace: 5,
-  admin_username: "", admin_first_name: "", admin_last_name: "", admin_email: "", admin_password: "changeme123",
+  admin_username: "", admin_first_name: "", admin_last_name: "", admin_email: "", admin_phone: "", admin_password: "changeme123",
 };
 
 const emptyEditForm = {
@@ -126,9 +126,12 @@ export default function EcolesPage() {
     try {
       const payload: Record<string, unknown> = { ...createForm, plan: createForm.plan || null };
       if (createLogo) payload.logo = createLogo;
-      await ecolesApi.create(payload);
+      const { data } = await ecolesApi.create(payload);
       setCreateOpen(false);
       load();
+      toast.success(`École « ${data.nom} » créée.`);
+      const resume = resumeNotificationAdmin(data.notification_admin);
+      if (resume.texte) (resume.ok ? toast.success : toast.warning)(resume.texte, 9000);
     } catch (err) {
       setCreateError(extractErrorMessage(err));
     } finally {
@@ -417,7 +420,9 @@ export default function EcolesPage() {
           <Input label="Mot de passe initial" required value={createForm.admin_password} onChange={(e) => setCreateForm({ ...createForm, admin_password: e.target.value })} />
           <Input label="Prénom" required value={createForm.admin_first_name} onChange={(e) => setCreateForm({ ...createForm, admin_first_name: e.target.value })} />
           <Input label="Nom" required value={createForm.admin_last_name} onChange={(e) => setCreateForm({ ...createForm, admin_last_name: e.target.value })} />
-          <Input label="Email de l'admin" type="email" value={createForm.admin_email} onChange={(e) => setCreateForm({ ...createForm, admin_email: e.target.value })} className="sm:col-span-2" />
+          <Input label="Email de l'admin" type="email" value={createForm.admin_email} onChange={(e) => setCreateForm({ ...createForm, admin_email: e.target.value })} />
+          <Input label="Téléphone de l'admin (SMS)" type="tel" placeholder="622000000" value={createForm.admin_phone} onChange={(e) => setCreateForm({ ...createForm, admin_phone: e.target.value })} />
+          <p className="sm:col-span-2 text-xs text-slate-500 -mt-2">Les identifiants de connexion lui sont envoyés par e-mail et par SMS.</p>
 
           {createError && <p className="sm:col-span-2 text-sm text-rose-600 bg-rose-50 border border-rose-100 rounded-xl px-3.5 py-2.5">{createError}</p>}
 

@@ -328,7 +328,10 @@ class EcoleViewSet(viewsets.ModelViewSet):
             request, JournalActivite.Action.ECOLE_MODIFIEE, ecole,
             f"Compte Administrateur « {admin.get_full_name()} » créé pour l'école",
         )
-        return Response(UserSerializer(admin).data, status=status.HTTP_201_CREATED)
+        from accounts.notifications import notifier_creation_admin_ecole
+
+        notification = notifier_creation_admin_ecole(admin, request.data["password"])
+        return Response({**UserSerializer(admin).data, "notification": notification}, status=status.HTTP_201_CREATED)
 
     @action(detail=True, methods=["post"], url_path="se-connecter-comme-admin")
     def se_connecter_comme_admin(self, request, pk=None):

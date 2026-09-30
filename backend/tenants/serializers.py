@@ -169,6 +169,7 @@ class EcoleCreateSerializer(serializers.ModelSerializer):
 
     admin_username = serializers.CharField(write_only=True)
     admin_email = serializers.EmailField(write_only=True, required=False, allow_blank=True)
+    admin_phone = serializers.CharField(write_only=True, required=False, allow_blank=True, max_length=20)
     admin_first_name = serializers.CharField(write_only=True)
     admin_last_name = serializers.CharField(write_only=True)
     admin_password = serializers.CharField(write_only=True, required=False, default="changeme123")
@@ -183,7 +184,7 @@ class EcoleCreateSerializer(serializers.ModelSerializer):
             "id", "nom", "adresse", "ville", "pays", "telephone", "email", "logo",
             "directeur_nom", "type_etablissement", "actif",
             "plan", "abonnement_mensuel", "jour_echeance", "jours_grace",
-            "admin_username", "admin_email", "admin_first_name", "admin_last_name", "admin_password",
+            "admin_username", "admin_email", "admin_phone", "admin_first_name", "admin_last_name", "admin_password",
             "annee_scolaire_libelle",
         ]
 
@@ -209,6 +210,7 @@ class EcoleCreateSerializer(serializers.ModelSerializer):
         admin_fields = {
             "username": validated_data.pop("admin_username"),
             "email": validated_data.pop("admin_email", ""),
+            "phone": validated_data.pop("admin_phone", ""),
             "first_name": validated_data.pop("admin_first_name"),
             "last_name": validated_data.pop("admin_last_name"),
         }
@@ -221,6 +223,12 @@ class EcoleCreateSerializer(serializers.ModelSerializer):
         admin.doit_changer_mot_de_passe = True
         admin.save()
 
+        # Identifiants envoyés à l'administrateur par e-mail/SMS — le résultat est renvoyé au
+        # Super Admin (voir to_representation) pour qu'il sache s'il doit les transmettre lui-même.
+        from accounts.notifications import notifier_creation_admin_ecole
+
+        self._notification_admin = notifier_creation_admin_ecole(admin, password)
+
         if annee_libelle:
             premiere_annee = int(annee_libelle.split("-")[0])
             AnneeScolaire.objects.create(
@@ -231,7 +239,10 @@ class EcoleCreateSerializer(serializers.ModelSerializer):
         return ecole
 
     def to_representation(self, instance):
-        return EcoleSerializer(instance, context=self.context).data
+        donnees = EcoleSerializer(instance, context=self.context).data
+        if getattr(self, "_notification_admin", None) is not None:
+            donnees["notification_admin"] = self._notification_admin
+        return donnees
 
 
 class MonEcoleSerializer(serializers.ModelSerializer):

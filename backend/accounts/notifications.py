@@ -71,3 +71,34 @@ def notifier_creation_compte(utilisateur, mot_de_passe: str, expediteur=None) ->
     _envoyer_email(utilisateur.email, sujet, message)
     _envoyer_sms(utilisateur.phone, message)
     _envoyer_message_interne(expediteur, utilisateur, message)
+
+
+
+def notifier_creation_admin_ecole(admin, mot_de_passe: str) -> dict:
+    """Identifiants du compte Administrateur d'une école créé par le Super Admin (création de
+    l'école, ou « + Créer un compte admin » sur sa fiche) — par e-mail et SMS, avec l'adresse
+    du site. Avant, ces deux chemins ne notifiaient personne : l'administrateur ne recevait
+    jamais ses identifiants. Renvoie ce qui est parti, pour l'afficher au Super Admin
+    (`email_envoye`, `sms_envoye`, `sms_desactives`)."""
+    from tenants.models import ParametresPlateforme
+
+    parametres = ParametresPlateforme.charger()
+    nom_ecole = admin.ecole.nom if admin.ecole_id else parametres.nom_plateforme
+    sujet = f"{parametres.nom_plateforme} — Votre compte administrateur de {nom_ecole}"
+    message = (
+        f"Bonjour {admin.get_full_name() or admin.username},\n"
+        f"Votre compte Administrateur de « {nom_ecole} » a été créé sur {parametres.nom_plateforme}.\n"
+        f"Adresse : {settings.FRONTEND_URL}\n"
+        f"Identifiant : {admin.username}\n"
+        f"Mot de passe temporaire : {mot_de_passe}\n"
+        "Vous devrez le changer à la première connexion."
+    )
+    email_envoye = _envoyer_email(admin.email, sujet, message)
+    sms_envoye = bool(admin.phone) and parametres.sms_actif and send_sms(admin.phone, message)
+    return {
+        "email_envoye": email_envoye,
+        "sms_envoye": bool(sms_envoye),
+        "sms_desactives": bool(admin.phone) and not parametres.sms_actif,
+        "email": admin.email,
+        "telephone": admin.phone,
+    }

@@ -13,7 +13,8 @@ import type {
 export const ecolesApi = {
   list: (params?: Record<string, unknown>) => api.get<Paginated<Ecole> | Ecole[]>("/tenants/ecoles/", { params }),
   get: (id: number) => api.get<Ecole>(`/tenants/ecoles/${id}/`),
-  create: (data: Record<string, unknown>) => api.post<Ecole>("/tenants/ecoles/", toFormData(data), multipartHeaders),
+  create: (data: Record<string, unknown>) =>
+    api.post<Ecole & { notification_admin?: NotificationAdmin }>("/tenants/ecoles/", toFormData(data), multipartHeaders),
   update: (id: number, data: Record<string, unknown>) => api.patch<Ecole>(`/tenants/ecoles/${id}/`, toFormData(data), multipartHeaders),
   // `code_suppression` : second secret propre au Super Admin (voir User.code_suppression côté
   // backend), distinct du mot de passe de connexion — exigé en plus du nom de l'école déjà tapé
@@ -28,7 +29,7 @@ export const ecolesApi = {
   statsDetail: (id: number) => api.get<EcoleStatsDetail>(`/tenants/ecoles/${id}/stats-detail/`),
   utilisateurs: (id: number) => api.get<EcoleUtilisateur[]>(`/tenants/ecoles/${id}/utilisateurs/`),
   creerAdmin: (id: number, data: { username: string; first_name: string; last_name: string; email?: string; phone?: string; password: string }) =>
-    api.post<User>(`/tenants/ecoles/${id}/creer-admin/`, data),
+    api.post<User & { notification: NotificationAdmin }>(`/tenants/ecoles/${id}/creer-admin/`, data),
   export: (params?: Record<string, unknown>) => downloadFile("/tenants/ecoles/export/", params || {}, "ecoles.csv"),
   relancerRetard: () => api.post<{ relances: number }>("/tenants/ecoles/relancer-retard/"),
   seConnecterCommeAdmin: (id: number) => api.post<{ access: string; refresh: string; user: User }>(`/tenants/ecoles/${id}/se-connecter-comme-admin/`),
@@ -891,3 +892,24 @@ export const rapportsAnnuelsApi = {
     api.post<{ annee_scolaire_id: number; genere_le: string; provisoire: boolean }>("/dashboard/rapports-annuels/", { annee_scolaire: anneeScolaireId }),
   pdf: (anneeScolaireId: number, filename: string) => downloadFile(`/dashboard/rapports-annuels/${anneeScolaireId}/pdf/`, {}, filename),
 };
+
+
+/** Ce qui a été envoyé à l'administrateur d'école créé par le Super Admin (voir
+ * accounts.notifications.notifier_creation_admin_ecole). */
+export interface NotificationAdmin {
+  email_envoye: boolean;
+  sms_envoye: boolean;
+  sms_desactives: boolean;
+  email: string;
+  telephone: string;
+}
+
+/** Message à afficher au Super Admin après la création d'un compte administrateur d'école. */
+export function resumeNotificationAdmin(n: NotificationAdmin | undefined): { ok: boolean; texte: string } {
+  if (!n) return { ok: false, texte: "" };
+  const canaux = [n.email_envoye && `e-mail (${n.email})`, n.sms_envoye && `SMS (${n.telephone})`].filter(Boolean);
+  if (canaux.length > 0) return { ok: true, texte: `Identifiants envoyés à l'administrateur par ${canaux.join(" et ")}.` };
+  if (n.sms_desactives) return { ok: false, texte: "SMS désactivés sur la plateforme et aucun e-mail envoyé : transmettez les identifiants vous-même." };
+  if (!n.email && !n.telephone) return { ok: false, texte: "Aucun e-mail ni téléphone renseigné : transmettez les identifiants à l'administrateur vous-même." };
+  return { ok: false, texte: "L'envoi de l'e-mail/SMS a échoué : transmettez les identifiants à l'administrateur vous-même." };
+}
