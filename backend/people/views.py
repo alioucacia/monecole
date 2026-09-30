@@ -1306,3 +1306,37 @@ class AssistantIAView(APIView):
             "message": MessageIASerializer(message_user).data,
             "reponse": MessageIASerializer(message_assistant).data,
         }, status=201)
+
+
+class EvaluationEnseignantsView(APIView):
+    """Évaluation des enseignants pour la direction (Administrateur, Directeur Général en
+    lecture) — voir people/evaluation_enseignants.py pour le détail des indicateurs.
+
+    - sans `enseignant` : tableau de tous les enseignants pour une année scolaire (`annee_scolaire`,
+      l'année active par défaut) ;
+    - avec `enseignant` : historique annuel de cet enseignant (une ligne par année scolaire de
+      l'école, de la plus récente à la plus ancienne)."""
+
+    permission_classes = [IsAdmin]
+
+    def get(self, request):
+        from academics.models import AnneeScolaire
+
+        from .evaluation_enseignants import evaluer_enseignant
+
+        annees = AnneeScolaire.objects.filter(ecole_id=request.user.ecole_id)
+        enseignant_id = request.query_params.get("enseignant")
+        if enseignant_id:
+            enseignant = get_object_or_404(
+                EnseignantProfile.objects.select_related("user"), pk=enseignant_id, user__ecole_id=request.user.ecole_id,
+            )
+            historique = [evaluer_enseignant(enseignant, a) for a in annees.order_by("-date_debut")]
+            return Response({"enseignant": enseignant.user.get_full_name(), "historique": historique})
+
+        annee_id = request.query_params.get("annee_scolaire")
+        annee = annees.filter(pk=annee_id).first() if annee_id else annees.filter(active=True).first()
+        if not annee:
+            raise ValidationError("Aucune année scolaire active pour votre établissement.")
+        enseignants = EnseignantProfile.objects.filter(user__ecole_id=request.user.ecole_id, user__is_active=True).select_related("user")
+        lignes = sorted((evaluer_enseignant(e, annee) for e in enseignants), key=lambda l: l["nom_complet"].lower())
+        return Response({"annee_scolaire": annee.libelle, "annee_scolaire_id": annee.id, "enseignants": lignes})

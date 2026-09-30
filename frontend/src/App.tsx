@@ -59,6 +59,8 @@ import TransactionsPage from "./pages/TransactionsPage";
 import TransportPage from "./pages/TransportPage";
 import VerifyBadgePage from "./pages/VerifyBadgePage";
 import VerifyDocumentPage from "./pages/VerifyDocumentPage";
+import ProgrammesPage from "./pages/ProgrammesPage";
+import EvaluationEnseignantsPage from "./pages/EvaluationEnseignantsPage";
 import { OngletNavigateur } from "./components/OngletNavigateur";
 
 export default function App() {
@@ -202,6 +204,22 @@ export default function App() {
           element={
             <ProtectedRoute roles={["admin", "directeur"]}>
               <PersonnelAdminPage />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/programmes"
+          element={
+            <ProtectedRoute roles={["admin", "directeur", "teacher"]}>
+              <ProgrammesPage />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/evaluation-enseignants"
+          element={
+            <ProtectedRoute roles={["admin", "directeur"]}>
+              <EvaluationEnseignantsPage />
             </ProtectedRoute>
           }
         />

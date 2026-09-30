@@ -196,3 +196,35 @@ class Creneau(models.Model):
 
     def __str__(self):
         return f"{self.classe} - {self.enseignement.matiere} ({self.jour} {self.heure_debut})"
+
+
+class ChapitreProgramme(models.Model):
+    """Un chapitre (ou une leçon) du programme d'une matière pour une classe — l'enseignant le
+    marque « en cours » puis « terminé » au fil de l'année, et la direction suit l'avancement du
+    programme de chaque classe (voir ChapitreProgrammeViewSet.avancement). Rattaché à la classe,
+    donc à une année scolaire : l'historique annuel vient de lui-même."""
+
+    class Statut(models.TextChoices):
+        A_FAIRE = "a_faire", "À faire"
+        EN_COURS = "en_cours", "En cours"
+        TERMINE = "termine", "Terminé"
+
+    classe = models.ForeignKey(Classe, on_delete=models.CASCADE, related_name="chapitres_programme")
+    matiere = models.ForeignKey(Matiere, on_delete=models.CASCADE, related_name="chapitres_programme")
+    ordre = models.PositiveIntegerField(default=0)
+    titre = models.CharField(max_length=200)
+    heures_prevues = models.DecimalField(max_digits=5, decimal_places=1, null=True, blank=True)
+    statut = models.CharField(max_length=10, choices=Statut.choices, default=Statut.A_FAIRE)
+    date_realisation = models.DateField(null=True, blank=True, help_text="Date à laquelle le chapitre a été terminé")
+    realise_par = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, blank=True, related_name="chapitres_realises",
+    )
+    commentaire = models.CharField(max_length=255, blank=True)
+
+    class Meta:
+        ordering = ["classe", "matiere", "ordre", "id"]
+        verbose_name = "Chapitre de programme"
+        verbose_name_plural = "Chapitres de programme"
+
+    def __str__(self):
+        return f"{self.classe} — {self.matiere} : {self.titre}"

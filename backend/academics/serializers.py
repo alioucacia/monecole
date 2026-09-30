@@ -1,6 +1,6 @@
 from rest_framework import serializers
 
-from .models import AnneeScolaire, Classe, Creneau, Enseignement, Matiere
+from .models import AnneeScolaire, ChapitreProgramme, Classe, Creneau, Enseignement, Matiere
 
 
 class AnneeScolaireSerializer(serializers.ModelSerializer):
@@ -57,3 +57,18 @@ class CreneauSerializer(serializers.ModelSerializer):
             "id", "classe", "classe_nom", "enseignement", "matiere_nom", "matiere_couleur",
             "enseignant_nom", "jour", "heure_debut", "heure_fin", "salle",
         ]
+
+
+class ChapitreProgrammeSerializer(serializers.ModelSerializer):
+    matiere_nom = serializers.CharField(source="matiere.nom", read_only=True)
+    classe_nom = serializers.CharField(source="classe.nom", read_only=True)
+    statut_display = serializers.CharField(source="get_statut_display", read_only=True)
+    realise_par_nom = serializers.CharField(source="realise_par.get_full_name", read_only=True, default=None)
+
+    class Meta:
+        model = ChapitreProgramme
+        fields = [
+            "id", "classe", "classe_nom", "matiere", "matiere_nom", "ordre", "titre", "heures_prevues",
+            "statut", "statut_display", "date_realisation", "realise_par", "realise_par_nom", "commentaire",
+        ]
+        read_only_fields = ["realise_par"]

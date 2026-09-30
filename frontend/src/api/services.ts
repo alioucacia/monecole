@@ -756,3 +756,85 @@ export const supportApi = {
 export function unwrapList<T>(data: Paginated<T> | T[]): T[] {
   return Array.isArray(data) ? data : data.results;
 }
+
+// --- Programmes (chapitres par classe et matière) et évaluation des enseignants ---------------
+
+export type StatutChapitre = "a_faire" | "en_cours" | "termine";
+
+export interface ChapitreProgramme {
+  id: number;
+  classe: number;
+  classe_nom: string;
+  matiere: number;
+  matiere_nom: string;
+  ordre: number;
+  titre: string;
+  heures_prevues: string | null;
+  statut: StatutChapitre;
+  statut_display: string;
+  date_realisation: string | null;
+  realise_par_nom: string | null;
+  commentaire: string;
+}
+
+export interface AvancementMatiere {
+  matiere_id: number;
+  matiere_nom: string;
+  enseignant: string | null;
+  total: number;
+  termines: number;
+  en_cours: number;
+  pourcentage: number | null;
+}
+
+export interface AvancementClasse {
+  classe_id: number;
+  classe_nom: string;
+  niveau: string;
+  total: number;
+  termines: number;
+  pourcentage: number | null;
+  matieres: AvancementMatiere[];
+}
+
+export const programmesApi = {
+  list: (params: Record<string, unknown>) =>
+    api.get<Paginated<ChapitreProgramme> | ChapitreProgramme[]>("/academics/programmes/", { params: { page_size: 500, ...params } }),
+  create: (data: Partial<ChapitreProgramme>) => api.post<ChapitreProgramme>("/academics/programmes/", data),
+  update: (id: number, data: Partial<ChapitreProgramme>) => api.patch<ChapitreProgramme>(`/academics/programmes/${id}/`, data),
+  remove: (id: number) => api.delete(`/academics/programmes/${id}/`),
+  avancement: (params?: Record<string, unknown>) =>
+    api.get<{ annee_scolaire: string | null; annee_scolaire_id: number | null; classes: AvancementClasse[] }>(
+      "/academics/programmes/avancement/", { params },
+    ),
+};
+
+export interface EvaluationEnseignant {
+  enseignant_id: number;
+  nom_complet: string;
+  matricule: string;
+  specialite: string;
+  annee_scolaire: string;
+  annee_scolaire_id: number;
+  classes: string[];
+  presence: { jours_pointes: number; presents: number; retards: number; absents: number; taux_presence: number | null; taux_ponctualite: number | null };
+  volume: { heures_hebdo_prevues: number; heures_pointees: number };
+  programme: { chapitres: number; termines: number; pourcentage: number | null };
+  resultats: { moyenne_sur_20: string | number | null; taux_reussite: number | null; eleves_notes: number };
+  evaluations: { evaluations_donnees: number; notes_saisies: number };
+  detail_classes: {
+    classe: string; matiere: string; bareme: number; moyenne: string | number | null;
+    taux_reussite: number | null; eleves_notes: number; programme: number | null;
+  }[];
+}
+
+export const evaluationEnseignantsApi = {
+  annee: (anneeScolaireId?: number) =>
+    api.get<{ annee_scolaire: string; annee_scolaire_id: number; enseignants: EvaluationEnseignant[] }>(
+      "/people/evaluation-enseignants/", { params: { annee_scolaire: anneeScolaireId || undefined } },
+    ),
+  historique: (enseignantId: number) =>
+    api.get<{ enseignant: string; historique: EvaluationEnseignant[] }>(
+      "/people/evaluation-enseignants/", { params: { enseignant: enseignantId } },
+    ),
+};

@@ -58,6 +58,7 @@ const NAV_CATEGORIES: NavCategory[] = [
       { to: "/notes", label: "Notes", icon: "📝", roles: ["admin", "directeur", "teacher", "student", "parent"] },
       { to: "/bulletins", label: "Bulletins", icon: "📄", roles: ["admin", "directeur", "teacher", "student", "parent"] },
       { to: "/resultats", label: "Résultats", icon: "🏆", roles: ["admin", "directeur", "teacher"] },
+      { to: "/programmes", label: "Programmes", icon: "🗂️", roles: ["admin", "directeur", "teacher"] },
       { to: "/analyse-performance", label: "Analyse de performance", icon: "📈", roles: ["student", "parent"] },
       { to: "/assistant-ia", label: "Assistant IA", icon: "🤖", roles: ["student"], feature: "assistant_ia" },
     ],
@@ -100,6 +101,7 @@ const NAV_CATEGORIES: NavCategory[] = [
     label: "Administration",
     items: [
       { to: "/personnel", label: "Ressources humaines", icon: "🧑‍💼", roles: ["admin", "directeur", "teacher", "comptabilite", "surveillance"] },
+      { to: "/evaluation-enseignants", label: "Évaluation des enseignants", icon: "📊", roles: ["admin", "directeur"] },
       { to: "/personnel-admin", label: "Personnel administratif", icon: "🗂️", roles: ["admin", "directeur"] },
       { to: "/comptes-ecole", label: "Comptes de l'établissement", icon: "🔑", roles: ["admin", "directeur", "comptabilite"] },
       { to: "/parametres-ecole", label: "Paramètres école", icon: "⚙️", roles: ["admin", "directeur"] },

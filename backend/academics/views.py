@@ -5,8 +5,9 @@ from rest_framework.response import Response
 
 from accounts.permissions import IsAdminOrReadOnly, IsAdminOrSurveillanceReadWriteNoDelete, IsAdminOrTeacherOrReadOnly
 
-from .models import AnneeScolaire, Classe, Creneau, Enseignement, Matiere, deviner_cycle
+from .models import AnneeScolaire, ChapitreProgramme, Classe, Creneau, Enseignement, Matiere, deviner_cycle
 from .serializers import (
+    ChapitreProgrammeSerializer,
     AnneeScolaireSerializer,
     ClasseSerializer,
     CreneauSerializer,
@@ -117,3 +118,123 @@ class CreneauViewSet(viewsets.ModelViewSet):
             enfants_classes = [e.classe_id for e in user.enfants.all()]
             return qs.filter(classe_id__in=enfants_classes)
         return qs
+
+
+class ChapitreProgrammeViewSet(viewsets.ModelViewSet):
+    """Programme (liste de chapitres) de chaque matière dans chaque classe, et son avancement.
+    Lecture : tout utilisateur de l'école. Écriture : l'administrateur, ou l'enseignant qui
+    enseigne cette matière dans cette classe (voir Enseignement) — c'est lui qui coche les
+    chapitres au fil de l'année. Le Directeur Général suit en lecture seule."""
+
+    serializer_class = ChapitreProgrammeSerializer
+    filterset_fields = ["classe", "matiere", "statut"]
+
+    def get_queryset(self):
+        return ChapitreProgramme.objects.select_related("classe", "matiere", "realise_par").filter(
+            classe__annee_scolaire__ecole_id=self.request.user.ecole_id,
+        )
+
+    def get_permissions(self):
+        from rest_framework.permissions import IsAuthenticated
+
+        from accounts.permissions import IsAdminOrTeacher
+
+        if self.action in ("list", "retrieve", "avancement"):
+            return [IsAuthenticated()]
+        return [IsAdminOrTeacher()]
+
+    def _verifier_droit_ecriture(self, classe, matiere):
+        from rest_framework.exceptions import PermissionDenied
+
+        user = self.request.user
+        if user.role == "admin":
+            return
+        if user.role == "teacher" and Enseignement.objects.filter(enseignant=user, classe=classe, matiere=matiere).exists():
+            return
+        raise PermissionDenied("Seul l'enseignant de cette matière dans cette classe (ou l'administrateur) peut modifier son programme.")
+
+    def _enregistrer(self, serializer, instance=None):
+        from django.utils import timezone
+        from rest_framework.exceptions import ValidationError
+
+        classe = serializer.validated_data.get("classe", getattr(instance, "classe", None))
+        matiere = serializer.validated_data.get("matiere", getattr(instance, "matiere", None))
+        if classe.annee_scolaire.ecole_id != self.request.user.ecole_id or matiere.ecole_id != self.request.user.ecole_id:
+            raise ValidationError("Classe ou matière d'un autre établissement.")
+        self._verifier_droit_ecriture(classe, matiere)
+        extra = {}
+        statut = serializer.validated_data.get("statut")
+        if statut == ChapitreProgramme.Statut.TERMINE and getattr(instance, "statut", None) != ChapitreProgramme.Statut.TERMINE:
+            extra["realise_par"] = self.request.user
+            if not serializer.validated_data.get("date_realisation"):
+                extra["date_realisation"] = timezone.localdate()
+        elif statut in (ChapitreProgramme.Statut.A_FAIRE, ChapitreProgramme.Statut.EN_COURS):
+            extra["date_realisation"] = None
+        serializer.save(**extra)
+
+    def perform_create(self, serializer):
+        self._enregistrer(serializer)
+
+    def perform_update(self, serializer):
+        self._enregistrer(serializer, serializer.instance)
+
+    def perform_destroy(self, instance):
+        self._verifier_droit_ecriture(instance.classe, instance.matiere)
+        instance.delete()
+
+    @action(detail=False, methods=["get"], url_path="avancement")
+    def avancement(self, request):
+        """Avancement du programme, classe par classe et matière par matière, pour une année
+        scolaire (l'année active par défaut, ou `annee_scolaire`) — éventuellement une seule
+        `classe`. Pourcentage = chapitres terminés / chapitres prévus."""
+        from django.db.models import Count
+
+        annee_id = request.query_params.get("annee_scolaire")
+        annees = AnneeScolaire.objects.filter(ecole_id=request.user.ecole_id)
+        annee = annees.filter(pk=annee_id).first() if annee_id else annees.filter(active=True).first()
+        if not annee:
+            return Response({"annee_scolaire": None, "annee_scolaire_id": None, "classes": []})
+
+        classes = Classe.objects.filter(annee_scolaire=annee).order_by("niveau", "nom")
+        if request.query_params.get("classe"):
+            classes = classes.filter(pk=request.query_params["classe"])
+
+        stats = (
+            ChapitreProgramme.objects.filter(classe__in=classes)
+            .values("classe_id", "matiere_id")
+            .annotate(
+                total=Count("id"),
+                termines=Count("id", filter=Q(statut=ChapitreProgramme.Statut.TERMINE)),
+                en_cours=Count("id", filter=Q(statut=ChapitreProgramme.Statut.EN_COURS)),
+            )
+        )
+        par_classe = {}
+        for ligne in stats:
+            par_classe.setdefault(ligne["classe_id"], {})[ligne["matiere_id"]] = ligne
+        enseignants = {
+            (e.classe_id, e.matiere_id): e.enseignant.get_full_name()
+            for e in Enseignement.objects.filter(classe__in=classes).select_related("enseignant")
+        }
+        noms_matieres = dict(Matiere.objects.filter(ecole_id=request.user.ecole_id).values_list("id", "nom"))
+
+        resultat = []
+        for classe in classes:
+            ids_matieres = {m for (c, m) in enseignants if c == classe.id} | set(par_classe.get(classe.id, {}))
+            lignes = []
+            for matiere_id in sorted(ids_matieres, key=lambda m: noms_matieres.get(m, "")):
+                st = par_classe.get(classe.id, {}).get(matiere_id, {"total": 0, "termines": 0, "en_cours": 0})
+                lignes.append({
+                    "matiere_id": matiere_id, "matiere_nom": noms_matieres.get(matiere_id, "?"),
+                    "enseignant": enseignants.get((classe.id, matiere_id)),
+                    "total": st["total"], "termines": st["termines"], "en_cours": st["en_cours"],
+                    "pourcentage": round(st["termines"] * 100 / st["total"]) if st["total"] else None,
+                })
+            total = sum(l["total"] for l in lignes)
+            termines = sum(l["termines"] for l in lignes)
+            resultat.append({
+                "classe_id": classe.id, "classe_nom": classe.nom, "niveau": classe.niveau,
+                "total": total, "termines": termines,
+                "pourcentage": round(termines * 100 / total) if total else None,
+                "matieres": lignes,
+            })
+        return Response({"annee_scolaire": annee.libelle, "annee_scolaire_id": annee.id, "classes": resultat})

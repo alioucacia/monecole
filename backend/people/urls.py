@@ -3,7 +3,7 @@ from rest_framework.routers import DefaultRouter
 from django.urls import include, path
 
 from .views import (
-    AlerteParentViewSet, AssistantIAView, BadgeVerifyView, EleveBadgeViewSet, EleveProfileViewSet,
+    AlerteParentViewSet, AssistantIAView, BadgeVerifyView, EvaluationEnseignantsView, EleveBadgeViewSet, EleveProfileViewSet,
     EnseignantBadgeViewSet, EnseignantProfileViewSet, GroupeRevisionViewSet,
     PaieEnseignantViewSet, PointageEnseignantViewSet,
 )
@@ -21,5 +21,6 @@ router.register("alertes-parents", AlerteParentViewSet, basename="alerte-parent"
 urlpatterns = [
     path("badges/verify/<uuid:token>/", BadgeVerifyView.as_view(), name="badge-verify"),
     path("assistant-ia/", AssistantIAView.as_view(), name="assistant-ia"),
+    path("evaluation-enseignants/", EvaluationEnseignantsView.as_view(), name="evaluation-enseignants"),
     path("", include(router.urls)),
 ]
