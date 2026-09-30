@@ -19,6 +19,11 @@ export const ecolesApi = {
   // backend), distinct du mot de passe de connexion — exigé en plus du nom de l'école déjà tapé
   // par l'utilisateur (voir EcoleDetailPage.handleSupprimer) avant toute suppression définitive.
   remove: (id: number, code_suppression: string) => api.delete(`/tenants/ecoles/${id}/`, { data: { code_suppression } }),
+  /** Efface toutes les données de l'école et remet ses réglages par défaut (voir EcoleViewSet.reinitialiser). */
+  reinitialiser: (id: number, code_suppression: string) =>
+    api.post<{ comptes: number; eleves: number; annees_scolaires: number; depenses: number }>(
+      `/tenants/ecoles/${id}/reinitialiser/`, { code_suppression },
+    ),
   stats: () => api.get<EcoleStatsGlobales>("/tenants/ecoles/stats/"),
   statsDetail: (id: number) => api.get<EcoleStatsDetail>(`/tenants/ecoles/${id}/stats-detail/`),
   utilisateurs: (id: number) => api.get<EcoleUtilisateur[]>(`/tenants/ecoles/${id}/utilisateurs/`),
@@ -175,6 +180,9 @@ export const usersApi = {
   create: (data: Record<string, unknown>) => api.post<User>("/auth/users/", data),
   update: (id: number, data: Partial<User>) => api.patch<User>(`/auth/users/${id}/`, data),
   remove: (id: number) => api.delete(`/auth/users/${id}/`),
+  /** Suppression en masse des comptes élèves/parents cochés (voir UserViewSet.supprimer_comptes). */
+  supprimerComptes: (ids: number[]) =>
+    api.post<{ supprimes: number; eleves: number; parents: number; ignores: number }>("/auth/users/supprimer-comptes/", { ids }),
   reinitialiserMotDePasse: (id: number) =>
     api.post<{ nouveau_mot_de_passe: string; email_envoye: boolean }>(`/auth/users/${id}/reinitialiser-mot-de-passe/`),
   journal: (id: number, params?: Record<string, unknown>) =>

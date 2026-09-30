@@ -66,6 +66,9 @@ def reinitialiser_mot_de_passe(utilisateur) -> dict:
     nouveau_mot_de_passe = secrets.token_urlsafe(9)  # ex: "kQ3f8n-2ZpY1aW" (12 caractères)
     utilisateur.set_password(nouveau_mot_de_passe)
     utilisateur.doit_changer_mot_de_passe = True
+    if utilisateur.acces_supprime:  # accès supprimé par l'admin : un nouveau mot de passe le rend
+        utilisateur.acces_supprime = False
+        utilisateur.is_active = True
     utilisateur.save()
 
     email_envoye = False

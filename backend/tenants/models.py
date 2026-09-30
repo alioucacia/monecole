@@ -485,6 +485,7 @@ class JournalActivite(models.Model):
         RELANCE_ENVOYEE = "relance_envoyee", "Relance envoyée"
         SUPERADMIN_CREE = "superadmin_cree", "Compte Super Admin créé"
         ECOLE_SUPPRIMEE = "ecole_supprimee", "École supprimée définitivement"
+        ECOLE_REINITIALISEE = "ecole_reinitialisee", "École réinitialisée (données effacées)"
         CONNEXION_SUPPORT = "connexion_support", "Connexion en mode support"
         MOT_DE_PASSE_REINITIALISE = "mot_de_passe_reinitialise", "Mot de passe réinitialisé"
 

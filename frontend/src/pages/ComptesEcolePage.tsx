@@ -137,17 +137,60 @@ export default function ComptesEcolePage() {
     }
   };
 
-  // Tous les rôles sauf élève : un élève se supprime depuis sa page dédiée (StudentsPage), qui
-  // affiche le contexte propre à cette suppression (dossier scolaire, frais, notes...) — les
-  // parents, eux, n'ont pas de page de gestion dédiée (ils sont créés en marge d'un élève, mais
-  // gérés comme n'importe quel autre compte ensuite) : c'est ici, et seulement ici, qu'un admin
-  // peut supprimer un compte parent.
-  const ROLES_SUPPRIMABLES_ICI: Role[] = ["admin", "directeur", "teacher", "comptabilite", "surveillance", "parent"];
+  // Supprimer le compte d'un ÉLÈVE retire seulement son accès à la plateforme : sa fiche, ses
+  // notes et ses paiements sont conservés (voir accounts.views._supprimer_compte). Un parent
+  // supprimé laisse le dossier de ses enfants intact. Supprimer TOUT le dossier d'un élève se
+  // fait depuis la page Élèves.
+  const ROLES_SUPPRIMABLES_ICI: Role[] = ["admin", "directeur", "teacher", "comptabilite", "surveillance", "parent", "student"];
+  const ROLES_SUPPRESSION_EN_MASSE: Role[] = ["student", "parent"];
   const [deletingId, setDeletingId] = useState<number | null>(null);
+  const [selection, setSelection] = useState<Set<number>>(new Set());
+  const [suppressionMasse, setSuppressionMasse] = useState(false);
+
+  const basculerSelection = (id: number) => {
+    setSelection((actuelle) => {
+      const nouvelle = new Set(actuelle);
+      if (nouvelle.has(id)) nouvelle.delete(id); else nouvelle.add(id);
+      return nouvelle;
+    });
+  };
+  const selectionnables = items.filter((u) => ROLES_SUPPRESSION_EN_MASSE.includes(u.role));
+  const toutSelectionne = selectionnables.length > 0 && selectionnables.every((u) => selection.has(u.id));
+  const basculerTout = () => {
+    setSelection((actuelle) => {
+      const nouvelle = new Set(actuelle);
+      selectionnables.forEach((u) => (toutSelectionne ? nouvelle.delete(u.id) : nouvelle.add(u.id)));
+      return nouvelle;
+    });
+  };
+
+  const handleSuppressionMasse = async () => {
+    const ids = [...selection];
+    if (ids.length === 0) return;
+    if (!(await confirmer(
+      `Supprimer ${ids.length} compte(s) élève/parent ? Les élèves perdent leur accès à la plateforme, mais leur fiche, leurs notes et leurs paiements sont conservés. Les comptes parents sont supprimés.`,
+      { danger: true, title: "Supprimer les comptes sélectionnés", confirmLabel: "Supprimer" },
+    ))) return;
+    setSuppressionMasse(true);
+    try {
+      const { data } = await usersApi.supprimerComptes(ids);
+      toast.success(`${data.supprimes} compte(s) supprimé(s) — ${data.eleves} élève(s), ${data.parents} parent(s).`);
+      setSelection(new Set());
+      reload();
+    } catch (err) {
+      toast.error(extractErrorMessage(err));
+    } finally {
+      setSuppressionMasse(false);
+    }
+  };
 
   const handleDelete = async (u: User) => {
-    const avertissementParent = u.role === "parent" ? " (le dossier de ses enfants n'est pas affecté, seul son propre accès au portail l'est)" : "";
-    if (!(await confirmer(`Supprimer définitivement le compte de ${u.full_name || u.username} (${ROLE_LABELS[u.role]})${avertissementParent} ? Cette action est irréversible.`, { danger: true }))) return;
+    const avertissement = u.role === "student"
+      ? " Son accès à la plateforme sera supprimé ; sa fiche, ses notes et ses paiements sont conservés."
+      : u.role === "parent"
+      ? " Le dossier de ses enfants n'est pas affecté, seul son propre accès au portail l'est. Cette action est irréversible."
+      : " Cette action est irréversible.";
+    if (!(await confirmer(`Supprimer le compte de ${u.full_name || u.username} (${ROLE_LABELS[u.role]}) ?${avertissement}`, { danger: true }))) return;
     setDeletingId(u.id);
     try {
       await usersApi.remove(u.id);
@@ -238,9 +281,32 @@ export default function ComptesEcolePage() {
         <EmptyState title="Aucun compte trouvé" description="Essayez d'élargir vos filtres." />
       ) : (
         <>
-          <Table headers={["Nom", "Identifiant", "Rôle", "E-mail", "Statut", "Dernière connexion", "Actions"]}>
+          {isAdmin && selectionnables.length > 0 && (
+            <div className="flex flex-wrap items-center gap-3 mb-3 text-sm">
+              <label className="inline-flex items-center gap-2 font-semibold text-slate-600 cursor-pointer">
+                <input type="checkbox" checked={toutSelectionne} onChange={basculerTout} className="h-4 w-4 accent-brand-600" />
+                Sélectionner les élèves et parents de la page
+              </label>
+              {selection.size > 0 && (
+                <Button variant="danger" onClick={handleSuppressionMasse} disabled={suppressionMasse}>
+                  {suppressionMasse ? "Suppression…" : `🗑️ Supprimer la sélection (${selection.size})`}
+                </Button>
+              )}
+            </div>
+          )}
+          <Table headers={[...(isAdmin ? [""] : []), "Nom", "Identifiant", "Rôle", "E-mail", "Statut", "Dernière connexion", "Actions"]}>
             {items.map((u) => (
               <tr key={u.id}>
+                {isAdmin && (
+                  <td className="pl-4 py-3 w-8">
+                    {ROLES_SUPPRESSION_EN_MASSE.includes(u.role) && (
+                      <input
+                        type="checkbox" checked={selection.has(u.id)} onChange={() => basculerSelection(u.id)}
+                        aria-label={`Sélectionner ${u.full_name || u.username}`} className="h-4 w-4 accent-brand-600"
+                      />
+                    )}
+                  </td>
+                )}
                 <td className="px-4 py-3 font-medium text-slate-700">{u.full_name || u.username}</td>
                 <td className="px-4 py-3 text-xs font-mono text-slate-400">{u.username}</td>
                 <td className="px-4 py-3"><Badge color={ROLE_COLORS[u.role]}>{u.role_display}</Badge></td>

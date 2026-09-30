@@ -116,7 +116,10 @@ class EleveProfileViewSet(viewsets.ModelViewSet):
         from accounts.services import journaliser
 
         nom = instance.user.get_full_name()
-        instance.delete()
+        # Le compte de connexion part avec la fiche (qu'il entraîne en cascade) : supprimer
+        # seulement la fiche laissait avant un compte élève orphelin, toujours capable de se
+        # connecter.
+        instance.user.delete()
         journaliser(
             self.request.user, JournalUtilisateur.Categorie.ELEVE,
             f"Fiche élève supprimée : {nom}", self.request,

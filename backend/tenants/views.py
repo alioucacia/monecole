@@ -108,6 +108,33 @@ class EcoleViewSet(viewsets.ModelViewSet):
         _journaliser(self.request, JournalActivite.Action.ECOLE_SUPPRIMEE, instance, f"Suppression définitive de « {nom} »")
         instance.delete()
 
+    @action(detail=True, methods=["post"], url_path="reinitialiser")
+    def reinitialiser(self, request, pk=None):
+        """Efface TOUTES les données de l'école (élèves, parents, enseignants, classes, notes,
+        paiements…) et remet ses réglages par défaut — seuls l'école et ses administrateurs
+        restent (voir tenants/reinitialisation.py). Irréversible : exige, comme la suppression
+        d'une école, le code de suppression du Super Admin en plus de la confirmation du
+        frontend (taper le nom de l'école)."""
+        from accounts.services import verifier_code_suppression
+
+        from .reinitialisation import reinitialiser_ecole
+
+        ecole = self.get_object()
+        if not request.user.code_suppression:
+            return Response(
+                {"detail": "Définissez d'abord un code de suppression depuis votre profil."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        if not verifier_code_suppression(request.user, request.data.get("code_suppression", "")):
+            return Response({"detail": "Code de suppression incorrect."}, status=status.HTTP_403_FORBIDDEN)
+
+        bilan = reinitialiser_ecole(ecole)
+        _journaliser(
+            request, JournalActivite.Action.ECOLE_REINITIALISEE, ecole,
+            f"Réinitialisation de « {ecole.nom} » : {bilan['comptes']} compte(s), {bilan['eleves']} élève(s) effacé(s)",
+        )
+        return Response(bilan)
+
     @action(detail=False, methods=["get"], url_path="stats")
     def stats(self, request):
         ecoles = list(self.get_queryset())

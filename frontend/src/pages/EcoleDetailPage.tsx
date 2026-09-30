@@ -186,6 +186,36 @@ export default function EcoleDetailPage() {
     }
   };
 
+  const [reinitialisation, setReinitialisation] = useState(false);
+  const handleReinitialiser = async () => {
+    if (!ecole) return;
+    const saisie = await demander(
+      `Toutes les données de « ${ecole.nom} » seront effacées : élèves, parents, enseignants et autres comptes, classes, notes, ` +
+      "présences, frais, paiements, dépenses, matières, annonces… et ses réglages seront remis par défaut. " +
+      "Seuls l'école et ses comptes Administrateur sont conservés. Cette action est irréversible.",
+      { title: "Réinitialiser l'école", label: "Tapez le nom de l'école pour confirmer", placeholder: ecole.nom, confirmLabel: "Continuer" }
+    );
+    if (saisie !== ecole.nom) {
+      if (saisie !== null) toast.warning("Le nom saisi ne correspond pas — réinitialisation annulée.");
+      return;
+    }
+    const code = await demander(
+      "Deuxième vérification : saisissez votre code secret de suppression (défini depuis votre profil).",
+      { title: "Code de suppression", label: "Code secret", confirmLabel: "Réinitialiser l'école", inputType: "password", required: true }
+    );
+    if (code === null) return;
+    setReinitialisation(true);
+    try {
+      const { data } = await ecolesApi.reinitialiser(ecole.id, code);
+      toast.success(`École réinitialisée : ${data.comptes} compte(s) dont ${data.eleves} élève(s) effacé(s).`);
+      window.location.reload();
+    } catch (err) {
+      toast.error(extractErrorMessage(err));
+    } finally {
+      setReinitialisation(false);
+    }
+  };
+
   const handleDownloadFacture = async (paiementId: number, filename: string) => {
     try {
       await paiementsEcolesApi.facture(paiementId, filename);
@@ -234,6 +264,13 @@ export default function EcoleDetailPage() {
           <Button variant="secondary" onClick={handleSeConnecterCommeAdmin} disabled={connexionSupport}>
             {connexionSupport ? "Connexion…" : "🛠️ Se connecter en tant qu'admin"}
           </Button>
+          <button
+            onClick={handleReinitialiser}
+            disabled={reinitialisation}
+            className="text-sm font-semibold text-amber-600 hover:underline disabled:opacity-50"
+          >
+            {reinitialisation ? "Réinitialisation…" : "♻️ Réinitialiser l'école"}
+          </button>
           <button
             onClick={handleSupprimer}
             disabled={suppression}

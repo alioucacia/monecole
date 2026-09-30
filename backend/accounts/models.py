@@ -84,6 +84,13 @@ class User(AbstractUser):
     # l'autoriser sans ce filet de sécurité simplement parce qu'il n'a rien configuré.
     code_suppression = models.CharField(max_length=128, blank=True, editable=False)
 
+    # Compte élève dont l'accès à la plateforme a été supprimé par l'administrateur de l'école
+    # (voir UserViewSet.perform_destroy/supprimer_comptes) : le dossier scolaire (fiche, notes,
+    # paiements) est CONSERVÉ — il dépend de ce compte, qui porte le nom de l'élève — mais le
+    # compte est désactivé, son mot de passe invalidé, et il n'apparaît plus dans la liste des
+    # comptes. Un nouveau mot de passe (« Réinitialiser le mot de passe ») lui rend l'accès.
+    acces_supprime = models.BooleanField(default=False)
+
     # Une session est considérée active si une requête authentifiée a eu lieu dans ce délai —
     # au-delà, l'utilisateur est considéré hors ligne même si son jeton reste valide (JWT
     # stateless : rien ne prévient le serveur d'une fermeture d'onglet/déconnexion réseau).

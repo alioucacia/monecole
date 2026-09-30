@@ -361,6 +361,21 @@ class ConfirmerVerificationView(APIView):
         return Response(UserSerializer(request.user).data)
 
 
+def _supprimer_compte(utilisateur):
+    """Supprime le compte d'un utilisateur de l'école. Pour un ÉLÈVE, seul l'accès est retiré
+    (compte désactivé, mot de passe invalidé, masqué des listes) : sa fiche, ses notes et
+    l'historique de ses paiements dépendent de ce compte et sont conservés. Les autres comptes
+    (parent, personnel) sont réellement supprimés — un parent supprimé laisse le dossier de
+    ses enfants intact (lien remis à vide)."""
+    if utilisateur.role == User.Role.STUDENT:
+        utilisateur.acces_supprime = True
+        utilisateur.is_active = False
+        utilisateur.set_unusable_password()
+        utilisateur.save(update_fields=["acces_supprime", "is_active", "password"])
+    else:
+        utilisateur.delete()
+
+
 class UserViewSet(viewsets.ModelViewSet):
     """Gestion des comptes utilisateurs — réservée aux administrateurs de l'établissement
     (chacun ne voit et ne gère que les comptes de sa propre école)."""
@@ -372,7 +387,12 @@ class UserViewSet(viewsets.ModelViewSet):
     ordering_fields = ["last_name", "date_joined"]
 
     def get_queryset(self):
-        return super().get_queryset().filter(ecole_id=self.request.user.ecole_id)
+        qs = super().get_queryset().filter(ecole_id=self.request.user.ecole_id)
+        if self.action == "list":
+            # Comptes élèves dont l'accès a été supprimé : plus affichés (voir User.acces_supprime),
+            # mais toujours accessibles individuellement pour leur rendre un mot de passe.
+            qs = qs.filter(acces_supprime=False)
+        return qs
 
     def get_serializer_class(self):
         if self.action == "create":
@@ -425,8 +445,32 @@ class UserViewSet(viewsets.ModelViewSet):
                     "désactivez-le plutôt, ou créez d'abord un autre administrateur."
                 )
         description = f"Compte « {instance.get_full_name() or instance.username} » ({instance.get_role_display()}) supprimé"
-        instance.delete()
+        _supprimer_compte(instance)
         journaliser(self.request.user, JournalUtilisateur.Categorie.COMPTE, description, self.request)
+
+    @action(detail=False, methods=["post"], url_path="supprimer-comptes")
+    def supprimer_comptes(self, request):
+        """Suppression en masse des comptes ÉLÈVES et PARENTS cochés (`ids`) de l'école — les
+        autres rôles (personnel) restent à supprimer un par un. Même règle que la suppression
+        individuelle : le dossier scolaire d'un élève est conservé (voir `_supprimer_compte`)."""
+        from rest_framework.exceptions import ValidationError
+
+        from accounts.services import journaliser
+
+        ids = request.data.get("ids")
+        if not isinstance(ids, list) or not ids:
+            raise ValidationError("Sélectionnez au moins un compte.")
+        comptes = list(self.get_queryset().filter(
+            pk__in=[i for i in ids if str(i).isdigit()], role__in=[User.Role.STUDENT, User.Role.PARENT],
+        ))
+        eleves = sum(1 for c in comptes if c.role == User.Role.STUDENT)
+        for compte in comptes:
+            _supprimer_compte(compte)
+        journaliser(
+            request.user, JournalUtilisateur.Categorie.COMPTE,
+            f"Suppression en masse : {eleves} compte(s) élève, {len(comptes) - eleves} compte(s) parent", request,
+        )
+        return Response({"supprimes": len(comptes), "eleves": eleves, "parents": len(comptes) - eleves, "ignores": len(ids) - len(comptes)})
 
     @action(detail=True, methods=["post"], url_path="reinitialiser-mot-de-passe")
     def reinitialiser_mot_de_passe(self, request, pk=None):
