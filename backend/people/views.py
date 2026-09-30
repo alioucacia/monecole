@@ -592,6 +592,14 @@ def _qr_data_uri(text):
     return f"data:image/png;base64,{base64.b64encode(_qr_png_bytes(text)).decode()}"
 
 
+# Résolution (pixels par mm) utilisée pour précalculer la taille cible d'une image recadrée
+# avant incrustation dans un PDF (voir _image_data_uri/_redimensionner_image) — largement
+# suffisant pour une netteté correcte à l'impression sur les petits cadres concernés (photos
+# d'identité, logos), sans alourdir inutilement le PDF (surtout pour les documents groupés :
+# badges/fiches de toute une classe, une image par élève).
+PX_PAR_MM = 10
+
+
 def _mm_px(largeur_mm, hauteur_mm):
     return (round(largeur_mm * PX_PAR_MM), round(hauteur_mm * PX_PAR_MM))
 
