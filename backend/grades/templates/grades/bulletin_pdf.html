@@ -136,6 +136,9 @@
     table.footer { width: 180mm; margin-top: 14px; border-top: 0.5px dashed #cbd5e1; padding-top: 5px; }
     .footer td { font-size: 7.5px; color: #94a3b8; }
     .footer .droite { text-align: right; }
+    /* QR de vérification du document (voir core/documents.py) */
+    img.qr-verification { width: 15mm; height: 15mm; }
+    .footer .verif-titre { color: #475569; font-weight: bold; }
 
     /* Modèle 5 — Officiel : reproduit le format papier officiel (IRE/DPE/DSEE en en-tête,
        bandeaux de section pleine couleur, tableau SEM1/SEM2, bloc « RESULTAT DE FIN
@@ -557,8 +560,18 @@
 
     <table class="footer">
         <tr>
+            {% if qr_verification_data_uri %}
+            <td style="width: 17mm;"><img class="qr-verification" src="{{ qr_verification_data_uri }}" /></td>
+            <td style="width: 83mm;"><div class="inset-h">
+                <span class="verif-titre">Document officiel — vérifiable</span><br />
+                Scannez ce QR code ou saisissez le code <b>{{ code_verification }}</b><br />
+                sur {{ url_verification_courte }}
+            </div></td>
+            <td class="droite" style="width: 80mm;"><div class="inset-h">Fait à Conakry, le {% now "d/m/Y" %} — {{ b.ecole_nom }}</div></td>
+            {% else %}
             <td><div class="inset-h">Document officiel — à conserver</div></td>
             <td class="droite"><div class="inset-h">Fait à Conakry, le {% now "d/m/Y" %} — {{ b.ecole_nom }}</div></td>
+            {% endif %}
         </tr>
     </table>
 

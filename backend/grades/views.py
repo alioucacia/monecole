@@ -523,8 +523,42 @@ class BulletinView(APIView):
         return Response(_build_bulletin(eleve, periodes, label))
 
 
+def _qr_bulletin(bulletin) -> dict:
+    """Enregistre le bulletin comme document officiel et renvoie son QR code de vérification
+    (voir core/documents.py) — les informations clés sont figées au moment de l'émission, pour
+    qu'un bulletin retouché ne corresponde plus à ce qu'affiche la vérification."""
+    from core.documents import enregistrer_document, qr_verification
+    from core.models import DocumentOfficiel
+
+    eleve = EleveProfile.objects.select_related("user__ecole").filter(pk=bulletin["eleve"]["id"]).first()
+    if not eleve or not eleve.user.ecole_id:
+        return {}
+    periode = bulletin["periode"]
+    donnees = {
+        "nom_complet": bulletin["eleve"]["nom_complet"],
+        "matricule": bulletin["eleve"]["matricule"],
+        "classe": bulletin["eleve"]["classe"],
+        "periode": periode["nom"],
+        "annee_scolaire": periode["annee_scolaire"],
+        "moyenne_generale": str(bulletin["moyenne_generale"]) if bulletin["moyenne_generale"] is not None else None,
+        "bareme": bulletin["bareme_notation"],
+        "rang": bulletin["rang"],
+        "effectif": bulletin["effectif_classe"],
+        "mention": bulletin["mention"],
+        "decision": DECISION_LABELS.get(bulletin["decision"]) if bulletin.get("decision") else None,
+        "matieres": [
+            {"nom": m["matiere_nom"], "moyenne": str(m["moyenne"]) if m["moyenne"] is not None else None}
+            for m in bulletin["matieres"]
+        ],
+    }
+    document = enregistrer_document(
+        eleve.user.ecole, DocumentOfficiel.Type.BULLETIN, eleve, f"{periode['type']}:{periode['id']}", donnees,
+    )
+    return qr_verification(document)
+
+
 def _bulletin_pdf_bytes(bulletin):
-    html = render_to_string("grades/bulletin_pdf.html", {"b": bulletin})
+    html = render_to_string("grades/bulletin_pdf.html", {"b": bulletin, **_qr_bulletin(bulletin)})
     buffer = BytesIO()
     pisa.CreatePDF(html, dest=buffer, encoding="utf-8")
     return buffer.getvalue()

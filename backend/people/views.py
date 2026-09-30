@@ -262,9 +262,25 @@ class EleveProfileViewSet(viewsets.ModelViewSet):
         if not annee:
             raise ValidationError("Aucune année scolaire active pour cet établissement.")
 
+        from core.documents import enregistrer_document, qr_verification
+        from core.models import DocumentOfficiel
+
+        classe_eleve = _classe_pour_annee(eleve, annee)
+        # Enregistré comme document officiel vérifiable par QR code (voir core/documents.py) —
+        # sans la date d'édition, pour qu'un certificat réédité un autre jour garde le même QR.
+        document = enregistrer_document(ecole, DocumentOfficiel.Type.CERTIFICAT_SCOLARITE, eleve, f"annee:{annee.id}", {
+            "nom_complet": eleve.user.get_full_name(),
+            "matricule": eleve.matricule,
+            "date_naissance": eleve.user.date_of_birth.strftime("%d/%m/%Y") if eleve.user.date_of_birth else None,
+            "lieu_naissance": eleve.lieu_naissance or None,
+            "classe": classe_eleve.nom if classe_eleve else None,
+            "annee_scolaire": annee.libelle,
+        }) if ecole else None
+
         html = render_to_string("people/certificat_scolarite_pdf.html", {
+            **(qr_verification(document) if document else {}),
             "eleve": eleve,
-            "classe_eleve": _classe_pour_annee(eleve, annee),
+            "classe_eleve": classe_eleve,
             "ecole_nom": _ecole_nom(eleve.user),
             "ecole_logo_data_uri": _image_data_uri(ecole.logo, _mm_px(20, 20), mode="contain") if ecole and ecole.logo else None,
             "annee_scolaire": annee.libelle,

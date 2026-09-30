@@ -58,6 +58,7 @@ import TeachersPage from "./pages/TeachersPage";
 import TransactionsPage from "./pages/TransactionsPage";
 import TransportPage from "./pages/TransportPage";
 import VerifyBadgePage from "./pages/VerifyBadgePage";
+import VerifyDocumentPage from "./pages/VerifyDocumentPage";
 import { OngletNavigateur } from "./components/OngletNavigateur";
 
 export default function App() {
@@ -79,6 +80,8 @@ export default function App() {
         }
       />
       <Route path="/verifier-badge/:token" element={<VerifyBadgePage />} />
+      <Route path="/verifier-document" element={<VerifyDocumentPage />} />
+      <Route path="/verifier-document/:code" element={<VerifyDocumentPage />} />
       <Route path="/chauffeur/:token" element={<ChauffeurPage />} />
       <Route path="/agent-cantine/:token" element={<AgentCantinePage />} />
 

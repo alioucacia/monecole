@@ -78,6 +78,10 @@
     .signatures .ligne { border-top: 1px solid #9ca3af; margin: 20px 30mm 0 30mm; padding-top: 4px; }
     .date-lieu { text-align: right; font-style: italic; font-size: 10px; color: #4b5563; margin: 10px 0 0 0; padding-right: 3mm; }
 
+    /* QR de vérification du document (voir core/documents.py) */
+    table.verification { width: 100%; margin-top: 18px; }
+    .verification td { vertical-align: middle; font-size: 8.5px; color: #64748b; }
+    .verification .verif-titre { font-weight: bold; color: #374151; font-size: 9.5px; margin: 0 0 1mm 0; }
     .footer { margin-top: 30px; width: 100%; text-align: center; font-size: 8.5px; color: #94a3b8; padding-top: 8px; border-top: 1px dashed #cbd5e1; }
 </style>
 </head>
@@ -171,6 +175,19 @@
             </td>
         </tr>
     </table>
+
+    {% if qr_verification_data_uri %}
+    <table class="verification">
+        <tr>
+            <td style="width: 24mm;"><img src="{{ qr_verification_data_uri }}" style="width: 22mm; height: 22mm;" /></td>
+            <td>
+                <p class="verif-titre">Document officiel vérifiable</p>
+                <p>Scannez ce QR code pour vérifier l'authenticité de ce certificat,<br />
+                ou saisissez le code <b>{{ code_verification }}</b> sur {{ url_verification_courte }}</p>
+            </td>
+        </tr>
+    </table>
+    {% endif %}
 
     <p class="footer">Document officiel — {{ ecole_nom }}</p>
 </body>

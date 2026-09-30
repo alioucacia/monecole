@@ -3,6 +3,8 @@ from django.conf.urls.static import static
 from django.contrib import admin
 from django.urls import include, path
 
+from core.views import DocumentVerifyView
+
 urlpatterns = [
     path("admin/", admin.site.urls),
     path("api/auth/", include("accounts.urls")),
@@ -19,6 +21,8 @@ urlpatterns = [
     path("api/visio/", include("visio.urls")),
     path("api/tenants/", include("tenants.urls")),
     path("api/dashboard/", include("core.urls")),
+    # Vérification publique des bulletins/certificats par QR code (voir core.DocumentOfficiel).
+    path("api/documents/verifier/<str:code>/", DocumentVerifyView.as_view(), name="document-verify"),
     path("api/support/", include("support.urls")),
 ]
 

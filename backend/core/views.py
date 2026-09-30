@@ -14,7 +14,7 @@ from django.http import FileResponse, Http404
 from django.utils import timezone
 from rest_framework import viewsets
 from rest_framework.decorators import action
-from rest_framework.permissions import IsAuthenticated
+from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
@@ -398,4 +398,53 @@ class SupervisionView(APIView):
             "jours_depuis_derniere_sauvegarde_reussie": jours_depuis_sauvegarde,
             # --- Répartition ---
             "top_ecoles": list(top_ecoles),
+        })
+
+
+class DocumentVerifyView(APIView):
+    """Vérification publique (sans connexion) d'un bulletin ou certificat à partir de son QR
+    code — ou du code court imprimé dessous (10 caractères). Renvoie les informations
+    enregistrées au moment de l'émission (voir core.models.DocumentOfficiel) : c'est à elles
+    qu'il faut comparer le document présenté, pas à ce qui est imprimé dessus."""
+
+    permission_classes = [AllowAny]
+    authentication_classes = []  # page publique : limitée par le quota « anon » global
+
+    def get(self, request, code):
+        import re
+        import uuid
+
+        from .models import DocumentOfficiel
+
+        code = (code or "").strip().lower().replace("-", "")
+        document = None
+        if re.fullmatch(r"[0-9a-f]{32}", code):
+            document = DocumentOfficiel.objects.select_related("ecole").filter(token=uuid.UUID(code)).first()
+        elif re.fullmatch(r"[0-9a-f]{10}", code):
+            candidats = list(
+                DocumentOfficiel.objects.select_related("ecole")
+                .extra(where=["REPLACE(CAST(token AS TEXT), '-', '') LIKE %s"], params=[f"{code}%"])[:2]
+            )
+            document = candidats[0] if len(candidats) == 1 else None
+        if document is None:
+            return Response({"valide": False, "detail": "Aucun document ne correspond à ce code."}, status=404)
+
+        plus_recent = (
+            DocumentOfficiel.objects.filter(
+                type=document.type, eleve_id=document.eleve_id, reference=document.reference,
+                emis_le__gt=document.emis_le,
+            ).exclude(pk=document.pk).order_by("-emis_le").first()
+            if document.eleve_id else None
+        )
+        ecole = document.ecole
+        return Response({
+            "valide": True,
+            "type": document.type,
+            "type_label": document.get_type_display(),
+            "ecole_nom": ecole.nom,
+            "ecole_logo": request.build_absolute_uri(ecole.logo.url) if ecole.logo else None,
+            "emis_le": document.emis_le,
+            "code": document.code_court,
+            "donnees": document.donnees,
+            "version_plus_recente": plus_recent.emis_le if plus_recent else None,
         })

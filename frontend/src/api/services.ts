@@ -353,6 +353,29 @@ export const enseignantBadgesApi = {
 };
 
 /** Vérification publique d'un badge scanné — aucune authentification requise. */
+/** Résultat de la vérification publique d'un bulletin/certificat (voir core.DocumentVerifyView). */
+export interface DocumentVerifie {
+  valide: boolean;
+  detail?: string;
+  type?: "bulletin" | "certificat_scolarite";
+  type_label?: string;
+  ecole_nom?: string;
+  ecole_logo?: string | null;
+  emis_le?: string;
+  code?: string;
+  version_plus_recente?: string | null;
+  donnees?: {
+    nom_complet?: string; matricule?: string; classe?: string | null; periode?: string; annee_scolaire?: string;
+    moyenne_generale?: string | null; bareme?: number; rang?: number | null; effectif?: number | null;
+    mention?: string | null; decision?: string | null; date_naissance?: string | null; lieu_naissance?: string | null;
+    matieres?: { nom: string; moyenne: string | null }[];
+  };
+}
+
+export const documentVerifyApi = {
+  verify: (code: string) => api.get<DocumentVerifie>(`/documents/verifier/${encodeURIComponent(code)}/`),
+};
+
 export const badgeVerifyApi = {
   verify: (token: string) =>
     api.get<{ valide: boolean; type?: string; role_label?: string; nom_complet?: string; matricule?: string; detail?: string; emis_le?: string }>(
