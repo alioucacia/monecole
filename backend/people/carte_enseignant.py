@@ -87,6 +87,14 @@ def _icone(dessin: ImageDraw.ImageDraw, genre: str, cx: float, cy: float, c: dic
         dessin.ellipse([*_p(cx - 7, cy - 4), *_p(cx - 1, cy + 2)], fill=BLANC)
         dessin.line([*_p(cx + 2, cy - 3), *_p(cx + 8, cy - 3)], fill=BLANC, width=trait)
         dessin.line([*_p(cx + 2, cy + 3), *_p(cx + 8, cy + 3)], fill=BLANC, width=trait)
+    elif genre == "classe":  # livre ouvert
+        dessin.polygon([_p(cx - 11, cy - 7), _p(cx - 1, cy - 4), _p(cx - 1, cy + 9), _p(cx - 11, cy + 6)], outline=BLANC, width=trait)
+        dessin.polygon([_p(cx + 11, cy - 7), _p(cx + 1, cy - 4), _p(cx + 1, cy + 9), _p(cx + 11, cy + 6)], outline=BLANC, width=trait)
+    elif genre == "date":  # calendrier
+        dessin.rectangle([*_p(cx - 10, cy - 8), *_p(cx + 10, cy + 10)], outline=BLANC, width=trait)
+        dessin.line([*_p(cx - 10, cy - 2), *_p(cx + 10, cy - 2)], fill=BLANC, width=trait)
+        for dx in (-5, 5):
+            dessin.line([*_p(cx + dx, cy - 12), *_p(cx + dx, cy - 6)], fill=BLANC, width=trait)
     else:  # adresse : repère de carte
         dessin.polygon([_p(cx - 7, cy - 3), _p(cx + 7, cy - 3), _p(cx, cy + 11)], fill=c["dore"])
         dessin.ellipse([*_p(cx - 7, cy - 11), *_p(cx + 7, cy + 3)], fill=c["dore"])
@@ -198,7 +206,9 @@ def carte_enseignant_png(contexte: dict) -> bytes:
     dessin.line([*_p(200, y), *_p(440, y)], fill=c["marine"], width=2 * ECHELLE)
     dessin.ellipse([*_p(320 - 5, y - 5), *_p(320 + 5, y + 5)], fill=c["dore"])
 
-    lignes = [
+    # Lignes fournies par l'appelant (modèle 2 de la carte élève, voir people/carte_eleve.py),
+    # sinon celles de la carte enseignant.
+    lignes = contexte.get("lignes") or [
         ("telephone", "Téléphone", contexte.get("telephone")),
         ("email", "E-mail", contexte.get("email")),
         ("matricule", "Matricule", contexte.get("matricule")),

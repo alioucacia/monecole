@@ -823,6 +823,14 @@ def _contexte_badge_eleve(badge):
         "photo": eleve.user.photo,
         "logo": ecole.logo if ecole else None,
         "qr_png": _qr_png_bytes(_badge_verify_url(badge.qr_token)),
+        # Informations utilisées par les modèles 2 à 4 de la carte (voir people/carte_eleve.py).
+        "nom": eleve.user.last_name, "prenom": eleve.user.first_name,
+        "sexe": {"F": "F", "M": "M"}.get(eleve.user.sexe or "", ""),
+        "nom_pere": eleve.nom_pere, "adresse": eleve.user.address,
+        "telephone_parent": eleve.parent.phone if eleve.parent_id else "",
+        "ecole_telephone": ecole.telephone if ecole else "", "ecole_email": ecole.email if ecole else "",
+        "ecole_adresse": ", ".join(x for x in [ecole.adresse, ecole.ville] if x) if ecole else "",
+        "directeur_nom": ecole.directeur_nom if ecole else "",
         **_couleurs_ecole(ecole, ecole.modele_badge if ecole else 1),
     }
     return {**contexte, "carte_data_uri": carte_eleve_data_uri(contexte)}

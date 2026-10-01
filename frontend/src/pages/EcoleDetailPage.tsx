@@ -30,7 +30,7 @@ function money(value: number | string) {
   return `${Number(value).toLocaleString("fr-FR")} GNF`;
 }
 
-type ChampModele = "modele_bulletin" | "modele_attestation" | "modele_recu" | "modele_fiche_inscription" | "modele_certificat";
+type ChampModele = "modele_bulletin" | "modele_attestation" | "modele_badge" | "modele_recu" | "modele_fiche_inscription" | "modele_certificat";
 
 const MODELES_STANDARD = [
   { value: 1, label: "1 — Classique" }, { value: 2, label: "2 — Moderne" },
@@ -46,6 +46,14 @@ const MODELES_DOCUMENTS: { champ: ChampModele; label: string; options: { value: 
       { value: 2, label: "2 — Géométrique (blanc et bleu)" },
       { value: 3, label: "3 — Émeraude (blanc et vert)" },
       { value: 4, label: "4 — Art déco (bleu nuit, éventails)" },
+    ],
+  },
+  {
+    champ: "modele_badge", label: "Carte élève (badge)", options: [
+      { value: 1, label: "1 — Vagues (bleu, QR code)" },
+      { value: 2, label: "2 — Marine et or (code-barres)" },
+      { value: 3, label: "3 — Bandeau (bleu et jaune)" },
+      { value: 4, label: "4 — Université (violet et orange)" },
     ],
   },
   { champ: "modele_recu", label: "Reçu / fiche de paiement", options: MODELES_STANDARD },
@@ -79,7 +87,7 @@ export default function EcoleDetailPage() {
   const [savingCouleurs, setSavingCouleurs] = useState(false);
   const [savingFonctionnalites, setSavingFonctionnalites] = useState(false);
   const [modeles, setModeles] = useState<Record<ChampModele, number>>({
-    modele_bulletin: 5, modele_attestation: 1, modele_recu: 1, modele_fiche_inscription: 1, modele_certificat: 1,
+    modele_bulletin: 5, modele_attestation: 1, modele_badge: 1, modele_recu: 1, modele_fiche_inscription: 1, modele_certificat: 1,
   });
   const [savingModeles, setSavingModeles] = useState(false);
 
@@ -110,6 +118,7 @@ export default function EcoleDetailPage() {
       setDesactivees(new Set(ecoleRes.data.fonctionnalites_desactivees || []));
       setModeles({
         modele_bulletin: ecoleRes.data.modele_bulletin, modele_attestation: ecoleRes.data.modele_attestation,
+        modele_badge: ecoleRes.data.modele_badge > 4 ? 1 : ecoleRes.data.modele_badge,
         modele_recu: ecoleRes.data.modele_recu, modele_fiche_inscription: ecoleRes.data.modele_fiche_inscription,
         modele_certificat: ecoleRes.data.modele_certificat,
       });

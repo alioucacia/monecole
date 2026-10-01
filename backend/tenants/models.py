@@ -137,7 +137,15 @@ class Ecole(models.Model):
     # documents (EcoleDetailPage, onglet Personnalisation) — lu par le template PDF concerné
     # via une variable `modele` (voir les blocs `{% if modele == ... %}` dans chaque gabarit).
     modele_recu = models.PositiveSmallIntegerField(choices=ModeleDocument.choices, default=ModeleDocument.CLASSIQUE)
-    modele_badge = models.PositiveSmallIntegerField(choices=ModeleDocument.choices, default=ModeleDocument.CLASSIQUE)
+    class ModeleBadge(models.IntegerChoices):
+        VAGUES = 1, "Vagues (bleu, photo ronde, QR code)"
+        MARINE_OR = 2, "Marine et or (code-barres)"
+        BANDEAU = 3, "Bandeau (bleu marine et jaune)"
+        UNIVERSITE = 4, "Université (violet et orange)"
+
+    # Modèle de la carte élève (voir people/carte_eleve.py) — les 4 modèles fournis par
+    # l'établissement, reproduits à l'identique ; choisi par le Super Admin.
+    modele_badge = models.PositiveSmallIntegerField(choices=ModeleBadge.choices, default=ModeleBadge.VAGUES)
     # Bulletin : "Officiel" par défaut (et non "Classique" comme les autres documents) — c'est le
     # format papier concrètement utilisé par l'établissement (voir migration 0019, qui bascule
     # aussi toutes les écoles déjà créées dessus).

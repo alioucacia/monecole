@@ -209,7 +209,20 @@ def carte_eleve_png(contexte: dict) -> bytes:
     """Image de la carte d'élève (JPEG, malgré le nom historique) pour le `contexte` de
     `people.views._contexte_badge_eleve` — clés utilisées : nom_complet, initiales, classe,
     matricule, date_naissance, annee_scolaire, valid_upto, ecole_nom, couleur_principale,
-    photo (ImageField), logo (ImageField), qr_png (bytes)."""
+    photo (ImageField), logo (ImageField), qr_png (bytes) — et `modele` (Ecole.modele_badge) :
+    1 Vagues (ce fichier), 2 Marine et or (people/carte_enseignant.py), 3 Bandeau et 4 Université
+    (people/cartes_eleve_modeles.py), reproduits à l'identique des modèles de l'établissement."""
+    modele = contexte.get("modele") or 1
+    if modele == 2:
+        return _modele_marine_or(contexte)
+    if modele in (3, 4):
+        from .cartes_eleve_modeles import carte_modele_bandeau, carte_modele_universite
+
+        image = (carte_modele_bandeau if modele == 3 else carte_modele_universite)(contexte)
+        tampon = BytesIO()
+        image.resize(SORTIE, Image.LANCZOS).save(tampon, format="JPEG", quality=92, optimize=True)
+        return tampon.getvalue()
+
     pal = _palette(contexte.get("couleur_principale"))
     carte = Image.new("RGB", (LARGEUR * ECHELLE, HAUTEUR * ECHELLE), pal["fond"])
     dessin = ImageDraw.Draw(carte)
@@ -252,6 +265,24 @@ def carte_eleve_png(contexte: dict) -> bytes:
     tampon = BytesIO()
     carte.save(tampon, format="JPEG", quality=92, optimize=True)
     return tampon.getvalue()
+
+
+def _modele_marine_or(contexte: dict) -> bytes:
+    """Modèle 2 : la carte bleu marine et or (celle des enseignants), avec les lignes de l'élève."""
+    from .carte_enseignant import carte_enseignant_png
+
+    classe = contexte.get("classe")
+    return carte_enseignant_png({
+        **contexte,
+        "fonction": f"Élève — {classe}" if classe else "Élève",
+        "sous_titre": "Carte d'élève",
+        "lignes": [
+            ("matricule", "Matricule", contexte.get("matricule")),
+            ("classe", "Classe", classe),
+            ("date", "Né(e) le", contexte.get("date_naissance")),
+            ("telephone", "Tél. parent", contexte.get("telephone_parent")),
+        ],
+    })
 
 
 def carte_eleve_data_uri(contexte: dict) -> str:
