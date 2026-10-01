@@ -102,7 +102,7 @@ function PayerAbonnementDjomySection({ ecole, onPaye }: { ecole: Ecole; onPaye: 
 
       <Modal open={modalOpen} onClose={() => setModalOpen(false)} title="Payer l'abonnement — Djomy">
         {!transaction ? (
-          <form onSubmit={handleSubmit} className="space-y-4">
+          <form noValidate onSubmit={handleSubmit} className="space-y-4">
             <div>
               <p className="text-sm font-medium text-ink-900 mb-2">Période à régler</p>
               <div className="grid grid-cols-2 gap-2">
@@ -243,7 +243,7 @@ function LogoEcoleSection({ ecole, onUpdated }: { ecole: Ecole | null; onUpdated
 
 /** Les 5 messages automatiques (création de compte, mensualité impayée, absence, réunion des
  * parents, résultats disponibles) sont personnalisables mais sauvegardés indépendamment les uns
- * des autres (un PATCH par modèle) — un bloc autonome plutôt qu'intégré au <form> principal de
+ * des autres (un PATCH par modèle) — un bloc autonome plutôt qu'intégré au <form noValidate> principal de
  * la page, pour ne pas mélanger deux logiques de sauvegarde différentes. */
 function ModelesMessageSection() {
   const [modeles, setModeles] = useState<ModeleMessage[]>([]);
@@ -529,7 +529,7 @@ export default function ParametresEcolePage() {
 
       <fieldset disabled={!isAdmin} className="border-0 p-0 m-0 min-w-0">
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        <form onSubmit={handleSubmit} className="lg:col-span-2 space-y-6">
+        <form noValidate onSubmit={handleSubmit} className="lg:col-span-2 space-y-6">
           <LogoEcoleSection ecole={ecole} onUpdated={setEcole} />
 
           <Card>
@@ -628,7 +628,7 @@ export default function ParametresEcolePage() {
             ))}
           </ul>
 
-          <form onSubmit={handleCreerAnnee} className="mt-4 pt-4 border-t border-slate-100 space-y-3">
+          <form noValidate onSubmit={handleCreerAnnee} className="mt-4 pt-4 border-t border-slate-100 space-y-3">
             <p className="text-xs font-semibold text-slate-500 uppercase tracking-wide">Nouvelle année scolaire</p>
             <Input
               label="Libellé" placeholder="Ex : 2027-2028" required
@@ -693,7 +693,7 @@ export default function ParametresEcolePage() {
                 </ul>
               )}
 
-              <form onSubmit={handleSubmitPeriode} className="pt-4 border-t border-slate-100 space-y-3">
+              <form noValidate onSubmit={handleSubmitPeriode} className="pt-4 border-t border-slate-100 space-y-3">
                 <p className="text-xs font-semibold text-slate-500 uppercase tracking-wide">
                   {editingPeriodeId ? "Modifier la période" : "Nouvelle période"}
                 </p>

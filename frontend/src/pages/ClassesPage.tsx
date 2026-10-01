@@ -189,7 +189,7 @@ export default function ClassesPage() {
       )}
 
       <Modal open={modalOpen} onClose={() => setModalOpen(false)} title={editing ? "Modifier la classe" : "Nouvelle classe"}>
-        <form onSubmit={handleSubmit} className="space-y-4">
+        <form noValidate onSubmit={handleSubmit} className="space-y-4">
           <Input label="Nom de la classe" required value={form.nom} onChange={(e) => setForm({ ...form, nom: e.target.value })} placeholder="Ex: 6ème A" />
           <Input label="Niveau" required value={form.niveau} onChange={(e) => setForm({ ...form, niveau: e.target.value })} placeholder="Ex: 6ème" />
           <div>

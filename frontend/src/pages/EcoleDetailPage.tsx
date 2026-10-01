@@ -466,7 +466,7 @@ export default function EcoleDetailPage() {
       )}
 
       <Modal open={creerAdminOuvert} onClose={() => setCreerAdminOuvert(false)} title={`Créer un compte admin — ${ecole.nom}`}>
-        <form onSubmit={handleSubmitCreerAdmin} className="space-y-4">
+        <form noValidate onSubmit={handleSubmitCreerAdmin} className="space-y-4">
           <div className="grid grid-cols-2 gap-3">
             <Input label="Prénom" required value={creerAdminForm.first_name} onChange={(e) => setCreerAdminForm({ ...creerAdminForm, first_name: e.target.value })} />
             <Input label="Nom" required value={creerAdminForm.last_name} onChange={(e) => setCreerAdminForm({ ...creerAdminForm, last_name: e.target.value })} />

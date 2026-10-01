@@ -55,7 +55,7 @@ export default function ResetPasswordPage() {
             Mot de passe réinitialisé avec succès. Redirection vers la connexion…
           </p>
         ) : (
-          <form onSubmit={handleSubmit} className="space-y-4">
+          <form noValidate onSubmit={handleSubmit} className="space-y-4">
             <Input
               label="Nouveau mot de passe"
               type="password"

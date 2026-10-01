@@ -89,7 +89,7 @@ export default function JustificatifsPage() {
       />
 
       {peutSoumettre && (user?.role === "student" || user?.role === "parent") && (
-        <form onSubmit={handleSubmit} className="bg-white rounded-2xl border border-slate-100 shadow-soft p-5 mb-6 grid grid-cols-1 sm:grid-cols-2 gap-4">
+        <form noValidate onSubmit={handleSubmit} className="bg-white rounded-2xl border border-slate-100 shadow-soft p-5 mb-6 grid grid-cols-1 sm:grid-cols-2 gap-4">
           {user?.role === "parent" && (
             <Select label="Enfant concerné" required value={form.eleve} onChange={(e) => setForm({ ...form, eleve: e.target.value })}>
               <option value="">— Sélectionner —</option>

@@ -323,7 +323,7 @@ export default function TransportPage() {
       )}
 
       <Modal open={trajetModalOpen} onClose={() => setTrajetModalOpen(false)} title={editingTrajet ? "Modifier le trajet" : "Nouveau trajet"}>
-        <form onSubmit={handleTrajetSubmit} className="space-y-4">
+        <form noValidate onSubmit={handleTrajetSubmit} className="space-y-4">
           <Input label="Nom du trajet" required value={trajetForm.nom} onChange={(e) => setTrajetForm({ ...trajetForm, nom: e.target.value })} />
           <div className="grid grid-cols-2 gap-4">
             <Input label="Chauffeur" value={trajetForm.chauffeur_nom} onChange={(e) => setTrajetForm({ ...trajetForm, chauffeur_nom: e.target.value })} />
@@ -351,7 +351,7 @@ export default function TransportPage() {
       </Modal>
 
       <Modal open={affectationModalOpen} onClose={() => setAffectationModalOpen(false)} title="Affecter un élève à un trajet">
-        <form onSubmit={handleAffectationSubmit} className="space-y-4">
+        <form noValidate onSubmit={handleAffectationSubmit} className="space-y-4">
           <Select label="Élève" required value={affectationForm.eleve} onChange={(e) => setAffectationForm({ ...affectationForm, eleve: e.target.value })}>
             <option value="">— Sélectionner —</option>
             {eleves.map((el) => <option key={el.id} value={el.id}>{el.user.first_name} {el.user.last_name}</option>)}
@@ -372,7 +372,7 @@ export default function TransportPage() {
       </Modal>
 
       <Modal open={ticketModalOpen} onClose={() => setTicketModalOpen(false)} title="Nouveau ticket de bus">
-        <form onSubmit={handleTicketSubmit} className="space-y-4">
+        <form noValidate onSubmit={handleTicketSubmit} className="space-y-4">
           <Select label="Élève affecté" required value={ticketForm.affectation} onChange={(e) => setTicketForm({ ...ticketForm, affectation: e.target.value })}>
             <option value="">— Sélectionner —</option>
             {affectations.map((a) => <option key={a.id} value={a.id}>{a.eleve_nom} — {a.trajet_nom}</option>)}

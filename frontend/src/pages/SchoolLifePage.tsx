@@ -458,7 +458,7 @@ export default function SchoolLifePage() {
       )}
 
       <Modal open={groupModalOpen} onClose={() => setGroupModalOpen(false)} title={editingGroup ? "Modifier le groupe" : "Nouveau groupe de révision"}>
-        <form onSubmit={handleGroupSubmit} className="space-y-4">
+        <form noValidate onSubmit={handleGroupSubmit} className="space-y-4">
           <Input label="Nom du groupe" required value={groupForm.nom} onChange={(e) => setGroupForm({ ...groupForm, nom: e.target.value })} placeholder="Ex: Soutien Maths 3ème" />
           <label className="block">
             <span className="block text-sm font-semibold text-slate-600 mb-1.5">Description</span>

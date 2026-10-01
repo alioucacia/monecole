@@ -185,7 +185,7 @@ export default function GradesPage() {
       )}
 
       <Modal open={modalOpen} onClose={() => setModalOpen(false)} title={editing ? "Modifier la note" : "Saisir une note"}>
-        <form onSubmit={handleSubmit} className="space-y-4">
+        <form noValidate onSubmit={handleSubmit} className="space-y-4">
           <Select label="Classe" value={classeFilter} onChange={(e) => { setClasseFilter(e.target.value); setForm({ ...form, eleve: "", matiere: "" }); }}>
             <option value="">— Sélectionner une classe —</option>
             {classesFiltrees.map((c) => <option key={c.id} value={c.id}>{c.nom}</option>)}

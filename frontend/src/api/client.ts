@@ -217,20 +217,46 @@ api.interceptors.response.use(
   }
 );
 
+/** Premier message lisible d'un corps d'erreur JSON de l'API. Le backend fournit `message`, déjà
+ * simplifié (voir school_backend/exceptions.py) ; sinon on prend la première erreur, SANS le nom
+ * technique du champ (« type_frais: … ») qui n'a aucun sens pour l'utilisateur. */
+function messageDuCorps(data: unknown): string | null {
+  if (typeof data === "string") return data.trim().startsWith("<") ? null : data;
+  if (!data || typeof data !== "object") return null;
+  const corps = data as Record<string, unknown>;
+  if (typeof corps.message === "string") return corps.message;
+  if (typeof corps.detail === "string") return corps.detail;
+  for (const valeur of Object.values(corps)) {
+    if (Array.isArray(valeur) && valeur.length > 0) {
+      const premier = valeur[0];
+      if (typeof premier === "string") return premier;
+      const imbrique = messageDuCorps(premier);
+      if (imbrique) return imbrique;
+    }
+    if (typeof valeur === "string") return valeur;
+  }
+  return null;
+}
+
+/** Message simple quand le serveur n'en donne pas (coupure réseau, panne, page introuvable…). */
+function messageParStatut(status: number | undefined): string {
+  if (!status) return "Connexion impossible. Vérifiez votre connexion internet.";
+  if (status === 401) return "Votre session a expiré. Reconnectez-vous.";
+  if (status === 403) return "Vous n'avez pas le droit de faire cette action.";
+  if (status === 404) return "Élément introuvable.";
+  if (status === 413) return "Le fichier est trop volumineux.";
+  if (status === 429) return "Trop de tentatives. Réessayez dans quelques instants.";
+  if (status >= 500) return "Une erreur est survenue. Réessayez plus tard.";
+  return "L'opération n'a pas pu aboutir.";
+}
+
 export function extractErrorMessage(error: unknown): string {
   if (axios.isAxiosError(error)) {
-    const data = error.response?.data;
-    if (typeof data === "string") return data;
-    if (data && typeof data === "object") {
-      const firstKey = Object.keys(data)[0];
-      const value = (data as Record<string, unknown>)[firstKey];
-      if (Array.isArray(value)) return `${firstKey}: ${value[0]}`;
-      if (typeof value === "string") return value;
-      if (data.detail) return String(data.detail);
-    }
-    return error.message;
+    const status = error.response?.status;
+    if (status && status >= 500) return messageParStatut(status);
+    return messageDuCorps(error.response?.data) ?? messageParStatut(status);
   }
-  return "Une erreur inattendue est survenue.";
+  return "Une erreur est survenue. Réessayez.";
 }
 
 /**
@@ -242,12 +268,8 @@ export async function extractBlobErrorMessage(error: unknown): Promise<string> {
   if (axios.isAxiosError(error) && error.response?.data instanceof Blob) {
     try {
       const text = await error.response.data.text();
-      const data = JSON.parse(text);
-      const firstKey = Object.keys(data)[0];
-      const value = data[firstKey];
-      if (Array.isArray(value)) return `${firstKey}: ${value[0]}`;
-      if (typeof value === "string") return value;
-      if (data.detail) return String(data.detail);
+      const message = messageDuCorps(JSON.parse(text));
+      if (message) return message;
     } catch {
       // Corps non-JSON (ex : page d'erreur HTML) — on retombe sur le message générique.
     }

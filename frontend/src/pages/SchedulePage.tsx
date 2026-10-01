@@ -157,7 +157,7 @@ export default function SchedulePage() {
       )}
 
       <Modal open={modalOpen} onClose={() => setModalOpen(false)} title={editing ? "Modifier le créneau" : "Nouveau créneau"}>
-        <form onSubmit={handleSubmit} className="space-y-4">
+        <form noValidate onSubmit={handleSubmit} className="space-y-4">
           <Select label="Matière / Enseignant" required value={form.enseignement} onChange={(e) => setForm({ ...form, enseignement: e.target.value })}>
             <option value="">— Sélectionner —</option>
             {enseignements.map((e) => <option key={e.id} value={e.id}>{e.matiere_nom} — {e.enseignant_nom}</option>)}

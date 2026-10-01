@@ -9,10 +9,12 @@ import { ThemeProvider } from "./context/ThemeContext";
 import { ToastProvider } from "./context/ToastContext";
 import { initPwa } from "./pwa";
 import { initSyncEngine } from "./offline/sync";
+import { installerValidationFormulaires } from "./validation";
 import "./index.css";
 
 initPwa();
 initSyncEngine();
+installerValidationFormulaires();
 
 ReactDOM.createRoot(document.getElementById("root")!).render(
   <React.StrictMode>

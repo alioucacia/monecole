@@ -244,7 +244,7 @@ export default function LibraryPage() {
       </div>
 
       <Modal open={livreModalOpen} onClose={() => setLivreModalOpen(false)} title={editingLivre ? "Modifier le livre" : "Nouveau livre"}>
-        <form onSubmit={handleLivreSubmit} className="space-y-4">
+        <form noValidate onSubmit={handleLivreSubmit} className="space-y-4">
           <div className="flex items-center gap-4">
             {livreCouverturePreview ? (
               <img src={livreCouverturePreview} alt="" className="h-24 w-18 rounded-lg object-cover border-2 border-brand-100 shrink-0" />
@@ -279,7 +279,7 @@ export default function LibraryPage() {
       </Modal>
 
       <Modal open={empruntModalOpen} onClose={() => setEmpruntModalOpen(false)} title="Nouvel emprunt">
-        <form onSubmit={handleEmpruntSubmit} className="space-y-4">
+        <form noValidate onSubmit={handleEmpruntSubmit} className="space-y-4">
           <Select label="Livre" required value={empruntForm.livre} onChange={(e) => handleEmpruntLivreChange(e.target.value)}>
             <option value="">— Sélectionner —</option>
             {livres.filter((l) => l.exemplaires_disponibles > 0).map((l) => <option key={l.id} value={l.id}>{l.titre}</option>)}

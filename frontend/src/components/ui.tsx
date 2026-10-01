@@ -74,7 +74,7 @@ export function Button({
 // `required` n'est volontairement JAMAIS transmis à l'élément natif (voir Input/Select/Textarea
 // ci-dessous) : l'infobulle "Veuillez renseigner ce champ" du navigateur n'est ni stylable ni
 // cohérente avec le reste de l'app. Seul l'astérisque visuel reste — le contrôle réel du champ
-// obligatoire se fait en Python (le serializer DRF rejette un champ manquant avec un message
+// obligatoire se fait en React (data-requis, lu par src/validation.ts avant chaque envoi) et en Python (le serializer DRF rejette un champ manquant avec un message
 // explicite, déjà affiché par chaque formulaire via `extractErrorMessage`) ou, quand une page a
 // besoin d'un retour immédiat avant l'appel réseau, en React (voir par ex. LoginPage.tsx).
 export function Input({ label, required, className = "", ...props }: InputHTMLAttributes<HTMLInputElement> & { label?: string }) {
@@ -87,6 +87,7 @@ export function Input({ label, required, className = "", ...props }: InputHTMLAt
       )}
       <input
         className={`w-full rounded-xl border border-slate-200 bg-white px-3.5 py-2.5 text-sm text-slate-800 placeholder:text-slate-400 transition focus:outline-none focus:ring-4 focus:ring-brand-500/15 focus:border-brand-400 ${className}`}
+        data-requis={required ? "" : undefined}
         {...props}
       />
     </label>
@@ -213,6 +214,7 @@ export function Select({
       )}
       <select
         className={`w-full rounded-xl border border-slate-200 bg-white px-3.5 py-2.5 text-sm text-slate-800 transition focus:outline-none focus:ring-4 focus:ring-brand-500/15 focus:border-brand-400 ${className}`}
+        data-requis={required ? "" : undefined}
         {...props}
       >
         {children}
@@ -234,6 +236,7 @@ export function Textarea({
       )}
       <textarea
         className={`w-full rounded-xl border border-slate-200 bg-white px-3.5 py-2.5 text-sm text-slate-800 placeholder:text-slate-400 transition focus:outline-none focus:ring-4 focus:ring-brand-500/15 focus:border-brand-400 ${className}`}
+        data-requis={required ? "" : undefined}
         {...props}
       />
     </label>

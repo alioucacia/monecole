@@ -124,7 +124,7 @@ export default function ForgotPasswordPage() {
             <p className="text-slate-500 text-sm mb-6">
               Indiquez votre adresse e-mail : si un compte y est associé, un lien ET un code de réinitialisation vous seront envoyés.
             </p>
-            <form onSubmit={handleSubmitEmail} className="space-y-4">
+            <form noValidate onSubmit={handleSubmitEmail} className="space-y-4">
               <Input
                 label="Adresse e-mail"
                 type="email"
@@ -149,7 +149,7 @@ export default function ForgotPasswordPage() {
             <p className="text-slate-500 text-sm mb-6 text-center">
               Saisissez le code à 6 chiffres envoyé à {email} (ou suivez le lien reçu par e-mail).
             </p>
-            <form onSubmit={handleSubmitCode} className="space-y-5">
+            <form noValidate onSubmit={handleSubmitCode} className="space-y-5">
               <OtpBoxInput value={otpCode} onChange={setOtpCode} autoFocus disabled={otpLoading || resendLoading} />
               <Button type="submit" className="w-full" disabled={otpLoading || otpCode.length !== 6}>
                 {otpLoading ? "Vérification…" : "Vérifier le code"}
@@ -182,7 +182,7 @@ export default function ForgotPasswordPage() {
           <>
             <h2 className="text-2xl font-extrabold text-ink-900 tracking-tight mb-1">Nouveau mot de passe</h2>
             <p className="text-slate-500 text-sm mb-6">Code confirmé — choisissez votre nouveau mot de passe.</p>
-            <form onSubmit={handleSubmitPassword} className="space-y-4">
+            <form noValidate onSubmit={handleSubmitPassword} className="space-y-4">
               <Input
                 label="Nouveau mot de passe" type="password" required autoFocus
                 value={newPassword} onChange={(e) => { setNewPassword(e.target.value); setPwdError(""); }}

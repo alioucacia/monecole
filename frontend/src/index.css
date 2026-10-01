@@ -143,3 +143,9 @@ h1, h2, h3, h4 {
 .dark ::-webkit-scrollbar-thumb:hover {
   background-color: #4a3d78;
 }
+
+/* Champ refusé par le contrôle des formulaires (voir src/validation.ts) — retiré dès la saisie. */
+[data-invalide] {
+  border-color: #f43f5e !important;
+  box-shadow: 0 0 0 4px rgb(244 63 94 / 0.15) !important;
+}

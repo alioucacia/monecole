@@ -95,7 +95,7 @@ export default function PersonnelAdminPage() {
       )}
 
       <Modal open={modalOpen} onClose={() => setModalOpen(false)} title="Nouveau compte personnel">
-        <form onSubmit={handleSubmit} className="space-y-4">
+        <form noValidate onSubmit={handleSubmit} className="space-y-4">
           <Select label="Rôle" required value={form.role} onChange={(e) => setForm({ ...form, role: e.target.value as Role })}>
             <option value="comptabilite">Comptabilité</option>
             <option value="surveillance">Surveillance Générale</option>

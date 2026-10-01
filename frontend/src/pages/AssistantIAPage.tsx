@@ -72,7 +72,7 @@ export default function AssistantIAPage() {
         <div ref={bottomRef} />
       </div>
 
-      <form onSubmit={handleSubmit} className="flex gap-2">
+      <form noValidate onSubmit={handleSubmit} className="flex gap-2">
         <input
           value={input}
           onChange={(e) => setInput(e.target.value)}

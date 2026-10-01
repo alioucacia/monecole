@@ -245,7 +245,7 @@ export default function SupportPage() {
 
               {error && <p className="px-4 pb-2 text-sm text-rose-600">{error}</p>}
 
-              <form onSubmit={handleSend} className="p-4 border-t border-slate-100 flex items-center gap-2">
+              <form noValidate onSubmit={handleSend} className="p-4 border-t border-slate-100 flex items-center gap-2">
                 <input ref={fileInputRef} type="file" hidden onChange={handleFileChange} />
                 <button
                   type="button" onClick={() => fileInputRef.current?.click()} disabled={sending}
@@ -267,7 +267,7 @@ export default function SupportPage() {
       </div>
 
       <Modal open={modalOpen} onClose={() => setModalOpen(false)} title="Nouveau ticket de support">
-        <form onSubmit={handleCreate} className="space-y-4">
+        <form noValidate onSubmit={handleCreate} className="space-y-4">
           <Input label="Sujet" required value={newForm.sujet} onChange={(e) => setNewForm({ ...newForm, sujet: e.target.value })} />
           <Select label="Priorité" value={newForm.priorite} onChange={(e) => setNewForm({ ...newForm, priorite: e.target.value as PrioriteTicket })}>
             {PRIORITE_OPTIONS.map((p) => <option key={p.value} value={p.value}>{p.label}</option>)}

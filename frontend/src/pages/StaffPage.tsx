@@ -302,7 +302,7 @@ export default function StaffPage() {
       )}
 
       <Modal open={modalOpen} onClose={() => setModalOpen(false)} title={editingPaie ? "Modifier la fiche de paie" : "Nouvelle fiche de paie"}>
-        <form onSubmit={handleSubmit} className="space-y-4">
+        <form noValidate onSubmit={handleSubmit} className="space-y-4">
           <Select label="Enseignant" required value={form.enseignant} onChange={(e) => setForm({ ...form, enseignant: e.target.value })}>
             <option value="">— Sélectionner —</option>
             {enseignants.map((ens) => <option key={ens.id} value={ens.id}>{ens.user.first_name} {ens.user.last_name}</option>)}
@@ -358,7 +358,7 @@ export default function StaffPage() {
         onClose={() => setPointageModalOpen(false)}
         title={editingPointage ? "Corriger le pointage" : "Nouveau pointage"}
       >
-        <form onSubmit={handleSubmitPointage} className="space-y-4">
+        <form noValidate onSubmit={handleSubmitPointage} className="space-y-4">
           <Select
             label="Enseignant" required value={pointageForm.enseignant} disabled={!!editingPointage}
             onChange={(e) => setPointageForm({ ...pointageForm, enseignant: e.target.value })}

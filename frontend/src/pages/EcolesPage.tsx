@@ -372,7 +372,7 @@ export default function EcolesPage() {
       )}
 
       <Modal open={createOpen} onClose={() => setCreateOpen(false)} title="Nouvelle école" wide>
-        <form onSubmit={handleCreate} className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+        <form noValidate onSubmit={handleCreate} className="grid grid-cols-1 sm:grid-cols-2 gap-4">
           <label className="block sm:col-span-2">
             <span className="block text-sm font-semibold text-slate-600 mb-1.5">Logo (optionnel)</span>
             <input type="file" accept="image/*" onChange={(e) => setCreateLogo(e.target.files?.[0] || null)} className="text-sm" />
@@ -430,7 +430,7 @@ export default function EcolesPage() {
 
       <Modal open={!!editTarget} onClose={() => setEditTarget(null)} title={`Modifier — ${editTarget?.nom ?? ""}`} wide>
         {editTarget && (
-          <form onSubmit={handleEditSubmit} className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+          <form noValidate onSubmit={handleEditSubmit} className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div className="sm:col-span-2 flex items-center gap-4">
               {editLogoPreview ? (
                 <img src={editLogoPreview} alt="" className="h-14 w-14 rounded-xl object-cover border-2 border-brand-100 shrink-0" />
@@ -481,7 +481,7 @@ export default function EcolesPage() {
 
       <Modal open={!!paiementTarget} onClose={() => setPaiementTarget(null)} title={`Encaisser — ${paiementTarget?.nom ?? ""}`}>
         {paiementTarget && (
-          <form onSubmit={handlePaiementSubmit} className="space-y-4">
+          <form noValidate onSubmit={handlePaiementSubmit} className="space-y-4">
             <Input label="Mois couvert" type="month" required value={paiementForm.mois} onChange={(e) => setPaiementForm({ ...paiementForm, mois: e.target.value })} />
             <Input label="Montant (GNF)" type="number" min={0} required value={paiementForm.montant} onChange={(e) => setPaiementForm({ ...paiementForm, montant: e.target.value })} />
             <Select label="Mode de paiement" value={paiementForm.mode_paiement} onChange={(e) => setPaiementForm({ ...paiementForm, mode_paiement: e.target.value })}>

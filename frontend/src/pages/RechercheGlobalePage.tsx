@@ -33,7 +33,7 @@ export default function RechercheGlobalePage() {
         description="Retrouvez un compte (élève, enseignant, parent, admin...) sur toutes les écoles de la plateforme."
       />
 
-      <form onSubmit={handleSubmit} className="flex gap-2 mb-6 max-w-xl">
+      <form noValidate onSubmit={handleSubmit} className="flex gap-2 mb-6 max-w-xl">
         <Input
           placeholder="Nom, identifiant ou email…"
           value={q}

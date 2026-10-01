@@ -130,7 +130,7 @@ export default function PlansAbonnementPage() {
       )}
 
       <Modal open={modalOpen} onClose={() => setModalOpen(false)} title={editing ? "Modifier le plan" : "Nouveau plan"}>
-        <form onSubmit={handleSubmit} className="space-y-4">
+        <form noValidate onSubmit={handleSubmit} className="space-y-4">
           <Input label="Nom du plan" required value={form.nom} onChange={(e) => setForm({ ...form, nom: e.target.value })} />
           <Input label="Montant (GNF)" type="number" min={0} required value={form.montant} onChange={(e) => setForm({ ...form, montant: e.target.value })} />
           <Select label="Périodicité" value={form.periodicite} onChange={(e) => setForm({ ...form, periodicite: e.target.value })}>

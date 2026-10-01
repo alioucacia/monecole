@@ -277,7 +277,7 @@ export default function ProfilePage() {
 
       <Card>
         <h3 className="font-bold text-ink-900 mb-4">Informations personnelles</h3>
-        <form onSubmit={handleSubmit} className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+        <form noValidate onSubmit={handleSubmit} className="grid grid-cols-1 sm:grid-cols-2 gap-4">
           <Input label="Prénom" value={form.first_name} onChange={(e) => setForm({ ...form, first_name: e.target.value })} />
           <Input label="Nom" value={form.last_name} onChange={(e) => setForm({ ...form, last_name: e.target.value })} />
           <Input label="Email" type="email" value={form.email} onChange={(e) => setForm({ ...form, email: e.target.value })} />
@@ -292,7 +292,7 @@ export default function ProfilePage() {
 
       <Card>
         <h3 className="font-bold text-ink-900 mb-4">Changer de mot de passe</h3>
-        <form onSubmit={handlePasswordSubmit} className="space-y-4">
+        <form noValidate onSubmit={handlePasswordSubmit} className="space-y-4">
           <Input label="Mot de passe actuel" type="password" required value={pwdForm.old_password} onChange={(e) => setPwdForm({ ...pwdForm, old_password: e.target.value })} />
           <Input label="Nouveau mot de passe" type="password" required value={pwdForm.new_password} onChange={(e) => setPwdForm({ ...pwdForm, new_password: e.target.value })} />
 
@@ -310,7 +310,7 @@ export default function ProfilePage() {
               ? "Ce code sera exigé, en plus du nom de l'école, avant toute suppression définitive. Vous pouvez le changer ci-dessous."
               : "Aucun code défini pour l'instant — la suppression d'une école restera bloquée tant que vous n'en aurez pas défini un."}
           </p>
-          <form onSubmit={handleCodeSuppressionSubmit} className="space-y-4">
+          <form noValidate onSubmit={handleCodeSuppressionSubmit} className="space-y-4">
             <Input label="Mot de passe actuel" type="password" required value={codeForm.mot_de_passe_actuel} onChange={(e) => setCodeForm({ ...codeForm, mot_de_passe_actuel: e.target.value })} />
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <Input label={user.a_code_suppression ? "Nouveau code" : "Code de suppression"} type="password" required minLength={4} value={codeForm.nouveau_code} onChange={(e) => setCodeForm({ ...codeForm, nouveau_code: e.target.value })} />
@@ -376,7 +376,7 @@ export default function ProfilePage() {
                   )}
                 </div>
                 {verifCanalOuvert === canal && (
-                  <form onSubmit={handleConfirmerVerification} className="mt-3 space-y-3">
+                  <form noValidate onSubmit={handleConfirmerVerification} className="mt-3 space-y-3">
                     <OtpBoxInput value={verifCode} onChange={setVerifCode} autoFocus disabled={verifConfirmation} />
                     <div className="flex items-center justify-center gap-2">
                       <Button type="submit" disabled={verifConfirmation || verifCode.length !== 6}>

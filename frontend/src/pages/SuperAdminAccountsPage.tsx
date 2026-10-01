@@ -135,7 +135,7 @@ export default function SuperAdminAccountsPage() {
       )}
 
       <Modal open={modalOpen} onClose={() => setModalOpen(false)} title="Nouveau compte Super Admin">
-        <form onSubmit={handleSubmit} className="space-y-4">
+        <form noValidate onSubmit={handleSubmit} className="space-y-4">
           <div className="grid grid-cols-2 gap-4">
             <Input label="Prénom" required value={form.first_name} onChange={(e) => setForm({ ...form, first_name: e.target.value })} />
             <Input label="Nom" required value={form.last_name} onChange={(e) => setForm({ ...form, last_name: e.target.value })} />
@@ -156,7 +156,7 @@ export default function SuperAdminAccountsPage() {
 
       <Modal open={!!editTarget} onClose={() => setEditTarget(null)} title={`Modifier — ${editTarget?.full_name || editTarget?.username || ""}`}>
         {editTarget && (
-          <form onSubmit={handleEditSubmit} className="space-y-4">
+          <form noValidate onSubmit={handleEditSubmit} className="space-y-4">
             <div className="grid grid-cols-2 gap-4">
               <Input label="Prénom" required value={editForm.first_name} onChange={(e) => setEditForm({ ...editForm, first_name: e.target.value })} />
               <Input label="Nom" required value={editForm.last_name} onChange={(e) => setEditForm({ ...editForm, last_name: e.target.value })} />

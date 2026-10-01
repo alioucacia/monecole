@@ -148,7 +148,7 @@ export default function TeachersPage() {
       )}
 
       <Modal open={modalOpen} onClose={() => setModalOpen(false)} title={editing ? "Modifier l'enseignant" : "Nouvel enseignant"} wide>
-        <form onSubmit={handleSubmit} className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+        <form noValidate onSubmit={handleSubmit} className="grid grid-cols-1 sm:grid-cols-2 gap-4">
           <div className="sm:col-span-2 flex items-center gap-4">
             {photoPreview ? (
               <img src={photoPreview} alt="" className="h-16 w-16 rounded-full object-cover border-2 border-accent-100 shrink-0" />

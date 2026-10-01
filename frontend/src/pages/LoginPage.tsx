@@ -288,7 +288,7 @@ export default function LoginPage() {
               <p className="text-slate-500 text-sm mb-6 text-center">
                 Un code à 6 chiffres a été envoyé par e-mail/SMS au compte « {username} ». Saisissez-le ci-dessous.
               </p>
-              <form onSubmit={handleSubmitOtp} className={`space-y-5 ${shake ? "animate-shake" : ""}`}>
+              <form noValidate onSubmit={handleSubmitOtp} className={`space-y-5 ${shake ? "animate-shake" : ""}`}>
                 <OtpBoxInput
                   value={otpCode}
                   onChange={(v) => { setOtpCode(v); if (formError) setFormError(""); }}
@@ -325,7 +325,7 @@ export default function LoginPage() {
           <h2 className="text-2xl font-extrabold text-ink-900 tracking-tight mb-1">Connexion</h2>
           <p className="text-slate-500 text-sm mb-6">Connectez-vous pour accéder à votre espace.</p>
 
-          <form onSubmit={handleSubmit} className={`space-y-4 ${shake ? "animate-shake" : ""}`}>
+          <form noValidate onSubmit={handleSubmit} className={`space-y-4 ${shake ? "animate-shake" : ""}`}>
             <Input
               label="Nom d'utilisateur, e-mail ou téléphone"
               placeholder="Nom d'utilisateur, e-mail ou téléphone"

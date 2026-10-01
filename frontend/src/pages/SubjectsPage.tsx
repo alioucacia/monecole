@@ -99,7 +99,7 @@ export default function SubjectsPage() {
       )}
 
       <Modal open={modalOpen} onClose={() => setModalOpen(false)} title={editing ? "Modifier la matière" : "Nouvelle matière"}>
-        <form onSubmit={handleSubmit} className="space-y-4">
+        <form noValidate onSubmit={handleSubmit} className="space-y-4">
           <Input label="Nom" required value={form.nom} onChange={(e) => setForm({ ...form, nom: e.target.value })} />
           <Input label="Code" required value={form.code} onChange={(e) => setForm({ ...form, code: e.target.value.toUpperCase() })} />
           <Input label="Coefficient" type="number" min={1} required value={form.coefficient} onChange={(e) => setForm({ ...form, coefficient: Number(e.target.value) })} />

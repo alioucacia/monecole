@@ -365,7 +365,7 @@ export default function ComptesEcolePage() {
 
       <Modal open={!!editTarget} onClose={() => setEditTarget(null)} title="Modifier les coordonnées">
         {editTarget && (
-          <form onSubmit={handleSubmitEdit} className="space-y-4">
+          <form noValidate onSubmit={handleSubmitEdit} className="space-y-4">
             <p className="text-sm text-slate-500">
               {editTarget.full_name || editTarget.username} — <span className="font-medium">{ROLE_LABELS[editTarget.role]}</span>
             </p>

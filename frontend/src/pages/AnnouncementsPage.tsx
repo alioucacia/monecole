@@ -144,7 +144,7 @@ export default function AnnouncementsPage() {
       )}
 
       <Modal open={modalOpen} onClose={() => setModalOpen(false)} title="Nouvelle annonce">
-        <form onSubmit={handleSubmit} className="space-y-4">
+        <form noValidate onSubmit={handleSubmit} className="space-y-4">
           {modeles.length > 0 && (
             <div className="flex flex-wrap gap-2">
               {MODELES_PRESETS.map(({ cle, icone }) => {

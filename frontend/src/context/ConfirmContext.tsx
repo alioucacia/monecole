@@ -97,7 +97,7 @@ export function ConfirmProvider({ children }: { children: ReactNode }) {
 
       <Modal open={etat?.kind === "prompt"} onClose={() => fermerPrompt(null)} title={etat?.options.title || "Saisie"}>
         {etat?.kind === "prompt" && (
-          <form onSubmit={handleSubmitPrompt} className="space-y-5">
+          <form noValidate onSubmit={handleSubmitPrompt} className="space-y-5">
             <p className="text-sm text-slate-600 whitespace-pre-line">{etat.message}</p>
             <Input
               type={etat.options.inputType || "text"}

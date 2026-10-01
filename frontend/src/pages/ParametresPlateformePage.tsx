@@ -142,7 +142,7 @@ export default function ParametresPlateformePage() {
         </Button>
       </Card>
 
-      <form onSubmit={handleSubmit} className="space-y-6">
+      <form noValidate onSubmit={handleSubmit} className="space-y-6">
         <Card>
           <h3 className="font-bold text-ink-900 mb-4">Général</h3>
           <div className="flex items-center gap-4 mb-5">

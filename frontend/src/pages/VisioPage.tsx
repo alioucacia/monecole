@@ -215,7 +215,7 @@ export default function VisioPage() {
       )}
 
       <Modal open={modalOpen} onClose={() => setModalOpen(false)} title="Nouvelle réunion">
-        <form onSubmit={handleSubmit} className="space-y-4">
+        <form noValidate onSubmit={handleSubmit} className="space-y-4">
           <Input label="Titre" required value={form.titre} onChange={(e) => setForm({ ...form, titre: e.target.value })} />
           <Input
             label="Description (optionnel)" value={form.description}

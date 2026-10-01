@@ -324,7 +324,7 @@ export default function MessagesPage() {
 
               {error && <p className="px-4 pb-2 text-sm text-rose-600">{error}</p>}
 
-              <form onSubmit={handleSend} className="p-4 border-t border-slate-100 flex items-center gap-2">
+              <form noValidate onSubmit={handleSend} className="p-4 border-t border-slate-100 flex items-center gap-2">
                 <input ref={fileInputRef} type="file" hidden onChange={handleFileChange} />
                 <button
                   type="button" onClick={() => fileInputRef.current?.click()} disabled={sending || isRecording}

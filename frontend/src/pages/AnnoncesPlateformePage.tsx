@@ -113,7 +113,7 @@ export default function AnnoncesPlateformePage() {
       )}
 
       <Modal open={modalOpen} onClose={() => setModalOpen(false)} title="Nouvelle annonce plateforme">
-        <form onSubmit={handleSubmit} className="space-y-4">
+        <form noValidate onSubmit={handleSubmit} className="space-y-4">
           <Input label="Titre" required value={form.titre} onChange={(e) => setForm({ ...form, titre: e.target.value })} />
           <Textarea label="Contenu" required rows={4} value={form.contenu} onChange={(e) => setForm({ ...form, contenu: e.target.value })} />
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">

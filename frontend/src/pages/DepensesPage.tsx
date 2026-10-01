@@ -221,7 +221,7 @@ export default function DepensesPage() {
       )}
 
       <Modal open={modalOpen} onClose={() => setModalOpen(false)} title={editing ? "Modifier la dépense" : "Nouvelle dépense"} wide>
-        <form onSubmit={handleSubmit} className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+        <form noValidate onSubmit={handleSubmit} className="grid grid-cols-1 sm:grid-cols-2 gap-4">
           <Input label="Date" type="date" required value={form.date} onChange={(e) => setForm({ ...form, date: e.target.value })} />
           <Select label="Catégorie" required value={form.categorie} onChange={(e) => setForm({ ...form, categorie: e.target.value })}>
             <option value="">— Sélectionner —</option>
@@ -259,7 +259,7 @@ export default function DepensesPage() {
             Propres à votre établissement — renommez, ajoutez ou supprimez librement.
           </p>
 
-          <form onSubmit={handleAjouterCategorie} className="flex gap-2">
+          <form noValidate onSubmit={handleAjouterCategorie} className="flex gap-2">
             <Input
               placeholder="Nouvelle catégorie…" value={nouvelleCategorie}
               onChange={(e) => setNouvelleCategorie(e.target.value)} className="flex-1"

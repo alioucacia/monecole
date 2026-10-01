@@ -77,7 +77,7 @@ export default function RechercheMatriculePage() {
       />
 
       <Card className="mb-6">
-        <form onSubmit={handleSubmit} className="flex flex-wrap items-end gap-3">
+        <form noValidate onSubmit={handleSubmit} className="flex flex-wrap items-end gap-3">
           <Input
             label="Matricule de l'élève"
             placeholder="Ex : OUBA38"

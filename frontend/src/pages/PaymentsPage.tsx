@@ -647,7 +647,7 @@ export default function PaymentsPage() {
       )}
 
       <Modal open={fraisModalOpen} onClose={() => setFraisModalOpen(false)} title="Nouveau frais">
-        <form onSubmit={handleFraisSubmit} className="space-y-4">
+        <form noValidate onSubmit={handleFraisSubmit} className="space-y-4">
           <div className="grid grid-cols-2 gap-3">
             <CycleSelect
               label="Cycle"
@@ -767,7 +767,7 @@ export default function PaymentsPage() {
 
       <Modal open={!!paiementTarget} onClose={() => setPaiementTarget(null)} title={`Encaisser — ${paiementTarget?.eleve_nom ?? ""}`}>
         {paiementTarget && (
-          <form onSubmit={handlePaiementSubmit} className="space-y-4">
+          <form noValidate onSubmit={handlePaiementSubmit} className="space-y-4">
             <p className="text-sm text-slate-500">Solde restant : <span className="font-semibold text-slate-700">{money(paiementTarget.solde)}</span></p>
             <div>
               <Input
@@ -939,7 +939,7 @@ export default function PaymentsPage() {
             </Table>
           )}
 
-          <form onSubmit={handleTypeSubmit} className="space-y-4 border-t border-slate-100 pt-4">
+          <form noValidate onSubmit={handleTypeSubmit} className="space-y-4 border-t border-slate-100 pt-4">
             <p className="text-sm font-medium text-slate-700">{typeEditTarget ? `Modifier « ${typeEditTarget.nom} »` : "Nouveau type de frais"}</p>
             <Input label="Nom" required value={typeForm.nom} onChange={(e) => setTypeForm({ ...typeForm, nom: e.target.value })} />
             <Input label="Montant standard (GNF)" type="number" min={0} required value={typeForm.montant_standard} onChange={(e) => setTypeForm({ ...typeForm, montant_standard: e.target.value })} />

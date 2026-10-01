@@ -53,7 +53,7 @@ export default function ChangerMotDePassePage() {
           définir votre propre mot de passe avant de continuer.
         </p>
 
-        <form onSubmit={handleSubmit} className="space-y-4">
+        <form noValidate onSubmit={handleSubmit} className="space-y-4">
           <Input
             label="Mot de passe actuel (temporaire)" type="password" required
             value={oldPassword} onChange={(e) => setOldPassword(e.target.value)} autoFocus

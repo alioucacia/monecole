@@ -301,7 +301,7 @@ export default function CantinePage() {
       )}
 
       <Modal open={formuleModalOpen} onClose={() => setFormuleModalOpen(false)} title={editingFormule ? "Modifier la formule" : "Nouvelle formule"}>
-        <form onSubmit={handleFormuleSubmit} className="space-y-4">
+        <form noValidate onSubmit={handleFormuleSubmit} className="space-y-4">
           <Input label="Nom de la formule" required value={formuleForm.nom} onChange={(e) => setFormuleForm({ ...formuleForm, nom: e.target.value })} />
           <div className="grid grid-cols-2 gap-4">
             <Input label="Responsable" value={formuleForm.responsable_nom} onChange={(e) => setFormuleForm({ ...formuleForm, responsable_nom: e.target.value })} />
@@ -328,7 +328,7 @@ export default function CantinePage() {
       </Modal>
 
       <Modal open={inscriptionModalOpen} onClose={() => setInscriptionModalOpen(false)} title="Inscrire un élève à une formule">
-        <form onSubmit={handleInscriptionSubmit} className="space-y-4">
+        <form noValidate onSubmit={handleInscriptionSubmit} className="space-y-4">
           <Select label="Élève" required value={inscriptionForm.eleve} onChange={(e) => setInscriptionForm({ ...inscriptionForm, eleve: e.target.value })}>
             <option value="">— Sélectionner —</option>
             {eleves.map((el) => <option key={el.id} value={el.id}>{el.user.first_name} {el.user.last_name}</option>)}
@@ -348,7 +348,7 @@ export default function CantinePage() {
       </Modal>
 
       <Modal open={ticketModalOpen} onClose={() => setTicketModalOpen(false)} title="Nouveau ticket de cantine">
-        <form onSubmit={handleTicketSubmit} className="space-y-4">
+        <form noValidate onSubmit={handleTicketSubmit} className="space-y-4">
           <Select label="Élève inscrit" required value={ticketForm.inscription} onChange={(e) => setTicketForm({ ...ticketForm, inscription: e.target.value })}>
             <option value="">— Sélectionner —</option>
             {inscriptions.map((i) => <option key={i.id} value={i.id}>{i.eleve_nom} — {i.formule_nom}</option>)}
