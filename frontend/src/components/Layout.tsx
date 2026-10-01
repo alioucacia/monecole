@@ -69,6 +69,7 @@ const NAV_CATEGORIES: NavCategory[] = [
       { to: "/presences", label: "Présences", icon: "✅", roles: ["admin", "directeur", "teacher", "student", "parent", "surveillance"] },
       { to: "/justificatifs", label: "Justificatifs d'absence", icon: "📋", roles: ["admin", "directeur", "student", "parent", "surveillance"], feature: "justificatifs" },
       { to: "/vie-scolaire", label: "Vie scolaire", icon: "🪪", roles: ["admin", "directeur", "teacher", "student", "parent", "surveillance"] },
+      { to: "/controle-acces", label: "Contrôle d'accès", icon: "🚪", roles: ["admin", "directeur", "surveillance"] },
       { to: "/emploi-du-temps", label: "Emploi du temps", icon: "🗓️", roles: ["admin", "directeur", "teacher", "student", "parent"] },
     ],
   },

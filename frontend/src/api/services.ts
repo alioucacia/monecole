@@ -913,3 +913,78 @@ export function resumeNotificationAdmin(n: NotificationAdmin | undefined): { ok:
   if (!n.email && !n.telephone) return { ok: false, texte: "Aucun e-mail ni téléphone renseigné : transmettez les identifiants à l'administrateur vous-même." };
   return { ok: false, texte: "L'envoi de l'e-mail/SMS a échoué : transmettez les identifiants à l'administrateur vous-même." };
 }
+
+// --- Contrôle d'accès ------------------------------------------------------------------------
+
+export type TypeEquipement = "qr" | "rfid" | "biometrie" | "camera" | "porte" | "borne";
+
+export interface EquipementAcces {
+  id: number;
+  nom: string;
+  type: TypeEquipement;
+  type_display: string;
+  sens: "auto" | "entree" | "sortie";
+  sens_display: string;
+  actif: boolean;
+  derniere_activite: string | null;
+  cree_le: string;
+  cle?: string;
+}
+
+export interface CarteAcces {
+  id: number;
+  uid: string;
+  personne: number;
+  personne_nom: string;
+  personne_role: string;
+  actif: boolean;
+  cree_le: string;
+}
+
+export interface PassageAcces {
+  id: number;
+  personne: number | null;
+  nom_affiche: string;
+  role: string;
+  classe: string;
+  sens: "entree" | "sortie" | "";
+  sens_display: string;
+  horodatage: string;
+  methode_display: string;
+  equipement_nom: string | null;
+  autorise: boolean;
+  motif_refus: string;
+  message: string;
+}
+
+export interface ResultatScan {
+  ouvrir: boolean;
+  autorise: boolean;
+  sens: "entree" | "sortie" | null;
+  nom: string | null;
+  role: string | null;
+  classe: string | null;
+  heure: string;
+  motif_refus: string | null;
+  message: string;
+  photo: string | null;
+  passage_id: number;
+}
+
+export const accesApi = {
+  equipements: () => api.get<Paginated<EquipementAcces> | EquipementAcces[]>("/acces/equipements/", { params: { page_size: 100 } }),
+  creerEquipement: (data: Partial<EquipementAcces>) => api.post<EquipementAcces>("/acces/equipements/", data),
+  modifierEquipement: (id: number, data: Partial<EquipementAcces>) => api.patch<EquipementAcces>(`/acces/equipements/${id}/`, data),
+  supprimerEquipement: (id: number) => api.delete(`/acces/equipements/${id}/`),
+  regenererCle: (id: number) => api.post<EquipementAcces>(`/acces/equipements/${id}/regenerer-cle/`),
+  cartes: (params?: Record<string, unknown>) => api.get<Paginated<CarteAcces> | CarteAcces[]>("/acces/cartes/", { params: { page_size: 200, ...params } }),
+  creerCarte: (data: { uid: string; personne: number }) => api.post<CarteAcces>("/acces/cartes/", data),
+  supprimerCarte: (id: number) => api.delete(`/acces/cartes/${id}/`),
+  personnes: (search: string) => api.get<{ id: number; nom: string; role: string }[]>("/acces/cartes/personnes/", { params: { search } }),
+  passages: (params?: Record<string, unknown>) => api.get<Paginated<PassageAcces> | PassageAcces[]>("/acces/passages/", { params: { page_size: 200, ...params } }),
+  resume: (params?: Record<string, unknown>) =>
+    api.get<{ entrees: number; sorties: number; refus: number; presents: number; eleves_presents: number; personnel_present: number }>(
+      "/acces/passages/resume/", { params },
+    ),
+  scanner: (data: { identifiant: string; equipement?: number; sens?: string }) => api.post<ResultatScan>("/acces/passages/scanner/", data),
+};

@@ -62,6 +62,8 @@ import VerifyDocumentPage from "./pages/VerifyDocumentPage";
 import ProgrammesPage from "./pages/ProgrammesPage";
 import RendezVousPage from "./pages/RendezVousPage";
 import RapportsAnnuelsPage from "./pages/RapportsAnnuelsPage";
+import ControleAccesPage from "./pages/ControleAccesPage";
+import BorneAccesPage from "./pages/BorneAccesPage";
 import EvaluationEnseignantsPage from "./pages/EvaluationEnseignantsPage";
 import { OngletNavigateur } from "./components/OngletNavigateur";
 
@@ -206,6 +208,22 @@ export default function App() {
           element={
             <ProtectedRoute roles={["admin", "directeur"]}>
               <PersonnelAdminPage />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/controle-acces"
+          element={
+            <ProtectedRoute roles={["admin", "directeur", "surveillance"]}>
+              <ControleAccesPage />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/controle-acces/borne"
+          element={
+            <ProtectedRoute roles={["admin", "surveillance"]}>
+              <BorneAccesPage />
             </ProtectedRoute>
           }
         />

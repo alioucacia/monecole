@@ -17,6 +17,7 @@ urlpatterns = [
     path("api/library/", include("library.urls")),
     path("api/transport/", include("transport.urls")),
     path("api/cantine/", include("cantine.urls")),
+    path("api/acces/", include("acces.urls")),
     path("api/messaging/", include("messaging.urls")),
     path("api/visio/", include("visio.urls")),
     path("api/tenants/", include("tenants.urls")),

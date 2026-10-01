@@ -49,6 +49,7 @@ INSTALLED_APPS = [
     "library",
     "transport",
     "cantine",
+    "acces",
     "messaging",
     "visio",
     "tenants",
