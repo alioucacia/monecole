@@ -58,10 +58,12 @@ import TeachersPage from "./pages/TeachersPage";
 import TransactionsPage from "./pages/TransactionsPage";
 import TransportPage from "./pages/TransportPage";
 import VerifyBadgePage from "./pages/VerifyBadgePage";
+import { OngletNavigateur } from "./components/OngletNavigateur";
 
 export default function App() {
   return (
     <>
+    <OngletNavigateur />
     <PwaBanners />
     <InstallPromptModal />
     <Routes>
