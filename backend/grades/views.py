@@ -856,21 +856,45 @@ class AttestationHonneurPdfView(APIView):
         if not laureats:
             raise ValidationError("Aucun élève ne correspond aux critères de sélection.")
 
-        html = render_to_string("grades/attestation_honneur_pdf.html", {
-            "classe": classe,
-            "periode": label,
-            "laureats": laureats,
-            "bareme": classe.bareme,
-            "effectif": len(resultats),
-            "date_edition": timezone.localdate(),
-            "ecole_nom": request.user.ecole.nom if request.user.ecole_id else "Taly-School",
-            "ecole_logo_data_uri": (
-                _image_data_uri(request.user.ecole.logo, _mm_px(18, 18), mode="contain")
-                if request.user.ecole_id and request.user.ecole.logo else None
-            ),
-        })
+        # Une page A4 paysage pleine par lauréat : l'attestation est dessinée en image sur le
+        # modèle de l'établissement (voir grades/attestation_excellence.py), puis posée telle
+        # quelle avec reportlab (xhtml2pdf réduirait l'image et laisserait une marge blanche).
+        from reportlab.lib.pagesizes import A4, landscape
+        from reportlab.lib.utils import ImageReader
+        from reportlab.pdfgen import canvas
+
+        from .attestation_excellence import attestation_png
+
+        ecole = classe.annee_scolaire.ecole
+        sexes = dict(EleveProfile.objects.filter(id__in=[l["eleve_id"] for l in laureats]).values_list("id", "user__sexe"))
+        prof_principal = classe.professeur_principal.get_full_name() if classe.professeur_principal_id else ""
+        effectif = len(resultats)
         buffer = BytesIO()
-        pisa.CreatePDF(html, dest=buffer, encoding="utf-8")
+        largeur, hauteur = landscape(A4)
+        pdf = canvas.Canvas(buffer, pagesize=(largeur, hauteur))
+        pdf.setTitle(f"Attestations d'excellence — {classe.nom}")
+        for l in laureats:
+            feminin = sexes.get(l["eleve_id"]) == "F"
+            rang = l["rang"]
+            rang_txt = ("1re" if feminin else "1er") if rang == 1 else f"{rang}e"
+            moyenne = str(l["moyenne_generale"]).replace(".", ",") if l["moyenne_generale"] is not None else "—"
+            mention = f", mention {l['mention']}" if l.get("mention") else ""
+            texte = (
+                f"Pour ses résultats remarquables en {classe.nom} — {label['nom']} : "
+                f"{'classée' if feminin else 'classé'} {rang_txt} sur {effectif} élèves avec une moyenne de "
+                f"{moyenne}/{classe.bareme}{mention}. Toutes nos félicitations !"
+            )
+            image = attestation_png({
+                "nom_complet": l["nom_complet"], "texte": texte,
+                "annee": label.get("annee_scolaire", ""),
+                "prix": f"{'1ER' if rang == 1 else f'{rang}E'} PRIX" if rang else "EXCELLENCE",
+                "role_1": "Le Chef d'Établissement", "signataire_1": ecole.directeur_nom,
+                "role_2": "Le Professeur Principal", "signataire_2": prof_principal,
+                "pied": f"{ecole.nom} — {ecole.ville or 'Conakry'}, le {timezone.localdate():%d/%m/%Y}",
+            })
+            pdf.drawImage(ImageReader(BytesIO(image)), 0, 0, largeur, hauteur)
+            pdf.showPage()
+        pdf.save()
 
         response = HttpResponse(buffer.getvalue(), content_type="application/pdf")
         response["Content-Disposition"] = f'attachment; filename="attestations_{classe.nom}.pdf"'

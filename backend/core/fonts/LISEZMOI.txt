@@ -1,0 +1,6 @@
+Polices utilisées par les documents dessinés en image (attestations d'excellence) :
+- GreatVibes-Regular.ttf — Great Vibes, (c) The Great Vibes Pro Project Authors
+- PlayfairDisplay-Variable.ttf — Playfair Display, (c) The Playfair Display Project Authors
+- Cinzel-Variable.ttf — Cinzel, (c) The Cinzel Project Authors
+Toutes sous licence SIL Open Font License 1.1 (voir LICENCE-OFL.txt),
+source : https://github.com/google/fonts
