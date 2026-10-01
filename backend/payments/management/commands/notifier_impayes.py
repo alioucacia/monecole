@@ -10,5 +10,9 @@ class Command(BaseCommand):
     )
 
     def handle(self, *args, **options):
-        nb = notifier_frais_impayes()
-        self.stdout.write(self.style.SUCCESS(f"{nb} famille(s) notifiee(s)."))
+        bilan = notifier_frais_impayes()
+        self.stdout.write(self.style.SUCCESS(
+            f"{bilan['notifies']} famille(s) notifiee(s) — {bilan['sms_envoyes']} SMS, "
+            f"{bilan['sms_echecs']} echec(s) SMS, {bilan['emails_envoyes']} e-mail(s), "
+            f"{bilan['sans_contact']} sans contact, {bilan['deja_relances']} deja relancee(s)."
+        ))

@@ -268,7 +268,31 @@ export default function PaymentsPage() {
     setNotifying(true);
     try {
       const { data } = await fraisApi.notifierImpayes();
-      toast.success(`${data.notifies} famille(s) notifiée(s) par email/SMS.`);
+      if (data.familles_en_retard === 0) {
+        toast.info("Aucun élève en retard de paiement : aucune relance à envoyer.");
+        return;
+      }
+      if (data.notifies > 0) {
+        toast.success(
+          `${data.notifies} famille(s) relancée(s) sur ${data.familles_en_retard} en retard — ` +
+          `${data.sms_envoyes} SMS, ${data.emails_envoyes} e-mail(s).`
+        );
+      }
+      if (data.sms_echecs > 0) {
+        toast.error(`${data.sms_echecs} SMS n'ont pas pu partir (numéro invalide ou crédit SMS épuisé).`);
+      }
+      if (data.sms_desactives) {
+        toast.warning("Les SMS aux parents sont désactivés pour votre établissement : seuls les e-mails sont partis.");
+      }
+      if (data.sans_contact > 0) {
+        toast.warning(
+          `${data.sans_contact} famille(s) sans téléphone ni e-mail : ${data.sans_contact_noms.join(", ")}` +
+          `${data.sans_contact > data.sans_contact_noms.length ? "…" : ""}. Ajoutez un numéro au parent.`
+        );
+      }
+      if (data.notifies === 0 && data.sms_echecs === 0 && data.sans_contact === 0 && !data.sms_desactives) {
+        toast.error("Aucun message n'a pu être envoyé. Vérifiez les numéros et e-mails des parents.");
+      }
     } catch (err) {
       toast.error(extractErrorMessage(err));
     } finally {

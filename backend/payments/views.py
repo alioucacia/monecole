@@ -1000,11 +1000,11 @@ class FraisViewSet(viewsets.ModelViewSet):
 
     @action(detail=False, methods=["post"], url_path="notifier-impayes")
     def notifier_impayes(self, request):
-        """Envoie immédiatement les rappels de paiement (email + SMS) pour les frais en
-        retard de l'école de l'utilisateur connecté."""
+        """Envoie immédiatement les rappels de paiement (SMS + e-mail) pour les frais en retard de
+        l'école de l'utilisateur connecté — à chaque clic (`forcer=True`), même aux familles déjà
+        relancées dans la semaine. Renvoie le compte-rendu détaillé (voir notifier_frais_impayes)."""
         from .notifications import notifier_frais_impayes
-        nb = notifier_frais_impayes(ecole_id=request.user.ecole_id)
-        return Response({"notifies": nb})
+        return Response(notifier_frais_impayes(ecole_id=request.user.ecole_id, forcer=True))
 
     @action(detail=False, methods=["get"], url_path="export")
     def export(self, request):

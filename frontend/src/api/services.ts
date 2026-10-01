@@ -533,7 +533,11 @@ export const fraisApi = {
       eleves: { eleve_id: number; matricule: string; nom_complet: string; du: string; paye: string; solde: string }[];
       eleves_a_jour: { eleve_id: number; matricule: string; nom_complet: string; du: string; paye: string; solde: string }[];
     }[]>("/payments/frais/impayes-par-classe/", { params }),
-  notifierImpayes: () => api.post<{ notifies: number }>("/payments/frais/notifier-impayes/"),
+  notifierImpayes: () => api.post<{
+    notifies: number; familles_en_retard: number; sms_envoyes: number; sms_echecs: number;
+    emails_envoyes: number; sans_contact: number; sans_contact_noms: string[]; deja_relances: number;
+    sms_desactives: boolean;
+  }>("/payments/frais/notifier-impayes/"),
   /** Rapport de suivi des paiements de scolarité (PDF), mois par mois — un élève à la fois. */
   suiviMensuelPdf: (eleveId: number, filename: string, anneeScolaireId?: number) =>
     downloadFile("/payments/frais/suivi-mensuel-pdf/", { eleve: eleveId, annee_scolaire: anneeScolaireId }, filename),
