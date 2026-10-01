@@ -83,7 +83,7 @@ class TarifClasse(models.Model):
         verbose_name_plural = "Tarifs par classe"
 
     def __str__(self):
-        return f"{self.type_frais} — {self.classe} ({self.annee_scolaire}) : {self.montant}"
+        return f"{self.type_frais} — {self.classe} ({self.annee_scolaire}) : {self.montant} GNF"
 
 
 class Frais(models.Model):
@@ -105,7 +105,7 @@ class Frais(models.Model):
         verbose_name_plural = "Frais"
 
     def __str__(self):
-        return f"{self.type_frais} - {self.eleve} ({self.montant})"
+        return f"{self.type_frais} - {self.eleve} ({self.montant} GNF)"
 
     @staticmethod
     def filtre_equivalents(eleve, type_frais, annee_scolaire, date_echeance=None) -> models.Q | None:
@@ -258,7 +258,7 @@ class Paiement(models.Model):
         super().save(*args, **kwargs)
 
     def __str__(self):
-        return f"{self.frais.eleve} - {self.montant} ({self.date_paiement})"
+        return f"{self.frais.eleve} - {self.montant} GNF ({self.date_paiement})"
 
 
 # Catégories créées automatiquement pour chaque école (voir le signal plus bas) — un point de
@@ -329,4 +329,4 @@ class Depense(models.Model):
         verbose_name_plural = "Dépenses"
 
     def __str__(self):
-        return f"{self.motif} — {self.montant} ({self.date})"
+        return f"{self.motif} — {self.montant} GNF ({self.date})"

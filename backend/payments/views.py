@@ -1079,7 +1079,7 @@ class PaiementViewSet(viewsets.ModelViewSet):
 
         journaliser(
             self.request.user, JournalUtilisateur.Categorie.PAIEMENT,
-            f"Paiement enregistré : {paiement.frais.eleve.user.get_full_name()} — {paiement.montant}",
+            f"Paiement enregistré : {paiement.frais.eleve.user.get_full_name()} — {paiement.montant} GNF",
             self.request,
         )
 

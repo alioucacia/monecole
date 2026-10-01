@@ -49,7 +49,7 @@ def notifier_frais_impayes(ecole_id: int | None = None) -> int:
         sujet, message = rendre_modele(
             ecole, "mensualite_impayee",
             nom_complet=eleve.user.get_full_name(),
-            montant=f"{total_solde} GNF", frais=libelle_frais,
+            montant=total_solde, frais=libelle_frais,
         )
 
         email_ok = False

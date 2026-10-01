@@ -17,6 +17,10 @@ function montant(value: string | number) {
   return Number(value).toLocaleString("fr-FR");
 }
 
+function money(value: string | number) {
+  return `${montant(value)} GNF`;
+}
+
 function moisLabel(mois: string) {
   // "2026-09" -> "Sept. 2026"
   const [annee, m] = mois.split("-");
@@ -154,10 +158,10 @@ export default function SuiviMensuelPage() {
                             >
                               <Badge color={STATUT_BADGE[m.statut].color}>{STATUT_BADGE[m.statut].label}</Badge>
                               <span className="text-[10px] text-slate-500">
-                                {montant(m.montant_paye)} / {montant(m.montant_du)}
+                                {montant(m.montant_paye)} / {money(m.montant_du)}
                               </span>
                               {m.statut === "partiel" && (
-                                <span className="text-[10px] font-semibold text-amber-600">reste {montant(m.reste)}</span>
+                                <span className="text-[10px] font-semibold text-amber-600">reste {money(m.reste)}</span>
                               )}
                             </div>
                           ) : (
