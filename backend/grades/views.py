@@ -887,10 +887,17 @@ class AttestationHonneurPdfView(APIView):
             image = attestation_png({
                 "nom_complet": l["nom_complet"], "texte": texte,
                 "annee": label.get("annee_scolaire", ""),
-                "prix": f"{'1ER' if rang == 1 else f'{rang}E'} PRIX" if rang else "EXCELLENCE",
+                "prix": {1: "PREMIER PRIX", 2: "DEUXIÈME PRIX", 3: "TROISIÈME PRIX"}.get(rang, f"{rang}E PRIX" if rang else "EXCELLENCE"),
                 "role_1": "Le Chef d'Établissement", "signataire_1": ecole.directeur_nom,
                 "role_2": "Le Professeur Principal", "signataire_2": prof_principal,
                 "pied": f"{ecole.nom} — {ecole.ville or 'Conakry'}, le {timezone.localdate():%d/%m/%Y}",
+                "modele": ecole.modele_attestation,
+                "ecole_nom": ecole.nom, "logo": ecole.logo,
+                "date": f"{timezone.localdate():%d/%m/%Y}",
+                "ligne_gras": " — ".join(x for x in [
+                    {1: "Premier prix", 2: "Deuxième prix", 3: "Troisième prix"}.get(rang, f"{rang}e prix" if rang else "Prix d'excellence"),
+                    classe.nom, label["nom"],
+                ] if x),
             })
             pdf.drawImage(ImageReader(BytesIO(image)), 0, 0, largeur, hauteur)
             pdf.showPage()

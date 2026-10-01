@@ -147,6 +147,16 @@ class Ecole(models.Model):
     )
     modele_certificat = models.PositiveSmallIntegerField(choices=ModeleDocument.choices, default=ModeleDocument.CLASSIQUE)
 
+    class ModeleAttestation(models.IntegerChoices):
+        PRESTIGE = 1, "Prestige (bleu nuit, ruban et sceau doré)"
+        GEOMETRIQUE = 2, "Géométrique (blanc et bleu, médaille dorée)"
+        EMERAUDE = 3, "Émeraude (blanc et vert, rosette dorée)"
+        ART_DECO = 4, "Art déco (bleu nuit, éventails dorés)"
+
+    # Modèle des attestations d'excellence (voir grades/attestation_excellence.py), choisi par le
+    # Super Admin — les 4 modèles fournis par l'établissement, reproduits à l'identique.
+    modele_attestation = models.PositiveSmallIntegerField(choices=ModeleAttestation.choices, default=ModeleAttestation.PRESTIGE)
+
     # Fonctionnalités optionnelles désactivées par le Super Admin pour cette école (liste de
     # clés parmi `tenants.features.FONCTIONNALITES`) — voir `a_fonctionnalite()` ci-dessous et
     # `tenants.permissions.fonctionnalite_requise` pour l'application côté API.

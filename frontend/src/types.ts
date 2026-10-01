@@ -118,6 +118,8 @@ export interface Ecole {
   modele_fiche_inscription_display: string;
   modele_certificat: number;
   modele_certificat_display: string;
+  modele_attestation: number;
+  modele_attestation_display: string;
 }
 
 /** Les 4 modèles de mise en page disponibles pour chaque document personnalisable (voir

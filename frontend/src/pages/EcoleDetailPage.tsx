@@ -6,7 +6,7 @@ import { extractBlobErrorMessage, extractErrorMessage } from "../api/client";
 import { useAuth } from "../context/AuthContext";
 import { usePrompt } from "../context/ConfirmContext";
 import { useToast } from "../context/ToastContext";
-import { Badge, Button, Card, EmptyState, Input, Modal, PageHeader, Spinner, StatCard, Table } from "../components/ui";
+import { Badge, Button, Card, EmptyState, Input, Modal, PageHeader, Select, Spinner, StatCard, Table } from "../components/ui";
 import type { Ecole, EcoleStatsDetail, EcoleUtilisateur, Fonctionnalite, PaiementEcole } from "../types";
 
 const STATUT_LABELS: Record<string, { label: string; color: "green" | "amber" | "rose" | "slate" }> = {
@@ -29,6 +29,29 @@ const MODE_PAIEMENT_LABELS: Record<string, string> = {
 function money(value: number | string) {
   return `${Number(value).toLocaleString("fr-FR")} GNF`;
 }
+
+type ChampModele = "modele_bulletin" | "modele_attestation" | "modele_recu" | "modele_fiche_inscription" | "modele_certificat";
+
+const MODELES_STANDARD = [
+  { value: 1, label: "1 — Classique" }, { value: 2, label: "2 — Moderne" },
+  { value: 3, label: "3 — Élégant" }, { value: 4, label: "4 — Compact" },
+];
+
+/** Documents dont le Super Admin choisit le modèle, école par école (voir Ecole.modele_*). */
+const MODELES_DOCUMENTS: { champ: ChampModele; label: string; options: { value: number; label: string }[] }[] = [
+  { champ: "modele_bulletin", label: "Bulletin de notes", options: [...MODELES_STANDARD, { value: 5, label: "5 — Officiel (IRE/DPE)" }] },
+  {
+    champ: "modele_attestation", label: "Attestation d'excellence", options: [
+      { value: 1, label: "1 — Prestige (bleu nuit, ruban doré)" },
+      { value: 2, label: "2 — Géométrique (blanc et bleu)" },
+      { value: 3, label: "3 — Émeraude (blanc et vert)" },
+      { value: 4, label: "4 — Art déco (bleu nuit, éventails)" },
+    ],
+  },
+  { champ: "modele_recu", label: "Reçu / fiche de paiement", options: MODELES_STANDARD },
+  { champ: "modele_fiche_inscription", label: "Fiche d'inscription", options: MODELES_STANDARD },
+  { champ: "modele_certificat", label: "Certificat de scolarité", options: MODELES_STANDARD },
+];
 
 export default function EcoleDetailPage() {
   const { id } = useParams<{ id: string }>();
@@ -55,6 +78,10 @@ export default function EcoleDetailPage() {
   const [desactivees, setDesactivees] = useState<Set<string>>(new Set());
   const [savingCouleurs, setSavingCouleurs] = useState(false);
   const [savingFonctionnalites, setSavingFonctionnalites] = useState(false);
+  const [modeles, setModeles] = useState<Record<ChampModele, number>>({
+    modele_bulletin: 5, modele_attestation: 1, modele_recu: 1, modele_fiche_inscription: 1, modele_certificat: 1,
+  });
+  const [savingModeles, setSavingModeles] = useState(false);
 
   // Création d'un compte Administrateur supplémentaire pour cette école (onglet Utilisateurs) —
   // la création de l'école elle-même n'en crée qu'un seul au départ.
@@ -81,8 +108,27 @@ export default function EcoleDetailPage() {
       setCouleurPrincipale(ecoleRes.data.couleur_principale || "#14304f");
       setCouleurSecondaire(ecoleRes.data.couleur_secondaire || "#b8860b");
       setDesactivees(new Set(ecoleRes.data.fonctionnalites_desactivees || []));
+      setModeles({
+        modele_bulletin: ecoleRes.data.modele_bulletin, modele_attestation: ecoleRes.data.modele_attestation,
+        modele_recu: ecoleRes.data.modele_recu, modele_fiche_inscription: ecoleRes.data.modele_fiche_inscription,
+        modele_certificat: ecoleRes.data.modele_certificat,
+      });
     }).finally(() => setLoading(false));
   }, [ecoleId]);
+
+  const handleSaveModeles = async () => {
+    if (!ecole) return;
+    setSavingModeles(true);
+    try {
+      const { data } = await ecolesApi.update(ecole.id, modeles);
+      setEcole(data);
+      toast.success("Modèles des documents enregistrés pour cette école.");
+    } catch (err) {
+      toast.error(extractErrorMessage(err));
+    } finally {
+      setSavingModeles(false);
+    }
+  };
 
   const handleSaveCouleurs = async () => {
     if (!ecole) return;
@@ -419,6 +465,30 @@ export default function EcoleDetailPage() {
 
       {tab === "personnalisation" && (
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+          <Card className="lg:col-span-2">
+            <h3 className="font-bold text-ink-900 mb-1">Modèles des documents</h3>
+            <p className="text-sm text-slate-500 mb-4">
+              Mise en page utilisée pour les documents PDF de cette école. Les bulletins, reçus, fiches et certificats
+              reprennent les couleurs ci-dessous ; les 4 attestations gardent les couleurs de leur modèle.
+            </p>
+            <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+              {MODELES_DOCUMENTS.map((doc) => (
+                <Select
+                  key={doc.champ}
+                  label={doc.label}
+                  value={modeles[doc.champ]}
+                  onChange={(e) => setModeles({ ...modeles, [doc.champ]: Number(e.target.value) })}
+                >
+                  {doc.options.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
+                </Select>
+              ))}
+            </div>
+            <div className="mt-4">
+              <Button onClick={handleSaveModeles} disabled={savingModeles}>
+                {savingModeles ? "Enregistrement…" : "Enregistrer les modèles"}
+              </Button>
+            </div>
+          </Card>
           <Card>
             <h3 className="font-bold text-ink-900 mb-1">Couleurs des documents</h3>
             <p className="text-sm text-slate-500 mb-4">
