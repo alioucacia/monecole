@@ -36,53 +36,66 @@ def _mois_entre(date_debut, date_fin):
 
 
 def _calculer_suivi_mensuel(eleve, annee_scolaire):
-    """Statut payé/partiel/non payé, mois par mois, des frais mensuels (scolarité...) d'un
-    élève sur une année scolaire — se base sur `Paiement.mois` (le mois qu'un paiement couvre),
-    à ne pas confondre avec `Paiement.date_paiement` (la date à laquelle il a été encaissé).
+    """Statut payé/partiel/non payé de CHAQUE mois de l'année scolaire (passés et à venir) pour
+    les frais mensuels (type de périodicité « Mensuel », ex : Mensualité/scolarité) d'un élève.
 
-    Le montant dû mensuel (`montant_mensuel_du`, somme des `Frais.montant_du` mensuels) tient
-    compte de la catégorie de paiement de l'élève et d'une éventuelle réduction fidélité — un
-    élève « Fondation 50% » ne doit ainsi que la moitié du tarif standard, un élève exonéré ou
-    inscription-seulement rien du tout (aucun mois n'est alors suivi, faute d'obligation à
-    respecter). Comme `Frais.montant_du` fige la réduction dès le premier paiement encaissé sur
-    le frais (`facteur_applique`), ce montant ne change plus rétroactivement pour un frais déjà
-    entamé — un mois déjà soldé au tarif en vigueur au moment du paiement reste soldé même si la
-    catégorie de l'élève change ensuite."""
-    frais_mensuels = list(Frais.objects.filter(
-        eleve=eleve, annee_scolaire=annee_scolaire, type_frais__est_mensuel=True
-    ))
+    Montant dû d'un mois = pour chaque type de frais mensuel, le `montant_du` du frais dont
+    l'échéance tombe dans ce mois (les écoles créent un frais par mois) ; un mois dont le frais
+    n'a pas encore été créé reste dû au même tarif mensuel (celui du frais de ce type le plus
+    proche) — sinon il disparaîtrait du suivi au lieu d'apparaître « Non payé ». `montant_du`
+    tient compte de la catégorie de paiement (Fondation 50 %...) : un élève exonéré (Fondation
+    gratuite, inscription seulement) n'a aucun mois à suivre.
+
+    Montant payé d'un mois = paiements sur ces frais dont `Paiement.mois` est ce mois, plus
+    (données anciennes) ceux sans mois précisé sur le frais dont l'échéance tombe ce mois-là.
+    `a_venir` : mois pas encore commencé (non compté dans les impayés)."""
+    frais_mensuels = list(
+        Frais.objects.filter(eleve=eleve, annee_scolaire=annee_scolaire, type_frais__est_mensuel=True)
+        .select_related("type_frais", "eleve").order_by("date_echeance")
+    )
     if not frais_mensuels:
         return []
 
-    montant_mensuel_du = sum((f.montant_du for f in frais_mensuels), Decimal("0"))
-    if montant_mensuel_du <= 0:
-        # Élève exonéré (Fondation gratuite, inscription/réinscription seulement) : aucune
-        # obligation mensuelle, donc aucun mois suivi — voir generer_pour_classe() qui, pour la
-        # même raison, ne crée même pas de Frais mensuel pour ces élèves.
-        return []
-    paiements = (
-        Paiement.objects.filter(frais__in=frais_mensuels, mois__isnull=False)
-        .values("mois").annotate(total=Sum("montant"))
-    )
-    paye_par_mois = {p["mois"]: p["total"] for p in paiements}
+    tous_les_mois = _mois_entre(annee_scolaire.date_debut, annee_scolaire.date_fin)
 
-    aujourdhui = date.today()
-    fin = min(annee_scolaire.date_fin, aujourdhui)
-    if annee_scolaire.date_debut > fin:
-        return []
+    # Montant dû par mois, type de frais par type de frais.
+    du_par_mois = {mois: Decimal("0") for mois in tous_les_mois}
+    par_type: dict[int, list[Frais]] = {}
+    for f in frais_mensuels:
+        par_type.setdefault(f.type_frais_id, []).append(f)
+    for frais_du_type in par_type.values():
+        par_mois_echeance = {}
+        for f in frais_du_type:
+            par_mois_echeance.setdefault(f.date_echeance.replace(day=1), []).append(f)
+        for mois in tous_les_mois:
+            if mois in par_mois_echeance:
+                du_par_mois[mois] += sum((f.montant_du for f in par_mois_echeance[mois]), Decimal("0"))
+            else:
+                reference = min(frais_du_type, key=lambda f: abs((f.date_echeance.replace(day=1) - mois).days))
+                du_par_mois[mois] += reference.montant_du
 
+    if all(du <= 0 for du in du_par_mois.values()):
+        return []  # élève exonéré de mensualité : rien à suivre
+
+    paye_par_mois = {mois: Decimal("0") for mois in tous_les_mois}
+    for p in Paiement.objects.filter(frais__in=frais_mensuels).select_related("frais"):
+        mois = p.mois or p.frais.date_echeance.replace(day=1)
+        if mois in paye_par_mois:
+            paye_par_mois[mois] += p.montant
+
+    mois_courant = date.today().replace(day=1)
     resultat = []
-    for mois in _mois_entre(annee_scolaire.date_debut, fin):
-        paye = paye_par_mois.get(mois, Decimal("0"))
-        if paye <= 0:
-            statut = "non_paye"
-        elif paye < montant_mensuel_du:
+    for mois in tous_les_mois:
+        du, paye = du_par_mois[mois], paye_par_mois[mois]
+        if du <= 0 or paye >= du:
+            statut = "paye"
+        elif paye > 0:
             statut = "partiel"
         else:
-            statut = "paye"
+            statut = "non_paye"
         resultat.append({
-            "mois": mois.strftime("%Y-%m"), "montant_du": montant_mensuel_du,
-            "montant_paye": paye, "statut": statut,
+            "mois": mois.strftime("%Y-%m"), "montant_du": du, "montant_paye": paye,
+            "reste": max(du - paye, Decimal("0")), "statut": statut, "a_venir": mois > mois_courant,
         })
     return resultat
 

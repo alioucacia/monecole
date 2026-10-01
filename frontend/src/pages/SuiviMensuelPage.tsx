@@ -13,6 +13,10 @@ const STATUT_BADGE: Record<string, { label: string; color: "green" | "amber" | "
   non_paye: { label: "Non payé", color: "rose" },
 };
 
+function montant(value: string | number) {
+  return Number(value).toLocaleString("fr-FR");
+}
+
 function moisLabel(mois: string) {
   // "2026-09" -> "Sept. 2026"
   const [annee, m] = mois.split("-");
@@ -106,7 +110,8 @@ export default function SuiviMensuelPage() {
             <Table headers={["Élève", "Matricule", "Catégorie", "Mois impayés", ...tousLesMois.map(moisLabel)]}>
               {suivi.eleves.map((e) => {
                 const parMois = new Map(e.mois.map((m) => [m.mois, m]));
-                const nbImpayes = e.mois.filter((m) => m.statut === "non_paye").length;
+                // Seuls les mois échus comptent comme impayés — les mois à venir restent affichés.
+                const nbImpayes = e.mois.filter((m) => m.statut === "non_paye" && !m.a_venir).length;
                 const nbPartiels = e.mois.filter((m) => m.statut === "partiel").length;
                 return (
                   <tr key={e.eleve_id}>
@@ -141,9 +146,20 @@ export default function SuiviMensuelPage() {
                     {tousLesMois.map((mois) => {
                       const m = parMois.get(mois);
                       return (
-                        <td key={mois} className="px-2 py-2.5 text-center">
+                        <td key={mois} className="px-2 py-2.5 text-center whitespace-nowrap">
                           {m ? (
-                            <Badge color={STATUT_BADGE[m.statut].color}>{STATUT_BADGE[m.statut].label}</Badge>
+                            <div
+                              className="flex flex-col items-center gap-0.5"
+                              title={`Payé ${montant(m.montant_paye)} / ${montant(m.montant_du)} GNF`}
+                            >
+                              <Badge color={STATUT_BADGE[m.statut].color}>{STATUT_BADGE[m.statut].label}</Badge>
+                              <span className="text-[10px] text-slate-500">
+                                {montant(m.montant_paye)} / {montant(m.montant_du)}
+                              </span>
+                              {m.statut === "partiel" && (
+                                <span className="text-[10px] font-semibold text-amber-600">reste {montant(m.reste)}</span>
+                              )}
+                            </div>
                           ) : (
                             <span className="text-slate-300 text-xs">—</span>
                           )}

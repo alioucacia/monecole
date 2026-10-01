@@ -757,7 +757,10 @@ export interface SuiviMensuelMois {
   mois: string;
   montant_du: string;
   montant_paye: string;
+  reste: string;
   statut: "paye" | "partiel" | "non_paye";
+  /** Mois pas encore commencé — affiché mais pas compté dans les impayés. */
+  a_venir: boolean;
 }
 
 export interface SuiviMensuelEleve {
