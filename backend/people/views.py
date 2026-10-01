@@ -592,26 +592,6 @@ def _qr_data_uri(text):
     return f"data:image/png;base64,{base64.b64encode(_qr_png_bytes(text)).decode()}"
 
 
-def _barcode_data_uri(value):
-    """Code128 (scannable) du matricule, affiché sous forme de code-barres sur la carte élève —
-    comme sur une carte d'identité scolaire imprimée classique."""
-    import barcode
-    from barcode.writer import ImageWriter
-
-    code = barcode.get("code128", value, writer=ImageWriter())
-    buffer = BytesIO()
-    code.write(buffer, options={"write_text": False, "module_height": 9.0, "quiet_zone": 1.0})
-    return f"data:image/png;base64,{base64.b64encode(buffer.getvalue()).decode()}"
-
-
-# Résolution (pixels par mm) utilisée pour précalculer la taille cible d'une image recadrée
-# avant incrustation dans un PDF (voir _image_data_uri/_redimensionner_image) — largement
-# suffisant pour une netteté correcte à l'impression sur les petits cadres concernés (photos
-# d'identité, logos), sans alourdir inutilement le PDF (surtout pour les documents groupés :
-# badges/fiches de toute une classe, une image par élève).
-PX_PAR_MM = 10
-
-
 def _mm_px(largeur_mm, hauteur_mm):
     return (round(largeur_mm * PX_PAR_MM), round(hauteur_mm * PX_PAR_MM))
 
@@ -708,28 +688,6 @@ def _ecole_nom(user):
     return user.ecole.nom if user.ecole_id else "Taly-School"
 
 
-def _taille_police_ecole_badge(nom: str) -> int:
-    """Taille de police (en px) du nom de l'école sur la carte élève — réduite pour les noms
-    longs afin qu'ils tiennent toujours sur une seule ligne. Un retour à la ligne y est mal géré
-    par xhtml2pdf/reportlab dans ce gabarit : la ligne suivante ignore l'indentation de sa
-    cellule et chevauche le blason — mieux vaut donc réduire la police que risquer ce rendu
-    cassé (voir _badge_eleve_style.html/_badge_eleve_card.html).
-
-    Valeurs ENTIÈRES uniquement (pas de décimale, ex: 11 plutôt que 11.5) : un `font-size`
-    fractionnaire dans un `style=""` inline fait planter le parseur CSS de xhtml2pdf
-    (`TypeError: sequence item 1: expected str instance, tuple found`, confirmé en conditions
-    réelles — les badges élève/PVC ne se généraient plus du tout, pour quasiment toutes les
-    écoles, avant ce correctif)."""
-    longueur = len(nom or "")
-    if longueur <= 22:
-        return 11
-    if longueur <= 30:
-        return 9
-    if longueur <= 40:
-        return 8
-    return 7
-
-
 def _couleurs_ecole(ecole, modele=1):
     """Couleurs + modèle de mise en page personnalisés par le Super Admin pour les documents
     PDF de cette école — voir `Ecole.couleur_principale`/`couleur_secondaire` et les 4 champs
@@ -786,32 +744,32 @@ def _badge_verify_url(token):
     return f"{settings.FRONTEND_URL}/verifier-badge/{token}"
 
 
-_CARTES_PAR_LIGNE = 2
-_CARTES_PAR_PAGE = 8  # 2 colonnes x 4 lignes
+_CARTES_PAR_LIGNE = 3
+_CARTES_PAR_PAGE = 9  # 3 colonnes x 3 lignes (cartes portrait 54 × 85,6 mm)
 
 
 def _grille_badges_html(cartes_html: list[str]) -> str:
     """Arrange des cartes déjà rendues (HTML de `_badge_eleve_card.html`) en pages A4 de
-    8 (2 colonnes x 4 lignes), avec un saut de page entre chaque page pleine — voir les
+    9 (3 colonnes x 3 lignes), avec un saut de page entre chaque page pleine — voir les
     classes `.grille`/`.carte-cell`/... dans `_badge_eleve_style.html`."""
     pages = []
     for debut_page in range(0, len(cartes_html), _CARTES_PAR_PAGE):
         cartes_page = cartes_html[debut_page:debut_page + _CARTES_PAR_PAGE]
-        lignes = ['<tr><td colspan="5" class="marge-haut"></td></tr>']
+        lignes = ['<tr><td colspan="7" class="marge-haut"></td></tr>']
         for debut_ligne in range(0, len(cartes_page), _CARTES_PAR_LIGNE):
             cartes_ligne = cartes_page[debut_ligne:debut_ligne + _CARTES_PAR_LIGNE]
             # La dernière page peut être incomplète : on complète la ligne avec des
             # cellules vides pour garder la grille alignée (rien n'est imprimé dedans).
             while len(cartes_ligne) < _CARTES_PAR_LIGNE:
                 cartes_ligne = [*cartes_ligne, "&nbsp;"]
-            cellule_1, cellule_2 = cartes_ligne
+            c1, c2, c3 = cartes_ligne
             lignes.append(
                 f'<tr><td class="marge-page"></td>'
-                f'<td class="carte-cell">{cellule_1}</td>'
-                f'<td class="colonne-gap"></td>'
-                f'<td class="carte-cell">{cellule_2}</td>'
+                f'<td class="carte-cell">{c1}</td><td class="colonne-gap"></td>'
+                f'<td class="carte-cell">{c2}</td><td class="colonne-gap"></td>'
+                f'<td class="carte-cell">{c3}</td>'
                 f'<td class="marge-page"></td></tr>'
-                f'<tr><td colspan="5" class="ligne-gap"></td></tr>'
+                f'<tr><td colspan="7" class="ligne-gap"></td></tr>'
             )
         style = ' style="page-break-before: always;"' if pages else ""
         pages.append(f'<table class="grille"{style}>{"".join(lignes)}</table>')
@@ -819,34 +777,32 @@ def _grille_badges_html(cartes_html: list[str]) -> str:
 
 
 def _contexte_badge_eleve(badge):
-    """Variables du template de carte élève (badge_eleve_pdf.html / badges_classe_pdf.html)
-    pour un badge donné — centralisé pour que le PDF individuel et le PDF groupé par
-    classe restent toujours identiques, carte par carte."""
+    """Variables des gabarits de carte élève (badge_eleve_pdf.html, carte PVC reportlab,
+    badges_classe_pdf.html) pour un badge donné — centralisé pour que la carte individuelle, la
+    carte PVC et la planche d'une classe restent identiques. La carte elle-même est une image
+    dessinée par `people.carte_eleve` (`carte_data_uri`) : xhtml2pdf ne sait pas dessiner les
+    vagues, la photo ronde ni les formes superposées du modèle."""
+    from .carte_eleve import carte_eleve_data_uri
+
     eleve = badge.eleve
     nom_complet = eleve.user.get_full_name()
     annee = _annee_active(eleve.user)
-    ecole = eleve.user.ecole
-    return {
+    ecole = eleve.user.ecole if eleve.user.ecole_id else None
+    contexte = {
         "nom_complet": nom_complet,
         "initiales": _initials(nom_complet),
         "matricule": eleve.matricule,
-        "nom_pere": eleve.nom_pere,
-        "nom_mere": eleve.nom_mere,
         "date_naissance": eleve.user.date_of_birth.strftime("%d/%m/%Y") if eleve.user.date_of_birth else None,
-        "age": _age(eleve.user.date_of_birth),
         "classe": eleve.classe.nom if eleve.classe else None,
         "ecole_nom": _ecole_nom(eleve.user),
-        "ecole_nom_taille": _taille_police_ecole_badge(_ecole_nom(eleve.user)),
-        "ecole_adresse": ecole.adresse if ecole else "",
-        "ecole_initiale": _initials(_ecole_nom(eleve.user)),
-        "logo_data_uri": _image_data_uri(ecole.logo, _mm_px(9, 9), mode="contain") if ecole else None,
         "annee_scolaire": annee.libelle if annee else "",
         "valid_upto": annee.date_fin.strftime("%d/%m/%Y") if annee else None,
-        "photo_data_uri": _image_data_uri(eleve.user.photo, _mm_px(26, 32)),
-        "qr_data_uri": _qr_data_uri(_badge_verify_url(badge.qr_token)),
-        "barcode_data_uri": _barcode_data_uri(eleve.matricule),
+        "photo": eleve.user.photo,
+        "logo": ecole.logo if ecole else None,
+        "qr_png": _qr_png_bytes(_badge_verify_url(badge.qr_token)),
         **_couleurs_ecole(ecole, ecole.modele_badge if ecole else 1),
     }
+    return {**contexte, "carte_data_uri": carte_eleve_data_uri(contexte)}
 
 
 class EleveBadgeViewSet(viewsets.ModelViewSet):
@@ -881,13 +837,25 @@ class EleveBadgeViewSet(viewsets.ModelViewSet):
 
     @action(detail=True, methods=["get"], url_path="pdf-pvc")
     def pdf_pvc(self, request, pk=None):
-        """Même badge, mais au format carte plastique PVC standard CR80 (85,6 × 54 mm) — page PDF
+        """Même carte, au format carte plastique PVC standard CR80 (54 × 85,6 mm, portrait) — page PDF
         à la taille exacte de la carte, prête à imprimer directement sur une carte vierge avec une
         imprimante à cartes (Evolis, Zebra...), sans découpe ni mise à l'échelle."""
+        from reportlab.lib.units import mm
+        from reportlab.lib.utils import ImageReader
+        from reportlab.pdfgen import canvas
+
+        from .carte_eleve import carte_eleve_png
+
         badge = self.get_object()
-        html = render_to_string("people/badge_eleve_pvc_pdf.html", _contexte_badge_eleve(badge))
+        # Dessiné directement avec reportlab (pas via xhtml2pdf, qui rétrécit l'image et laisse
+        # une marge blanche) : la carte couvre exactement la page 54 × 85,6 mm.
         buffer = BytesIO()
-        pisa.CreatePDF(html, dest=buffer, encoding="utf-8")
+        largeur, hauteur = 54 * mm, 85.6 * mm
+        pdf = canvas.Canvas(buffer, pagesize=(largeur, hauteur))
+        pdf.setTitle(f"Carte élève {badge.eleve.matricule}")
+        pdf.drawImage(ImageReader(BytesIO(carte_eleve_png(_contexte_badge_eleve(badge)))), 0, 0, largeur, hauteur)
+        pdf.showPage()
+        pdf.save()
         response = HttpResponse(buffer.getvalue(), content_type="application/pdf")
         response["Content-Disposition"] = f'attachment; filename="badge_pvc_{badge.eleve.matricule}.pdf"'
         return response

@@ -43,7 +43,7 @@ function BadgeCard({
         <button className="text-xs font-semibold text-brand-700 hover:underline" onClick={onShowQr}>QR</button>
         <button className="text-xs font-semibold text-brand-700 hover:underline" onClick={onDownload}>Badge PDF</button>
         {onDownloadPvc && (
-          <button className="text-xs font-semibold text-brand-700 hover:underline" onClick={onDownloadPvc} title="Format carte PVC CR80 (85,6×54mm), taille exacte">
+          <button className="text-xs font-semibold text-brand-700 hover:underline" onClick={onDownloadPvc} title="Format carte PVC CR80 (54×85,6mm, portrait), taille exacte">
             💳 Format PVC
           </button>
         )}
