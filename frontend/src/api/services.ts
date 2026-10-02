@@ -321,11 +321,29 @@ export const elevesApi = {
     const form = new FormData();
     form.append("fichier", fichier);
     form.append("debut", String(debut));
-    return api.post<{ crees: number; total_lignes: number; suivant: number | null; erreurs: { ligne: number; message: string }[] }>(
+    return api.post<{ crees: number; total_lignes: number; suivant: number | null; erreurs: { ligne: number; message: string }[]; ignores: DoublonImportEleve[] }>(
+      "/people/eleves/import-excel/", form, { headers: { "Content-Type": "multipart/form-data" } }
+    );
+  },
+  /** Analyse d'un fichier d'import AVANT création : liste les élèves déjà inscrits (doublons)
+   * pour proposer de les ignorer et d'importer seulement les autres. Ne crée rien. */
+  analyserImportExcel: (fichier: File) => {
+    const form = new FormData();
+    form.append("fichier", fichier);
+    form.append("analyse", "1");
+    return api.post<{ total_lignes: number; a_importer: number; doublons: DoublonImportEleve[] }>(
       "/people/eleves/import-excel/", form, { headers: { "Content-Type": "multipart/form-data" } }
     );
   },
 };
+
+/** Ligne d'un import Excel correspondant à un élève déjà inscrit (même nom, prénom, filiation
+ * et contact) — `matricule` : celui de l'élève existant, ou « ligne N du fichier ». */
+export interface DoublonImportEleve {
+  ligne: number;
+  nom: string;
+  matricule: string;
+}
 
 export const enseignantsApi = {
   list: (params?: Record<string, unknown>) => api.get<Paginated<EnseignantProfile> | EnseignantProfile[]>("/people/enseignants/", { params }),

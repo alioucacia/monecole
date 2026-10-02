@@ -458,7 +458,12 @@ class EleveProfileViewSet(viewsets.ModelViewSet):
         n'est pas épuisé, puis renvoie `suivant` (index où reprendre, `None` une fois terminé).
         Le frontend renvoie le même fichier avec `debut=suivant` jusqu'à la fin — sans ça, un
         import de plusieurs milliers d'élèves (≈0,3 s par ligne : création du compte + e-mail/SMS)
-        dépassait le délai de 30 s de nginx/gunicorn et s'interrompait vers la 85e ligne."""
+        dépassait le délai de 30 s de nginx/gunicorn et s'interrompait vers la 85e ligne.
+
+        Doublons : un élève déjà inscrit (même prénom, nom, filiation et contact) n'est jamais
+        recréé — il est listé dans `ignores`, à part des vraies erreurs. Avec `analyse=1`, rien
+        n'est créé : la réponse liste seulement ces doublons, pour que l'admin choisisse en
+        connaissance de cause d'ignorer les déjà inscrits et d'importer les autres."""
         fichier = request.FILES.get("fichier")
         if not fichier:
             raise ValidationError("Le paramètre 'fichier' (fichier .xlsx) est requis.")
@@ -483,6 +488,7 @@ class EleveProfileViewSet(viewsets.ModelViewSet):
             raise ValidationError("Le paramètre 'debut' doit être un entier.")
         crees = 0
         erreurs = []
+        ignores = []
         # Le mot de passe par défaut est le même pour tous les élèves importés : son hachage
         # (volontairement lent) n'est calculé qu'une fois par lot — voir
         # EleveProfileWriteSerializer.create.
@@ -497,6 +503,10 @@ class EleveProfileViewSet(viewsets.ModelViewSet):
                 "user__phone", "user__email", "matricule",
             )
         }
+
+        if str(request.data.get("analyse", "")).lower() in ("1", "true"):
+            return Response(_analyser_doublons_import(lignes, existants))
+
         echeance = time.monotonic() + self.BUDGET_IMPORT_SECONDES
         suivant = None
 
@@ -557,12 +567,10 @@ class EleveProfileViewSet(viewsets.ModelViewSet):
                 payload["phone"], payload["email"],
             )
             if cle in existants:
-                erreurs.append({
+                ignores.append({
                     "ligne": num_ligne,
-                    "message": (
-                        f"Doublon : {payload['first_name']} {payload['last_name']} (même filiation et contact) "
-                        f"est déjà inscrit — matricule {existants[cle]}. Ligne ignorée."
-                    ),
+                    "nom": f"{payload['first_name']} {payload['last_name']}",
+                    "matricule": existants[cle],
                 })
                 continue
 
@@ -580,7 +588,10 @@ class EleveProfileViewSet(viewsets.ModelViewSet):
             except Exception as exc:  # noqa: BLE001 — une ligne en erreur ne doit jamais interrompre les suivantes
                 erreurs.append({"ligne": num_ligne, "message": str(exc)})
 
-        return Response({"crees": crees, "erreurs": erreurs, "total_lignes": len(lignes), "suivant": suivant})
+        return Response({
+            "crees": crees, "erreurs": erreurs, "ignores": ignores,
+            "total_lignes": len(lignes), "suivant": suivant,
+        })
 
     @action(detail=False, methods=["post"], url_path="suppression-groupee", permission_classes=[IsAdmin])
     def suppression_groupee(self, request):
@@ -847,6 +858,35 @@ def _cle_doublon_eleve(prenom, nom, nom_pere, nom_mere, telephone, email):
 
     chiffres = "".join(c for c in str(telephone or "") if c.isdigit())
     return (texte(prenom), texte(nom), texte(nom_pere), texte(nom_mere), chiffres, texte(email))
+
+
+def _analyser_doublons_import(lignes, existants):
+    """Repère, sans rien créer, les lignes d'un import Excel d'élèves déjà inscrits dans l'école
+    (`existants` : clé de doublon → matricule) ou répétées plus haut dans le même fichier."""
+    vus = dict(existants)
+    doublons = []
+    a_importer = 0
+    for index, ligne in enumerate(lignes):
+        if not ligne or all(valeur in (None, "") for valeur in ligne):
+            continue
+        valeurs = (list(ligne) + [None] * 12)[:12]
+        prenom, nom, telephone, email, nom_pere, nom_mere = (
+            valeurs[0], valeurs[1], valeurs[6], valeurs[7], valeurs[9], valeurs[10],
+        )
+        if not prenom or not nom:
+            continue  # signalée en erreur à l'import lui-même
+        num_ligne = index + 2
+        cle = _cle_doublon_eleve(prenom, nom, nom_pere, nom_mere, telephone, email)
+        if cle in vus:
+            doublons.append({
+                "ligne": num_ligne,
+                "nom": f"{str(prenom).strip()} {str(nom).strip()}",
+                "matricule": vus[cle],
+            })
+        else:
+            vus[cle] = f"ligne {num_ligne} du fichier"
+            a_importer += 1
+    return {"total_lignes": len(lignes), "a_importer": a_importer, "doublons": doublons}
 
 
 def _sans_accents(texte):

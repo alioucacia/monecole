@@ -1,7 +1,7 @@
 import { useEffect, useState, type FormEvent } from "react";
 import { Link, useLocation, useNavigate } from "react-router-dom";
 
-import { classesApi, elevesApi, typesFraisApi, unwrapList, usersApi } from "../api/services";
+import { classesApi, elevesApi, typesFraisApi, unwrapList, usersApi, type DoublonImportEleve } from "../api/services";
 import { extractBlobErrorMessage, extractErrorMessage } from "../api/client";
 import { Badge, Button, DeleteButton, EditButton, EmptyState, Input, Modal, PageHeader, RowActions, Select, Spinner, StatCard, Table } from "../components/ui";
 import { ClasseOptions, CycleSelect } from "../components/CycleSelect";
@@ -66,7 +66,10 @@ export default function StudentsPage() {
   const [exportingPdf, setExportingPdf] = useState(false);
   const [importModalOpen, setImportModalOpen] = useState(false);
   const [importing, setImporting] = useState(false);
-  const [importRapport, setImportRapport] = useState<{ crees: number; total_lignes: number; erreurs: { ligne: number; message: string }[] } | null>(null);
+  const [importRapport, setImportRapport] = useState<{ crees: number; total_lignes: number; erreurs: { ligne: number; message: string }[]; ignores: DoublonImportEleve[] } | null>(null);
+  // Fichier analysé contenant des élèves déjà inscrits : en attente du choix de l'admin
+  // (ignorer ces doublons et importer les autres, ou annuler) — voir handleImportFile.
+  const [importEnAttente, setImportEnAttente] = useState<{ fichier: File; a_importer: number; doublons: DoublonImportEleve[] } | null>(null);
   const [importError, setImportError] = useState("");
   // Lignes déjà traitées / total pendant un import par lots (voir handleImportFile).
   const [importProgression, setImportProgression] = useState<{ traitees: number; total: number } | null>(null);
@@ -297,10 +300,34 @@ export default function StudentsPage() {
     }
   };
 
+  // 1re étape : analyse du fichier (rien n'est créé). Sans doublon, l'import démarre aussitôt ;
+  // sinon l'admin voit la liste des élèves déjà inscrits et choisit de les ignorer pour
+  // importer les autres.
   const handleImportFile = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const fichier = e.target.files?.[0];
     e.target.value = "";
     if (!fichier) return;
+    setImporting(true);
+    setImportRapport(null);
+    setImportError("");
+    setImportEnAttente(null);
+    try {
+      const { data } = await elevesApi.analyserImportExcel(fichier);
+      if (data.doublons.length > 0) {
+        setImportEnAttente({ fichier, a_importer: data.a_importer, doublons: data.doublons });
+        setImporting(false);
+        return;
+      }
+    } catch (err) {
+      setImportError(extractErrorMessage(err));
+      setImporting(false);
+      return;
+    }
+    await lancerImport(fichier);
+  };
+
+  const lancerImport = async (fichier: File) => {
+    setImportEnAttente(null);
     setImporting(true);
     setImportRapport(null);
     setImportError("");
@@ -309,7 +336,7 @@ export default function StudentsPage() {
     // requête) et renvoie `suivant` tant qu'il reste des lignes : on relance avec le même
     // fichier jusqu'à la fin, en cumulant le rapport. En cas d'échec en cours de route, le
     // rapport partiel reste affiché — les élèves déjà créés le sont bel et bien.
-    const rapport = { crees: 0, total_lignes: 0, erreurs: [] as { ligne: number; message: string }[] };
+    const rapport = { crees: 0, total_lignes: 0, erreurs: [] as { ligne: number; message: string }[], ignores: [] as DoublonImportEleve[] };
     let debut: number | null = 0;
     try {
       while (debut !== null) {
@@ -317,9 +344,10 @@ export default function StudentsPage() {
         rapport.crees += data.crees;
         rapport.total_lignes = data.total_lignes;
         rapport.erreurs.push(...data.erreurs);
+        rapport.ignores.push(...(data.ignores ?? []));
         debut = data.suivant;
         setImportProgression({ traitees: debut ?? data.total_lignes, total: data.total_lignes });
-        setImportRapport({ ...rapport, erreurs: [...rapport.erreurs] });
+        setImportRapport({ ...rapport, erreurs: [...rapport.erreurs], ignores: [...rapport.ignores] });
       }
     } catch (err) {
       setImportError(extractErrorMessage(err));
@@ -341,7 +369,7 @@ export default function StudentsPage() {
               <>
                 <Button variant="secondary" onClick={handleExport} disabled={exporting}>{exporting ? "Export…" : "📤 Exporter CSV"}</Button>
                 <Button variant="secondary" onClick={handleExportPdf} disabled={exportingPdf}>{exportingPdf ? "Export…" : "🖨️ Exporter PDF"}</Button>
-                <Button variant="secondary" onClick={() => { setImportRapport(null); setImportError(""); setImportModalOpen(true); }}>📥 Importer Excel</Button>
+                <Button variant="secondary" onClick={() => { setImportRapport(null); setImportError(""); setImportEnAttente(null); setImportModalOpen(true); }}>📥 Importer Excel</Button>
               </>
             )}
             <Button onClick={openCreate}>+ Nouvel élève</Button>
@@ -720,10 +748,34 @@ export default function StudentsPage() {
 
           {importError && <p className="text-sm text-rose-600 bg-rose-50 border border-rose-100 rounded-xl px-3.5 py-2.5">{importError}</p>}
 
+          {importEnAttente && (
+            <div className="space-y-3 rounded-xl border border-amber-200 bg-amber-50 p-3.5">
+              <p className="text-sm font-semibold text-amber-800">
+                {importEnAttente.doublons.length} élève{importEnAttente.doublons.length > 1 ? "s" : ""} de ce fichier {importEnAttente.doublons.length > 1 ? "sont" : "est"} déjà inscrit{importEnAttente.doublons.length > 1 ? "s" : ""} (même nom, prénom, filiation et contact).
+              </p>
+              <div className="max-h-48 overflow-y-auto rounded-lg border border-amber-100 bg-white divide-y divide-amber-50">
+                {importEnAttente.doublons.map((d) => (
+                  <p key={d.ligne} className="px-3 py-1.5 text-xs text-slate-600">
+                    <strong>Ligne {d.ligne}</strong> — {d.nom} <span className="text-slate-400">({d.matricule})</span>
+                  </p>
+                ))}
+              </div>
+              <div className="flex flex-wrap justify-end gap-2">
+                <Button variant="secondary" onClick={() => setImportEnAttente(null)}>Annuler</Button>
+                <Button onClick={() => lancerImport(importEnAttente.fichier)} disabled={importEnAttente.a_importer === 0}>
+                  {importEnAttente.a_importer === 0
+                    ? "Aucun nouvel élève à importer"
+                    : `Ignorer les déjà inscrits et importer les ${importEnAttente.a_importer} autre${importEnAttente.a_importer > 1 ? "s" : ""}`}
+                </Button>
+              </div>
+            </div>
+          )}
+
           {importRapport && (
             <div className="space-y-2">
               <p className="text-sm font-semibold text-ink-900">
-                {importRapport.crees} élève{importRapport.crees > 1 ? "s" : ""} importé{importRapport.crees > 1 ? "s" : ""} sur {importRapport.total_lignes} ligne{importRapport.total_lignes > 1 ? "s" : ""}.
+                {importRapport.crees} élève{importRapport.crees > 1 ? "s" : ""} importé{importRapport.crees > 1 ? "s" : ""} sur {importRapport.total_lignes} ligne{importRapport.total_lignes > 1 ? "s" : ""}
+                {importRapport.ignores.length > 0 && <> — {importRapport.ignores.length} déjà inscrit{importRapport.ignores.length > 1 ? "s" : ""} ignoré{importRapport.ignores.length > 1 ? "s" : ""}</>}.
               </p>
               {importRapport.erreurs.length > 0 && (
                 <div className="max-h-48 overflow-y-auto rounded-xl border border-rose-100 bg-rose-50 divide-y divide-rose-100">
