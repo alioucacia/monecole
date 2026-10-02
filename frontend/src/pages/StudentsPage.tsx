@@ -68,6 +68,8 @@ export default function StudentsPage() {
   const [importing, setImporting] = useState(false);
   const [importRapport, setImportRapport] = useState<{ crees: number; total_lignes: number; erreurs: { ligne: number; message: string }[] } | null>(null);
   const [importError, setImportError] = useState("");
+  // Lignes déjà traitées / total pendant un import par lots (voir handleImportFile).
+  const [importProgression, setImportProgression] = useState<{ traitees: number; total: number } | null>(null);
   // Frais d'inscription réglé pour la classe choisie (voir TypeFrais.usage + TarifClasse) —
   // purement informatif ici : le frais lui-même reste créé à la main dans Paiements, comme
   // avant, ce chiffre sert juste de repère à l'admin au moment d'inscrire l'élève.
@@ -207,6 +209,38 @@ export default function StudentsPage() {
     reload();
   };
 
+  // Sélection par cases à cocher pour la suppression groupée (admin) — limitée à la page
+  // affichée et vidée dès que la liste change (page, filtre, recherche), pour ne jamais
+  // supprimer un élève coché qui n'est plus visible à l'écran.
+  const [selection, setSelection] = useState<Set<number>>(new Set());
+  const [suppressionEnCours, setSuppressionEnCours] = useState(false);
+  useEffect(() => setSelection(new Set()), [items]);
+  const toutCoche = items.length > 0 && items.every((e) => selection.has(e.id));
+  const basculerSelection = (id: number) => {
+    setSelection((prev) => {
+      const suivante = new Set(prev);
+      if (suivante.has(id)) suivante.delete(id); else suivante.add(id);
+      return suivante;
+    });
+  };
+  const basculerTout = () => setSelection(toutCoche ? new Set() : new Set(items.map((e) => e.id)));
+
+  const handleDeleteSelection = async () => {
+    const n = selection.size;
+    if (!n) return;
+    if (!(await confirmer(`Supprimer définitivement ${n} élève${n > 1 ? "s" : ""} sélectionné${n > 1 ? "s" : ""} ? Leurs comptes, notes, paiements et historiques seront supprimés.`, { danger: true }))) return;
+    setSuppressionEnCours(true);
+    try {
+      const { data } = await elevesApi.removeMany([...selection]);
+      toast.success(`${data.supprimes} élève${data.supprimes > 1 ? "s" : ""} supprimé${data.supprimes > 1 ? "s" : ""}.`);
+      reload();
+    } catch (err) {
+      toast.error(extractErrorMessage(err));
+    } finally {
+      setSuppressionEnCours(false);
+    }
+  };
+
   const handleToggleActif = async (eleve: EleveProfile) => {
     if (eleve.actif) {
       const motif = await demander(`Vous pouvez préciser le motif du départ de ${eleve.user.first_name} ${eleve.user.last_name}.`, {
@@ -270,14 +304,29 @@ export default function StudentsPage() {
     setImporting(true);
     setImportRapport(null);
     setImportError("");
+    setImportProgression(null);
+    // Le serveur traite le fichier par lots d'environ 15 s (au-delà, nginx/gunicorn coupent la
+    // requête) et renvoie `suivant` tant qu'il reste des lignes : on relance avec le même
+    // fichier jusqu'à la fin, en cumulant le rapport. En cas d'échec en cours de route, le
+    // rapport partiel reste affiché — les élèves déjà créés le sont bel et bien.
+    const rapport = { crees: 0, total_lignes: 0, erreurs: [] as { ligne: number; message: string }[] };
+    let debut: number | null = 0;
     try {
-      const { data } = await elevesApi.importExcel(fichier);
-      setImportRapport(data);
-      if (data.crees > 0) reload();
+      while (debut !== null) {
+        const { data } = await elevesApi.importExcel(fichier, debut);
+        rapport.crees += data.crees;
+        rapport.total_lignes = data.total_lignes;
+        rapport.erreurs.push(...data.erreurs);
+        debut = data.suivant;
+        setImportProgression({ traitees: debut ?? data.total_lignes, total: data.total_lignes });
+        setImportRapport({ ...rapport, erreurs: [...rapport.erreurs] });
+      }
     } catch (err) {
       setImportError(extractErrorMessage(err));
     } finally {
       setImporting(false);
+      setImportProgression(null);
+      if (rapport.crees > 0) reload();
     }
   };
 
@@ -340,11 +389,41 @@ export default function StudentsPage() {
         <EmptyState title="Aucun élève trouvé" />
       ) : (
         <>
-          <Table headers={statutFilter === "inactif"
-            ? ["Matricule", "Nom complet", "Classe", "Statut", "Motif / Date de départ", "Contact", "Actions"]
-            : ["Matricule", "Nom complet", "Classe", "Statut", "Parent", "Contact", "Actions"]}>
+          {isAdmin && selection.size > 0 && (
+            <div className="flex flex-wrap items-center justify-between gap-2 mb-3 rounded-xl border border-rose-100 bg-rose-50 px-4 py-2.5">
+              <span className="text-sm font-semibold text-rose-700">
+                {selection.size} élève{selection.size > 1 ? "s" : ""} sélectionné{selection.size > 1 ? "s" : ""}
+              </span>
+              <div className="flex gap-2">
+                <Button variant="secondary" onClick={() => setSelection(new Set())}>Désélectionner</Button>
+                <Button variant="danger" onClick={handleDeleteSelection} disabled={suppressionEnCours}>
+                  {suppressionEnCours ? "Suppression…" : "🗑️ Supprimer la sélection"}
+                </Button>
+              </div>
+            </div>
+          )}
+          <Table headers={[
+            ...(isAdmin ? [
+              <input
+                type="checkbox" checked={toutCoche} onChange={basculerTout} aria-label="Tout sélectionner"
+                className="h-4 w-4 rounded border-slate-300 accent-brand-600"
+              />,
+            ] : []),
+            ...(statutFilter === "inactif"
+              ? ["Matricule", "Nom complet", "Classe", "Statut", "Motif / Date de départ", "Contact", "Actions"]
+              : ["Matricule", "Nom complet", "Classe", "Statut", "Parent", "Contact", "Actions"]),
+          ]}>
             {items.map((eleve) => (
-              <tr key={eleve.id} className={eleve.actif ? undefined : "opacity-60"}>
+              <tr key={eleve.id} className={`${eleve.actif ? "" : "opacity-60"} ${selection.has(eleve.id) ? "bg-rose-50/60" : ""}`}>
+                {isAdmin && (
+                  <td className="px-4 py-3">
+                    <input
+                      type="checkbox" checked={selection.has(eleve.id)} onChange={() => basculerSelection(eleve.id)}
+                      aria-label={`Sélectionner ${eleve.user.first_name} ${eleve.user.last_name}`}
+                      className="h-4 w-4 rounded border-slate-300 accent-brand-600"
+                    />
+                  </td>
+                )}
                 <td className="px-4 py-3 font-mono text-xs text-slate-500">{eleve.matricule}</td>
                 <td className="px-4 py-3 font-medium text-slate-700">
                   <Link to={`/eleves/${eleve.id}`} className="flex items-center gap-2.5 hover:text-brand-700">
@@ -604,7 +683,8 @@ export default function StudentsPage() {
           <p className="text-sm text-slate-500">
             Remplissez le modèle (une ligne par élève), puis importez-le ici. Chaque ligne est traitée indépendamment :
             les lignes valides créent l'élève (matricule généré automatiquement si absent, identifiants envoyés par
-            email/SMS), les lignes en erreur sont listées ci-dessous pour correction.
+            email/SMS), les lignes en erreur sont listées ci-dessous pour correction. Un élève déjà inscrit avec les mêmes
+            nom, prénom, filiation (père et mère) et contact (téléphone et e-mail) est signalé comme doublon et n'est pas réimporté.
           </p>
 
           <Button variant="secondary" onClick={() => elevesApi.importExcelModele("modele_import_eleves.xlsx")}>
@@ -619,7 +699,24 @@ export default function StudentsPage() {
             />
           </label>
 
-          {importing && <div className="flex justify-center py-4"><Spinner /></div>}
+          {importing && (
+            <div className="space-y-2 py-2">
+              <div className="flex justify-center"><Spinner /></div>
+              {importProgression && (
+                <>
+                  <div className="h-2 rounded-full bg-slate-100 overflow-hidden">
+                    <div
+                      className="h-full bg-brand-500 transition-all"
+                      style={{ width: `${Math.round((importProgression.traitees / Math.max(importProgression.total, 1)) * 100)}%` }}
+                    />
+                  </div>
+                  <p className="text-xs text-center text-slate-500">
+                    {importProgression.traitees} / {importProgression.total} lignes traitées — gardez cette fenêtre ouverte jusqu'à la fin.
+                  </p>
+                </>
+              )}
+            </div>
+          )}
 
           {importError && <p className="text-sm text-rose-600 bg-rose-50 border border-rose-100 rounded-xl px-3.5 py-2.5">{importError}</p>}
 

@@ -1,5 +1,6 @@
 import base64
 import csv
+import time
 import unicodedata
 from datetime import date, datetime, timedelta
 from decimal import Decimal
@@ -10,6 +11,7 @@ import qrcode
 from openpyxl.utils import get_column_letter
 from PIL import Image
 from django.conf import settings
+from django.db import transaction
 from django.db.models import Q
 from django.http import HttpResponse
 from django.shortcuts import get_object_or_404
@@ -24,6 +26,7 @@ from rest_framework.views import APIView
 from xhtml2pdf import pisa
 
 from academics.models import Classe
+from accounts.models import User
 from accounts.permissions import (
     IsAdmin,
     IsAdminOrComptabilite,
@@ -433,6 +436,10 @@ class EleveProfileViewSet(viewsets.ModelViewSet):
         response["Content-Disposition"] = 'attachment; filename="modele_import_eleves.xlsx"'
         return response
 
+    # Bien en dessous du délai de 30 s de nginx/gunicorn, avec de la marge pour une dernière
+    # ligne lente (un envoi de SMS peut à lui seul prendre jusqu'à 10 s — voir people/sms.py).
+    BUDGET_IMPORT_SECONDES = 15
+
     @action(detail=False, methods=["post"], url_path="import-excel", permission_classes=[IsAdmin])
     def import_excel(self, request):
         """Import en masse d'élèves depuis un fichier Excel (.xlsx, voir `import_excel_modele`
@@ -444,12 +451,19 @@ class EleveProfileViewSet(viewsets.ModelViewSet):
 
         Ne s'arrête jamais à la première erreur : chaque ligne est traitée indépendamment, le
         rapport final liste les lignes créées et celles en échec avec leur motif, pour corriger
-        et réimporter seulement les lignes en erreur."""
+        et réimporter seulement les lignes en erreur.
+
+        Traitement PAR LOTS : chaque requête traite les lignes à partir de `debut` (index de
+        ligne de données, 0 par défaut) tant que le budget de temps `BUDGET_IMPORT_SECONDES`
+        n'est pas épuisé, puis renvoie `suivant` (index où reprendre, `None` une fois terminé).
+        Le frontend renvoie le même fichier avec `debut=suivant` jusqu'à la fin — sans ça, un
+        import de plusieurs milliers d'élèves (≈0,3 s par ligne : création du compte + e-mail/SMS)
+        dépassait le délai de 30 s de nginx/gunicorn et s'interrompait vers la 85e ligne."""
         fichier = request.FILES.get("fichier")
         if not fichier:
             raise ValidationError("Le paramètre 'fichier' (fichier .xlsx) est requis.")
         try:
-            classeur = openpyxl.load_workbook(fichier, data_only=True)
+            classeur = openpyxl.load_workbook(fichier, data_only=True, read_only=True)
         except Exception:
             raise ValidationError("Fichier illisible — vérifiez qu'il s'agit bien d'un fichier Excel (.xlsx) valide.")
         feuille = classeur.active
@@ -462,10 +476,35 @@ class EleveProfileViewSet(viewsets.ModelViewSet):
         regimes_valides = {valeur for valeur, _ in EleveProfile.Regime.choices}
 
         lignes = list(feuille.iter_rows(min_row=2, values_only=True))
+        classeur.close()
+        try:
+            debut = max(int(request.data.get("debut", 0) or 0), 0)
+        except (TypeError, ValueError):
+            raise ValidationError("Le paramètre 'debut' doit être un entier.")
         crees = 0
         erreurs = []
+        # Le mot de passe par défaut est le même pour tous les élèves importés : son hachage
+        # (volontairement lent) n'est calculé qu'une fois par lot — voir
+        # EleveProfileWriteSerializer.create.
+        contexte = {"request": request, "hachages_mot_de_passe": {}}
+        # Doublons : même prénom, nom, filiation (père + mère) et contact (téléphone + e-mail)
+        # qu'un élève déjà inscrit dans l'école — y compris un élève créé plus haut dans ce même
+        # fichier ou dans un lot précédent, déjà en base à ce stade.
+        existants = {
+            _cle_doublon_eleve(*valeurs): matricule
+            for *valeurs, matricule in EleveProfile.objects.filter(user__ecole=ecole).values_list(
+                "user__first_name", "user__last_name", "nom_pere", "nom_mere",
+                "user__phone", "user__email", "matricule",
+            )
+        }
+        echeance = time.monotonic() + self.BUDGET_IMPORT_SECONDES
+        suivant = None
 
-        for num_ligne, ligne in enumerate(lignes, start=2):
+        for index in range(debut, len(lignes)):
+            if index > debut and time.monotonic() >= echeance:
+                suivant = index
+                break
+            num_ligne, ligne = index + 2, lignes[index]
             if not ligne or all(valeur in (None, "") for valeur in ligne):
                 continue  # ligne vide (souvent en fin de feuille) — ignorée silencieusement
 
@@ -513,20 +552,63 @@ class EleveProfileViewSet(viewsets.ModelViewSet):
                 "address": str(adresse or "").strip(), "nom_pere": str(nom_pere or "").strip(),
                 "nom_mere": str(nom_mere or "").strip(), "regime": regime_valeur,
             }
-            serializer = EleveProfileWriteSerializer(data=payload, context={"request": request})
+            cle = _cle_doublon_eleve(
+                payload["first_name"], payload["last_name"], payload["nom_pere"], payload["nom_mere"],
+                payload["phone"], payload["email"],
+            )
+            if cle in existants:
+                erreurs.append({
+                    "ligne": num_ligne,
+                    "message": (
+                        f"Doublon : {payload['first_name']} {payload['last_name']} (même filiation et contact) "
+                        f"est déjà inscrit — matricule {existants[cle]}. Ligne ignorée."
+                    ),
+                })
+                continue
+
+            serializer = EleveProfileWriteSerializer(data=payload, context=contexte)
             if not serializer.is_valid():
                 premiere = next(iter(serializer.errors.values()))
                 erreurs.append({"ligne": num_ligne, "message": str(premiere[0] if isinstance(premiere, list) else premiere)})
                 continue
             try:
-                serializer.save()
+                eleve = serializer.save()
+                existants[cle] = eleve.matricule
                 crees += 1
             except ValidationError as exc:
                 erreurs.append({"ligne": num_ligne, "message": str(exc.detail[0] if isinstance(exc.detail, list) else exc.detail)})
             except Exception as exc:  # noqa: BLE001 — une ligne en erreur ne doit jamais interrompre les suivantes
                 erreurs.append({"ligne": num_ligne, "message": str(exc)})
 
-        return Response({"crees": crees, "erreurs": erreurs, "total_lignes": len(lignes)})
+        return Response({"crees": crees, "erreurs": erreurs, "total_lignes": len(lignes), "suivant": suivant})
+
+    @action(detail=False, methods=["post"], url_path="suppression-groupee", permission_classes=[IsAdmin])
+    def suppression_groupee(self, request):
+        """Supprime définitivement plusieurs élèves cochés dans la liste (`ids`), avec leur
+        compte de connexion — même effet que `perform_destroy`, en une requête. Les ids
+        d'une autre école sont ignorés (filtrés par `get_queryset`)."""
+        from accounts.models import JournalUtilisateur
+        from accounts.services import journaliser
+
+        ids = request.data.get("ids")
+        if not isinstance(ids, list) or not ids:
+            raise ValidationError("Le paramètre 'ids' (liste d'identifiants d'élèves) est requis.")
+        try:
+            ids = [int(i) for i in ids]
+        except (TypeError, ValueError):
+            raise ValidationError("Le paramètre 'ids' ne doit contenir que des identifiants numériques.")
+        eleves = self.get_queryset().filter(id__in=ids)
+        noms = [e.user.get_full_name() for e in eleves]
+        with transaction.atomic():
+            User.objects.filter(eleve_profile__in=eleves).delete()
+        if noms:
+            journaliser(
+                request.user, JournalUtilisateur.Categorie.ELEVE,
+                f"{len(noms)} fiche(s) élève supprimée(s) : {', '.join(noms[:20])}"
+                + (" …" if len(noms) > 20 else ""),
+                request,
+            )
+        return Response({"supprimes": len(noms)})
 
     @action(detail=True, methods=["post"], url_path="marquer-non-reinscrit", permission_classes=[IsAdminOrComptabilite])
     def marquer_non_reinscrit(self, request, pk=None):
@@ -754,6 +836,17 @@ def _age(date_naissance):
     if (aujourdhui.month, aujourdhui.day) < (date_naissance.month, date_naissance.day):
         age -= 1
     return age
+
+
+def _cle_doublon_eleve(prenom, nom, nom_pere, nom_mere, telephone, email):
+    """Clé de comparaison pour repérer un élève en double à l'import Excel : insensible à la
+    casse, aux accents et aux espaces superflus ; seuls les chiffres du téléphone comptent
+    (« 622 00 00 00 » = « 622000000 »)."""
+    def texte(valeur):
+        return " ".join(_sans_accents(str(valeur or "")).split())
+
+    chiffres = "".join(c for c in str(telephone or "") if c.isdigit())
+    return (texte(prenom), texte(nom), texte(nom_pere), texte(nom_mere), chiffres, texte(email))
 
 
 def _sans_accents(texte):

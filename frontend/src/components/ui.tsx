@@ -299,14 +299,14 @@ export function PageHeader({ title, description, actions }: { title: string; des
   );
 }
 
-export function Table({ headers, children }: { headers: string[]; children: ReactNode }) {
+export function Table({ headers, children }: { headers: ReactNode[]; children: ReactNode }) {
   return (
     <div className="overflow-x-auto rounded-2xl border border-slate-100 shadow-soft bg-white">
       <table className="min-w-full divide-y divide-slate-100 text-sm">
         <thead className="bg-brand-50/60">
           <tr>
-            {headers.map((h) => (
-              <th key={h} className="px-4 py-3.5 text-left font-bold text-brand-900/80 text-xs uppercase tracking-wide whitespace-nowrap">
+            {headers.map((h, i) => (
+              <th key={i} className="px-4 py-3.5 text-left font-bold text-brand-900/80 text-xs uppercase tracking-wide whitespace-nowrap">
                 {h}
               </th>
             ))}

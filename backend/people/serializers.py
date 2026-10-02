@@ -179,7 +179,17 @@ class EleveProfileWriteSerializer(serializers.ModelSerializer):
             ecole=ecole,
             **{k: v for k, v in user_data.items() if v not in ("", None)},
         )
-        user.set_password(password)
+        # Import Excel en masse (voir EleveProfileViewSet.import_excel) : le hachage, coûteux par
+        # conception, n'est calculé qu'une fois pour un même mot de passe et réutilisé — sans
+        # incidence sur la sécurité ici, le mot de passe par défaut est commun à tous et doit de
+        # toute façon être changé à la première connexion (`doit_changer_mot_de_passe`).
+        hachages = self.context.get("hachages_mot_de_passe")
+        if hachages is not None and password in hachages:
+            user.password = hachages[password]
+        else:
+            user.set_password(password)
+            if hachages is not None:
+                hachages[password] = user.password
         user.doit_changer_mot_de_passe = True
         user.save()
         eleve = EleveProfile.objects.create(user=user, **validated_data)

@@ -292,6 +292,8 @@ export const elevesApi = {
   create: (data: Record<string, unknown>) => api.post<EleveProfile>("/people/eleves/", toFormData(data), multipartHeaders),
   update: (id: number, data: Record<string, unknown>) => api.patch<EleveProfile>(`/people/eleves/${id}/`, toFormData(data), multipartHeaders),
   remove: (id: number) => api.delete(`/people/eleves/${id}/`),
+  /** Suppression définitive de plusieurs élèves cochés dans la liste (admin uniquement). */
+  removeMany: (ids: number[]) => api.post<{ supprimes: number }>("/people/eleves/suppression-groupee/", { ids }),
   exportCsv: (params?: Record<string, unknown>) => downloadFile("/people/eleves/export/", params || {}, "eleves.csv"),
   exportPdf: (params?: Record<string, unknown>) => downloadFile("/people/eleves/export-pdf/", params || {}, "eleves.pdf"),
   // Le frais de réinscription (s'il y en a un) est désormais résolu et créé automatiquement côté
@@ -312,11 +314,14 @@ export const elevesApi = {
   /** Modèle Excel (.xlsx) à remplir pour l'import en masse — voir importExcel. */
   importExcelModele: (filename: string) => downloadFile("/people/eleves/import-excel-modele/", {}, filename),
   /** Import en masse d'élèves depuis un fichier Excel (.xlsx) — chaque ligne est traitée
-   * indépendamment, la réponse liste les lignes créées et celles en échec avec leur motif. */
-  importExcel: (fichier: File) => {
+   * indépendamment, la réponse liste les lignes créées et celles en échec avec leur motif.
+   * Traité par lots (limite de 30 s par requête côté serveur) : renvoyer le même fichier avec
+   * `debut = suivant` tant que `suivant` n'est pas null. */
+  importExcel: (fichier: File, debut = 0) => {
     const form = new FormData();
     form.append("fichier", fichier);
-    return api.post<{ crees: number; total_lignes: number; erreurs: { ligne: number; message: string }[] }>(
+    form.append("debut", String(debut));
+    return api.post<{ crees: number; total_lignes: number; suivant: number | null; erreurs: { ligne: number; message: string }[] }>(
       "/people/eleves/import-excel/", form, { headers: { "Content-Type": "multipart/form-data" } }
     );
   },
