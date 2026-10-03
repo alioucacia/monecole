@@ -1,6 +1,6 @@
 import csv
 from datetime import date, datetime
-from decimal import Decimal, InvalidOperation
+from decimal import ROUND_HALF_UP, Decimal, InvalidOperation
 from io import BytesIO
 
 import openpyxl
@@ -246,12 +246,55 @@ def _calculer_suivi_mensuel(eleve, annee_scolaire, frais=None, periodes=None, ca
     return resultat
 
 
-def _suivi_inscription(frais):
+def _tarifs_inscription(eleve, annee_scolaire) -> dict[str, Decimal]:
+    """Montant de l'inscription et de la réinscription (TypeFrais.usage) pour la classe de
+    l'élève : tarif de la classe pour l'année s'il y en a un, sinon le montant standard du type."""
+    tarifs = {}
+    for usage in USAGES_INSCRIPTION:
+        type_frais = TypeFrais.objects.filter(ecole_id=eleve.user.ecole_id, usage=usage).first()
+        if not type_frais:
+            continue
+        tarif = None
+        if eleve.classe_id:
+            tarif = TarifClasse.objects.filter(
+                type_frais=type_frais, classe_id=eleve.classe_id, annee_scolaire=annee_scolaire,
+            ).values_list("montant", flat=True).first()
+        tarifs[usage] = tarif if tarif is not None else type_frais.montant_standard
+    return tarifs
+
+
+def _suivi_inscription(frais, eleve=None, annee_scolaire=None, cache_tarifs=None):
     """Frais d'inscription ou de réinscription de l'année (colonne qui remplace Septembre dans le
-    suivi mensuel) — `None` si l'élève n'en a pas."""
+    suivi mensuel). Si l'élève n'en a pas encore (frais pas créé), il reste dû — « Non payé » —
+    au tarif de sa réinscription (élève au statut « Réinscription ») ou de son inscription ;
+    `None` seulement sans élève/année pour le calculer."""
     frais_inscription = [f for f in frais if f.type_frais.usage in USAGES_INSCRIPTION]
     if not frais_inscription:
-        return None
+        if eleve is None or annee_scolaire is None:
+            return None
+        cle = ("inscription", eleve.classe_id, annee_scolaire.id)
+        if cache_tarifs is not None and cle in cache_tarifs:
+            tarifs = cache_tarifs[cle]
+        else:
+            tarifs = _tarifs_inscription(eleve, annee_scolaire)
+            if cache_tarifs is not None:
+                cache_tarifs[cle] = tarifs
+        reinscription = eleve.statut_inscription == eleve.StatutInscription.REINSCRIPTION
+        usage = TypeFrais.Usage.REINSCRIPTION if reinscription else TypeFrais.Usage.INSCRIPTION
+        tarif = tarifs.get(usage)
+        if tarif is None:  # type de ce statut non paramétré : on se rabat sur l'autre
+            tarif = next(iter(tarifs.values()), None)
+        du = (
+            (tarif * eleve.facteur_inscription_reinscription).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
+            if tarif is not None else Decimal("0")
+        )
+        return {
+            "libelle": "Réinscription" if reinscription else "Inscription",
+            "montant_du": du, "montant_paye": Decimal("0"), "reste": du,
+            # Aucun montant paramétré : rien n'est payé pour autant. Exonéré (Fondation 100 %) :
+            # rien à payer.
+            "statut": "non_paye" if tarif is None or du > 0 else "paye",
+        }
     du = sum((f.montant_du for f in frais_inscription), Decimal("0"))
     paye = sum((_total_paye(f) for f in frais_inscription), Decimal("0"))
     reinscription = any(f.type_frais.usage == TypeFrais.Usage.REINSCRIPTION for f in frais_inscription)
@@ -848,7 +891,7 @@ class FraisViewSet(viewsets.ModelViewSet):
             "eleve_id": eleve.id, "eleve_nom": eleve.user.get_full_name(),
             "categorie_paiement": eleve.categorie_paiement, "categorie_paiement_display": eleve.get_categorie_paiement_display(),
             "annee_scolaire": annee.libelle, "mois": _calculer_suivi_mensuel(eleve, annee, frais=frais),
-            "inscription": _suivi_inscription(frais),
+            "inscription": _suivi_inscription(frais, eleve, annee),
         })
 
     def _grille_suivi_mensuel(self, request) -> dict:
@@ -893,7 +936,7 @@ class FraisViewSet(viewsets.ModelViewSet):
                 "mois": _calculer_suivi_mensuel(
                     e, annee, frais=frais_par_eleve[e.id], periodes=periodes, cache_tarifs=cache_tarifs,
                 ),
-                "inscription": _suivi_inscription(frais_par_eleve[e.id]),
+                "inscription": _suivi_inscription(frais_par_eleve[e.id], e, annee, cache_tarifs),
             }
             for e in eleves
         ]
