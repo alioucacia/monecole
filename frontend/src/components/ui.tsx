@@ -247,11 +247,12 @@ export function Modal({
   open, onClose, title, children, wide = false,
 }: { open: boolean; onClose: () => void; title: string; children: ReactNode; wide?: boolean }) {
   if (!open) return null;
+  // Un clic à côté de la fenêtre (sur le fond) ne la ferme PAS — seulement × ou ses propres
+  // boutons — pour ne jamais perdre une saisie en cours par un clic malencontreux.
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-ink-950/50 backdrop-blur-sm p-4 animate-fade-in-up" onClick={onClose}>
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-ink-950/50 backdrop-blur-sm p-4 animate-fade-in-up">
       <div
         className={`bg-white rounded-2xl shadow-2xl w-full ${wide ? "max-w-3xl" : "max-w-lg"} max-h-[90vh] overflow-y-auto animate-pop-in`}
-        onClick={(e) => e.stopPropagation()}
       >
         <div className="flex items-center justify-between border-b border-slate-100 px-6 py-4">
           <h3 className="text-lg font-bold text-ink-900">{title}</h3>

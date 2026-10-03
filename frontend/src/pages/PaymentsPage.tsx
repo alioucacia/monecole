@@ -74,6 +74,13 @@ const PERIODICITE_LABELS: Record<PeriodiciteFrais, string> = {
 
 const ORDINAUX = ["1ère", "2ème", "3ème", "4ème", "5ème", "6ème"];
 
+/** Valeur de « Tranche d'échéance » pour un type propre à une tranche (« 2ème Tranche ») quand
+ * l'année n'a pas de période correspondante — la tranche vient alors du type lui-même. */
+const TRANCHE_DU_TYPE = "type";
+/** Premier mois de chaque tranche (1ère : Octobre, 2ème : Janvier, 3ème : Avril — voir
+ * payments.views.MOIS_PAR_TRANCHE) : échéance par défaut d'un type « N-ième Tranche ». */
+const DEBUT_TRANCHE = ["10", "01", "04"];
+
 /** "2026-09" (valeur d'un <input type="month">) → "2026-09-01" attendu par l'API. */
 function moisInputVersDate(moisInput: string) {
   return moisInput ? `${moisInput}-01` : "";
@@ -337,19 +344,22 @@ export default function PaymentsPage() {
 
   const typeFraisSelectionne = types.find((t) => t.id === Number(fraisForm.type_frais));
 
-  // Type propre à une tranche (« 2ème Tranche ») : sa tranche d'échéance est imposée — la N-ième
-  // période de l'année — et présélectionnée dès que le type et l'année sont choisis.
+  // Type propre à une tranche (« 2ème Tranche ») : sa tranche d'échéance est imposée et
+  // présélectionnée — sans dépendre des périodes de l'année (Paramètres → Périodes) : la tranche
+  // est donnée par le type lui-même. Échéance : fin de la N-ième période si elle existe, sinon
+  // début de la tranche (voir DEBUT_TRANCHE).
   const numeroTrancheType = typeFraisSelectionne?.periodicite === "trimestriel" ? typeFraisSelectionne.numero_tranche : null;
-  const periodesEcheance = numeroTrancheType
-    ? periodesAnnee.slice(numeroTrancheType - 1, numeroTrancheType)
-    : periodesAnnee;
+  const periodeTrancheType = numeroTrancheType ? periodesAnnee[numeroTrancheType - 1] : undefined;
   useEffect(() => {
     if (!numeroTrancheType) return;
-    const periode = periodesAnnee[numeroTrancheType - 1];
+    const annee = annees.find((a) => a.id === Number(fraisForm.annee_scolaire));
+    const debut = DEBUT_TRANCHE[numeroTrancheType - 1];
     setFraisForm((f) => ({
-      ...f, trimestre_echeance: periode ? String(periode.id) : "", date_echeance: periode ? periode.date_fin : f.date_echeance,
+      ...f, trimestre_echeance: periodeTrancheType ? String(periodeTrancheType.id) : TRANCHE_DU_TYPE,
+      date_echeance: periodeTrancheType ? periodeTrancheType.date_fin : annee && debut ? echeanceDuMois(annee, debut) : f.date_echeance,
     }));
-  }, [numeroTrancheType, periodesAnnee]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [numeroTrancheType, periodeTrancheType, fraisForm.annee_scolaire]);
 
   // Montant proposé pour "Nouveau frais" : reprend le tarif spécifique à la classe de l'élève
   // choisi (voir Paiements → 💰 Tarifs par classe / TarifClasse) s'il y en a un pour ce type de
@@ -784,22 +794,22 @@ export default function PaymentsPage() {
                 date_echeance: periode ? periode.date_fin : fraisForm.date_echeance,
               });
             }}>
-              <option value="">
-                {periodesEcheance.length === 0
-                  ? numeroTrancheType
-                    ? `— Aucune ${ORDINAUX[numeroTrancheType - 1] || `${numeroTrancheType}ème`} tranche configurée pour cette année —`
-                    : "— Aucune tranche configurée pour cette année —"
-                  : "— Choisir une tranche —"}
-              </option>
-              {periodesEcheance.map((p) => {
-                // Rang réel de la période dans l'année (pas dans la liste filtrée).
-                const rang = periodesAnnee.indexOf(p);
-                return (
-                  <option key={p.id} value={p.id}>
-                    {ORDINAUX[rang] || `${rang + 1}ème`} Tranche{fraisForm.montant ? ` — ${Number(fraisForm.montant).toLocaleString("fr-FR")} GNF` : ""}
+              {numeroTrancheType ? (
+                <option value={periodeTrancheType ? String(periodeTrancheType.id) : TRANCHE_DU_TYPE}>
+                  {ORDINAUX[numeroTrancheType - 1] || `${numeroTrancheType}ème`} Tranche{fraisForm.montant ? ` — ${Number(fraisForm.montant).toLocaleString("fr-FR")} GNF` : ""}
+                </option>
+              ) : (
+                <>
+                  <option value="">
+                    {periodesAnnee.length === 0 ? "— Aucune tranche configurée pour cette année —" : "— Choisir une tranche —"}
                   </option>
-                );
-              })}
+                  {periodesAnnee.map((p, i) => (
+                    <option key={p.id} value={p.id}>
+                      {ORDINAUX[i] || `${i + 1}ème`} Tranche{fraisForm.montant ? ` — ${Number(fraisForm.montant).toLocaleString("fr-FR")} GNF` : ""}
+                    </option>
+                  ))}
+                </>
+              )}
             </Select>
           )}
           {typeFraisSelectionne?.periodicite === "annuel" && (
@@ -881,7 +891,17 @@ export default function PaymentsPage() {
                 </p>
               </div>
             )}
-            {paiementTarget.type_frais_periodicite === "trimestriel" && (
+            {paiementTarget.type_frais_periodicite === "trimestriel" && paiementTarget.type_frais_numero_tranche && (
+              // Frais propre à une tranche : rien à choisir, le versement lui est imputé (le
+              // serveur le rattache à la N-ième période si elle existe).
+              <p className="text-sm text-slate-600">
+                Tranche payée :{" "}
+                <span className="font-semibold">
+                  {ORDINAUX[paiementTarget.type_frais_numero_tranche - 1] || `${paiementTarget.type_frais_numero_tranche}ème`} Tranche
+                </span>
+              </p>
+            )}
+            {paiementTarget.type_frais_periodicite === "trimestriel" && !paiementTarget.type_frais_numero_tranche && (
               <div>
                 <Select
                   label="Tranche payée"
@@ -890,9 +910,7 @@ export default function PaymentsPage() {
                   onChange={(e) => setPaiementForm({ ...paiementForm, periode: e.target.value })}
                 >
                   <option value="">— Choisir la tranche —</option>
-                  {periodesPaiement.map((p, i) => ({ p, i }))
-                    .filter(({ i }) => !paiementTarget.type_frais_numero_tranche || i === paiementTarget.type_frais_numero_tranche - 1)
-                    .map(({ p, i }) => {
+                  {periodesPaiement.map((p, i) => {
                     const statut = statutPeriodePourFrais(paiementTarget, p.id);
                     return (
                       <option key={p.id} value={p.id} disabled={statut === "paye"}>

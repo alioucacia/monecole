@@ -36,10 +36,10 @@ function moisLabelLong(mois: string) {
 /** Cellule payé / partiel / non payé, commune aux mois et à l'inscription. */
 function CelluleStatut({ ligne, note }: { ligne: SuiviMensuelMois | SuiviMensuelInscription; note?: string }) {
   return (
-    <div className="flex flex-col items-center gap-0.5" title={`Payé ${montant(ligne.montant_paye)} / ${montant(ligne.montant_du)} GNF`}>
+    <div className="flex flex-col items-center gap-0.5" title={`Payé ${money(ligne.montant_paye)} / ${money(ligne.montant_du)}`}>
       <Badge color={STATUT_BADGE[ligne.statut].color}>{STATUT_BADGE[ligne.statut].label}</Badge>
       <span className="text-[10px] text-slate-500">
-        {montant(ligne.montant_paye)} / {money(ligne.montant_du)}
+        {money(ligne.montant_paye)} / {money(ligne.montant_du)}
       </span>
       {ligne.statut === "partiel" && (
         <span className="text-[10px] font-semibold text-amber-600">reste {money(ligne.reste)}</span>
@@ -111,7 +111,26 @@ export default function SuiviMensuelPage() {
   const tousLesMois = suivi?.mois ?? [];
   const moisAffiches = moisFiltre ? tousLesMois.filter((m) => m === moisFiltre) : tousLesMois;
   const avecInscription = !moisFiltre;
-  const plusieursClasses = !classeId;
+
+  // Total payé / reste d'un élève sur les colonnes affichées (inscription + mois, ou le seul mois
+  // filtré) — affichés devant les mois, et cumulés en bas du tableau.
+  const totauxEleve = (e: SuiviMensuelClasse["eleves"][number]) => {
+    const lignes: (SuiviMensuelMois | SuiviMensuelInscription)[] = [
+      ...(avecInscription && e.inscription ? [e.inscription] : []),
+      ...e.mois.filter((m) => moisAffiches.includes(m.mois)),
+    ];
+    return {
+      paye: lignes.reduce((total, l) => total + Number(l.montant_paye), 0),
+      reste: lignes.reduce((total, l) => total + Number(l.reste), 0),
+    };
+  };
+  const totauxGeneraux = (suivi?.eleves ?? []).reduce(
+    (acc, e) => {
+      const t = totauxEleve(e);
+      return { paye: acc.paye + t.paye, reste: acc.reste + t.reste };
+    },
+    { paye: 0, reste: 0 },
+  );
   const aSuivre = suivi?.eleves.some((e) => e.mois.length > 0 || e.inscription) ?? false;
 
   return (
@@ -167,15 +186,23 @@ export default function SuiviMensuelPage() {
           </p>
           <div className="overflow-x-auto">
             <Table headers={[
-              "Élève", ...(plusieursClasses ? ["Classe"] : []), "Mois impayés",
-              ...(avecInscription ? ["Inscription / Réinscription"] : []),
+              "Élève", "Mois impayés", "Total payé", "Reste",
+              // Titre sur deux lignes : sur une seule, il élargissait la colonne bien au-delà de
+              // celles des mois.
+              ...(avecInscription ? [<span className="block text-center leading-tight">Inscription /<br />Réinscription</span>] : []),
               ...moisAffiches.map(moisLabel),
             ]}>
               {suivi.eleves.map((e) => {
                 const parMois = new Map(e.mois.map((m) => [m.mois, m]));
-                // Seuls les mois échus comptent comme impayés — les mois à venir restent affichés.
+                // « À jour » seulement si TOUT est réglé : un mois non payé, même pas encore échu,
+                // ou une inscription non soldée empêche l'indice « à jour ». Les mois échus non
+                // payés (impayés) restent distingués de ceux à venir.
                 const nbImpayes = e.mois.filter((m) => m.statut === "non_paye" && !m.a_venir).length;
+                const nbAVenir = e.mois.filter((m) => m.statut === "non_paye" && m.a_venir).length;
                 const nbPartiels = e.mois.filter((m) => m.statut === "partiel").length;
+                const inscriptionDue = !!e.inscription && e.inscription.statut !== "paye";
+                const aJour = nbImpayes === 0 && nbAVenir === 0 && nbPartiels === 0 && !inscriptionDue;
+                const totaux = totauxEleve(e);
                 return (
                   <tr key={e.eleve_id}>
                     <td className="px-4 py-2.5 font-medium text-slate-700 whitespace-nowrap">
@@ -188,16 +215,21 @@ export default function SuiviMensuelPage() {
                         📄
                       </button>
                     </td>
-                    {plusieursClasses && <td className="px-4 py-2.5 text-xs text-slate-500 whitespace-nowrap">{e.classe_nom || "—"}</td>}
                     <td className="px-4 py-2.5 whitespace-nowrap">
-                      {nbImpayes === 0 && nbPartiels === 0 ? (
+                      {aJour ? (
                         <span className="text-emerald-600 text-xs">✓ à jour</span>
                       ) : (
                         <div className="flex gap-1.5">
                           {nbImpayes > 0 && <Badge color="rose">{nbImpayes} impayé{nbImpayes > 1 ? "s" : ""}</Badge>}
                           {nbPartiels > 0 && <Badge color="amber">{nbPartiels} partiel{nbPartiels > 1 ? "s" : ""}</Badge>}
+                          {nbAVenir > 0 && <Badge color="slate">{nbAVenir} non payé{nbAVenir > 1 ? "s" : ""} à venir</Badge>}
+                          {inscriptionDue && <Badge color="rose">{e.inscription?.libelle} non soldée</Badge>}
                         </div>
                       )}
+                    </td>
+                    <td className="px-4 py-2.5 whitespace-nowrap text-sm font-semibold text-emerald-700">{money(totaux.paye)}</td>
+                    <td className={`px-4 py-2.5 whitespace-nowrap text-sm font-semibold ${totaux.reste > 0 ? "text-rose-600" : "text-slate-400"}`}>
+                      {money(totaux.reste)}
                     </td>
                     {avecInscription && (
                       <td className="px-2 py-2.5 text-center whitespace-nowrap">
@@ -219,6 +251,13 @@ export default function SuiviMensuelPage() {
                   </tr>
                 );
               })}
+              <tr className="bg-slate-50 font-bold border-t-2 border-slate-200">
+                <td className="px-4 py-3 text-ink-900 whitespace-nowrap">Total ({suivi.eleves.length} élève{suivi.eleves.length > 1 ? "s" : ""})</td>
+                <td className="px-4 py-3" />
+                <td className="px-4 py-3 whitespace-nowrap text-emerald-700">{money(totauxGeneraux.paye)}</td>
+                <td className="px-4 py-3 whitespace-nowrap text-rose-600">{money(totauxGeneraux.reste)}</td>
+                <td className="px-4 py-3" colSpan={(avecInscription ? 1 : 0) + moisAffiches.length} />
+              </tr>
             </Table>
           </div>
         </>

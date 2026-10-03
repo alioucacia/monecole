@@ -60,11 +60,9 @@ export function PdfPreviewModal({
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-ink-950/60 backdrop-blur-sm p-4 animate-fade-in-up" onClick={onClose}>
-      <div
-        className="bg-white rounded-2xl shadow-2xl w-full max-w-4xl h-[92vh] flex flex-col overflow-hidden animate-pop-in"
-        onClick={(e) => e.stopPropagation()}
-      >
+    // Pas de fermeture au clic sur le fond (voir Modal dans ui.tsx) — bouton × uniquement.
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-ink-950/60 backdrop-blur-sm p-4 animate-fade-in-up">
+      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-4xl h-[92vh] flex flex-col overflow-hidden animate-pop-in">
         <div className="flex items-center justify-between border-b border-slate-100 px-6 py-4 shrink-0">
           <div className="min-w-0">
             <h3 className="text-lg font-bold text-ink-900 truncate">{title}</h3>

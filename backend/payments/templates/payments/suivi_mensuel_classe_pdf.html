@@ -23,6 +23,9 @@
     .note { font-size: 7px; color: #475569; }
     .vide { color: #94a3b8; }
     .a_jour { color: #166534; }
+    td.total { font-weight: bold; white-space: nowrap; color: #166534; }
+    td.reste { color: #991b1b; }
+    tr.ligne-total td { background-color: #f1f5f9; font-weight: bold; font-size: 9px; border-top: 2px solid #94a3b8; }
     .footer { margin-top: 10px; font-size: 8px; color: #6b7280; text-align: right; }
     .legende { margin-top: 6px; font-size: 8px; color: #475569; }
 </style>
@@ -40,8 +43,9 @@
         <thead>
             <tr>
                 <th class="gauche">Élève</th>
-                {% if avec_classe %}<th class="gauche">Classe</th>{% endif %}
                 <th>Mois impayés</th>
+                <th>Total payé</th>
+                <th>Reste</th>
                 {% if avec_inscription %}<th>Inscription / Réinscription</th>{% endif %}
                 {% for entete in entetes_mois %}<th>{{ entete }}</th>{% endfor %}
             </tr>
@@ -50,20 +54,23 @@
             {% for ligne in lignes %}
             <tr>
                 <td class="gauche">{{ ligne.eleve_nom }}</td>
-                {% if avec_classe %}<td class="gauche">{{ ligne.classe_nom|default:"—" }}</td>{% endif %}
                 <td>
-                    {% if ligne.nb_impayes or ligne.nb_partiels %}
-                        {% if ligne.nb_impayes %}{{ ligne.nb_impayes }} impayé{{ ligne.nb_impayes|pluralize }}{% endif %}
-                        {% if ligne.nb_partiels %}{% if ligne.nb_impayes %}<br/>{% endif %}{{ ligne.nb_partiels }} partiel{{ ligne.nb_partiels|pluralize }}{% endif %}
+                    {% if ligne.nb_impayes or ligne.nb_partiels or ligne.nb_a_venir or ligne.inscription_due %}
+                        {% if ligne.nb_impayes %}{{ ligne.nb_impayes }} impayé{{ ligne.nb_impayes|pluralize }}<br/>{% endif %}
+                        {% if ligne.nb_partiels %}{{ ligne.nb_partiels }} partiel{{ ligne.nb_partiels|pluralize }}<br/>{% endif %}
+                        {% if ligne.nb_a_venir %}{{ ligne.nb_a_venir }} non payé{{ ligne.nb_a_venir|pluralize }} à venir<br/>{% endif %}
+                        {% if ligne.inscription_due %}{{ ligne.inscription.libelle }} non soldée{% endif %}
                     {% else %}
                         <span class="a_jour">À jour</span>
                     {% endif %}
                 </td>
+                <td class="total">{{ ligne.total_paye|floatformat:"0g" }} GNF</td>
+                <td class="total{% if ligne.reste %} reste{% endif %}">{{ ligne.reste|floatformat:"0g" }} GNF</td>
                 {% if avec_inscription %}
                     {% if ligne.inscription %}
                     <td class="{{ ligne.inscription.statut }}">
                         <span class="statut">{% if ligne.inscription.statut == "paye" %}Payé{% elif ligne.inscription.statut == "partiel" %}Partiel{% else %}Non payé{% endif %}</span><br/>
-                        <span class="montants">{{ ligne.inscription.montant_paye|floatformat:"0g" }} / {{ ligne.inscription.montant_du|floatformat:"0g" }}</span><br/>
+                        <span class="montants">{{ ligne.inscription.montant_paye|floatformat:"0g" }} GNF / {{ ligne.inscription.montant_du|floatformat:"0g" }} GNF</span><br/>
                         <span class="note">{{ ligne.inscription.libelle }}</span>
                     </td>
                     {% else %}
@@ -74,7 +81,7 @@
                     {% if m %}
                     <td class="{{ m.statut }}">
                         <span class="statut">{% if m.statut == "paye" %}Payé{% elif m.statut == "partiel" %}Partiel{% else %}Non payé{% endif %}</span><br/>
-                        <span class="montants">{{ m.montant_paye|floatformat:"0g" }} / {{ m.montant_du|floatformat:"0g" }}</span>
+                        <span class="montants">{{ m.montant_paye|floatformat:"0g" }} GNF / {{ m.montant_du|floatformat:"0g" }} GNF</span>
                         {% if m.couvert_par %}<br/><span class="note">{{ m.couvert_par }}</span>{% endif %}
                     </td>
                     {% else %}
@@ -83,10 +90,17 @@
                 {% endfor %}
             </tr>
             {% endfor %}
+            <tr class="ligne-total">
+                <td class="gauche">Total ({{ total }} élève{{ total|pluralize }})</td>
+                <td></td>
+                <td class="total">{{ total_paye|floatformat:"0g" }} GNF</td>
+                <td class="total reste">{{ total_reste|floatformat:"0g" }} GNF</td>
+                <td colspan="{{ nb_colonnes_mois }}"></td>
+            </tr>
         </tbody>
     </table>
 
-    <p class="legende">Montants en GNF : payé / dû. Mensualités d'Octobre à Juin ; Septembre est le mois de l'inscription / réinscription.</p>
+    <p class="legende">Montants : payé / dû. Total payé et Reste portent sur les colonnes imprimées. Mensualités d'Octobre à Juin ; Septembre est le mois de l'inscription / réinscription.</p>
     <p class="footer">Édité le {{ date_edition|date:"d/m/Y à H:i" }}</p>
 </body>
 </html>

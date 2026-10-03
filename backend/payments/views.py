@@ -898,7 +898,7 @@ class FraisViewSet(viewsets.ModelViewSet):
             for e in eleves
         ]
         return {
-            "classe": libelle, "annee_scolaire": annee.libelle, "par_classe": bool(classe_id),
+            "classe": libelle, "annee_scolaire": annee.libelle,
             "mois": [m.strftime("%Y-%m") for m in _mois_mensualite(annee)],
             "eleves": data,
         }
@@ -906,9 +906,7 @@ class FraisViewSet(viewsets.ModelViewSet):
     @action(detail=False, methods=["get"], url_path="suivi-mensuel-classe")
     def suivi_mensuel_classe(self, request):
         """Grille de suivi mensuel — voir `_grille_suivi_mensuel`."""
-        grille = self._grille_suivi_mensuel(request)
-        grille.pop("par_classe")
-        return Response(grille)
+        return Response(self._grille_suivi_mensuel(request))
 
     @action(detail=False, methods=["get"], url_path="suivi-mensuel-classe-pdf")
     def suivi_mensuel_classe_pdf(self, request):
@@ -929,13 +927,25 @@ class FraisViewSet(viewsets.ModelViewSet):
             return f"{noms[int(numero) - 1]} {annee}"
 
         lignes = []
+        total_paye = total_reste = Decimal("0")
         for e in grille["eleves"]:
             par_mois = {m["mois"]: m for m in e["mois"]}
+            # Total payé / reste sur les colonnes imprimées (inscription + mois, ou le mois filtré).
+            colonnes = [par_mois[m] for m in mois_affiches if m in par_mois]
+            if not mois_filtre and e["inscription"]:
+                colonnes.append(e["inscription"])
+            paye = sum((c["montant_paye"] for c in colonnes), Decimal("0"))
+            reste = sum((c["reste"] for c in colonnes), Decimal("0"))
+            total_paye += paye
+            total_reste += reste
             lignes.append({
+                "total_paye": paye, "reste": reste,
                 "eleve_nom": e["eleve_nom"], "classe_nom": e["classe_nom"],
                 "inscription": e["inscription"],
                 "nb_impayes": sum(1 for m in e["mois"] if m["statut"] == "non_paye" and not m["a_venir"]),
+                "nb_a_venir": sum(1 for m in e["mois"] if m["statut"] == "non_paye" and m["a_venir"]),
                 "nb_partiels": sum(1 for m in e["mois"] if m["statut"] == "partiel"),
+                "inscription_due": bool(e["inscription"]) and e["inscription"]["statut"] != "paye",
                 "mois": [par_mois.get(m) for m in mois_affiches],
             })
 
@@ -944,8 +954,9 @@ class FraisViewSet(viewsets.ModelViewSet):
             "titre": grille["classe"], "annee_scolaire": grille["annee_scolaire"],
             "mois_filtre": libelle_mois(mois_filtre, mois_longs) if mois_filtre else "",
             "entetes_mois": [libelle_mois(m, mois_courts) for m in mois_affiches],
-            "avec_inscription": not mois_filtre, "avec_classe": not grille["par_classe"],
-            "lignes": lignes, "total": len(lignes),
+            "avec_inscription": not mois_filtre,
+            "lignes": lignes, "total": len(lignes), "total_paye": total_paye, "total_reste": total_reste,
+            "nb_colonnes_mois": len(mois_affiches) + (0 if mois_filtre else 1),
             "date_edition": timezone.now(),
             "ecole_nom": ecole.nom if ecole else "Taly-School",
             "ecole_logo_data_uri": _image_data_uri(ecole.logo, _mm_px(15, 15), mode="contain") if ecole and ecole.logo else None,
