@@ -299,9 +299,6 @@ TWILIO_INDICATIF_DEFAUT = config("TWILIO_INDICATIF_DEFAUT", default="+224")
 TWILIO_WHATSAPP_FROM_NUMBER = config("TWILIO_WHATSAPP_FROM_NUMBER", default="")
 
 
-DJOMY_CLIENT_ID = os.getenv("DJOMY_CLIENT_ID")
-DJOMY_CLIENT_SECRET = os.getenv("DJOMY_CLIENT_SECRET")
-DJOMY_API_URL = os.getenv(
-    "DJOMY_API_URL",
-    "https://sandbox-api.djomy.africa"
-)
+DJOMY_CLIENT_ID = os.getenv("DJOMY_CLIENT_ID") or ""
+DJOMY_CLIENT_SECRET = os.getenv("DJOMY_CLIENT_SECRET") or ""
+DJOMY_API_URL = os.getenv("DJOMY_API_URL") or "https://sandbox-api.djomy.africa"

@@ -1,8 +1,43 @@
 import hashlib
 import hmac
+import logging
+
 import requests
 
 from django.conf import settings
+
+logger = logging.getLogger(__name__)
+
+# Délais courts : un paiement enchaîne authentification + appel Djomy dans la même requête HTTP,
+# qui doit rester sous la limite de 30 s de nginx/gunicorn (sinon l'admin voit une erreur
+# générique au lieu du vrai motif).
+TIMEOUT_AUTH = 10
+TIMEOUT_PAIEMENT = 15
+
+
+class DjomyNonConfigure(Exception):
+    pass
+
+
+def _verifier_configuration():
+    if not settings.DJOMY_CLIENT_ID or not settings.DJOMY_CLIENT_SECRET:
+        raise DjomyNonConfigure(
+            "le paiement en ligne n'est pas configuré sur le serveur (identifiants Djomy absents) — "
+            "contactez l'administrateur de la plateforme."
+        )
+
+
+def _lever_si_erreur(response):
+    """Comme `raise_for_status`, mais avec le motif renvoyé par Djomy (ex : numéro invalide,
+    identifiants refusés) plutôt qu'un simple « 400 Client Error »."""
+    if response.ok:
+        return
+    try:
+        corps = response.json()
+        motif = corps.get("message") or corps.get("error") or ""
+    except ValueError:
+        motif = ""
+    raise Exception(f"Djomy a refusé la demande (HTTP {response.status_code}){f' : {motif}' if motif else ''}")
 
 
 def _signature():
@@ -26,18 +61,19 @@ def _headers(access_token=None):
 
 
 def get_access_token():
+    _verifier_configuration()
     url = f"{settings.DJOMY_API_URL.rstrip('/')}/v1/auth"
 
     response = requests.post(
         url,
         headers=_headers(),
-        timeout=20,
+        timeout=TIMEOUT_AUTH,
     )
 
-    print("Djomy status:", response.status_code)
-    print("Djomy response:", response.text)
+    # Jamais le corps de la réponse ici : il contient le jeton d'accès.
+    logger.info("Djomy auth : HTTP %s", response.status_code)
 
-    response.raise_for_status()
+    _lever_si_erreur(response)
 
     result = response.json()
 
@@ -66,15 +102,17 @@ def create_payment(amount, payer_number, description="Paiement TALY SCHOOL"):
         url,
         headers=_headers(token),
         json=payload,
-        timeout=30,
+        timeout=TIMEOUT_PAIEMENT,
     )
 
-    print("Djomy payment status:", response.status_code)
-    print("Djomy payment response:", response.text)
+    logger.info("Djomy paiement : HTTP %s — %s", response.status_code, response.text[:500])
 
-    response.raise_for_status()
+    _lever_si_erreur(response)
 
-    return response.json()
+    result = response.json()
+    if not (result.get("data") or {}).get("transactionId"):
+        raise Exception(result.get("message") or "réponse Djomy sans identifiant de transaction")
+    return result
 
 
 def get_payment_status(transaction_id):
@@ -85,13 +123,12 @@ def get_payment_status(transaction_id):
     response = requests.get(
         url,
         headers=_headers(token),
-        timeout=20,
+        timeout=TIMEOUT_AUTH,
     )
 
-    print("Djomy status check:", response.status_code)
-    print("Djomy status response:", response.text)
+    logger.info("Djomy statut : HTTP %s — %s", response.status_code, response.text[:500])
 
-    response.raise_for_status()
+    _lever_si_erreur(response)
 
     result = response.json()
 

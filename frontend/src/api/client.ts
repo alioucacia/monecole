@@ -253,7 +253,10 @@ function messageParStatut(status: number | undefined): string {
 export function extractErrorMessage(error: unknown): string {
   if (axios.isAxiosError(error)) {
     const status = error.response?.status;
-    if (status && status >= 500) return messageParStatut(status);
+    // Erreur serveur : le motif renvoyé s'il y en a un (ex : « Impossible d'initier le paiement
+    // Djomy : … », HTTP 502) — sinon le message générique. Une vraie panne (500) renvoie une
+    // page HTML, sans motif exploitable : le message générique s'affiche alors comme avant.
+    if (status && status >= 500) return messageDuCorps(error.response?.data) ?? messageParStatut(status);
     return messageDuCorps(error.response?.data) ?? messageParStatut(status);
   }
   return "Une erreur est survenue. Réessayez.";

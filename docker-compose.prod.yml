@@ -88,6 +88,35 @@ services:
       - BACKEND_PUBLIC_URL=${BACKEND_PUBLIC_URL:?définir BACKEND_PUBLIC_URL}
       - WEB_CONCURRENCY=${WEB_CONCURRENCY:-4}
       - WEB_THREADS=${WEB_THREADS:-4}
+      # Services externes — `.env.prod` n'est PAS copié dans l'image (voir backend/.dockerignore)
+      # et `--env-file` ne sert qu'à remplir les ${...} de CE fichier : une variable absente de
+      # cette liste n'arrive jamais au backend. Sans ces lignes, le paiement Djomy échouait en
+      # production faute d'identifiants (et les e-mails/SMS ne partaient pas). Valeurs par défaut
+      # identiques à celles de school_backend/settings.py.
+      - DJOMY_CLIENT_ID=${DJOMY_CLIENT_ID:-}
+      - DJOMY_CLIENT_SECRET=${DJOMY_CLIENT_SECRET:-}
+      - DJOMY_API_URL=${DJOMY_API_URL:-https://sandbox-api.djomy.africa}
+      - EMAIL_BACKEND=${EMAIL_BACKEND:-django.core.mail.backends.console.EmailBackend}
+      - EMAIL_HOST=${EMAIL_HOST:-localhost}
+      - EMAIL_PORT=${EMAIL_PORT:-587}
+      - EMAIL_USE_TLS=${EMAIL_USE_TLS:-True}
+      - EMAIL_HOST_USER=${EMAIL_HOST_USER:-}
+      - EMAIL_HOST_PASSWORD=${EMAIL_HOST_PASSWORD:-}
+      - DEFAULT_FROM_EMAIL=${DEFAULT_FROM_EMAIL:-no-reply@taly-school.com}
+      - SMS_PROVIDER=${SMS_PROVIDER:-}
+      - SMS_INDICATIF_DEFAUT=${SMS_INDICATIF_DEFAUT:-+224}
+      - NIMBA_SERVICE_ID=${NIMBA_SERVICE_ID:-}
+      - NIMBA_SECRET_TOKEN=${NIMBA_SECRET_TOKEN:-}
+      - NIMBASMS_SENDER_NAME=${NIMBASMS_SENDER_NAME:-TALY SCHOOL}
+      - INFOBIP_API_KEY=${INFOBIP_API_KEY:-}
+      - INFOBIP_BASE_URL=${INFOBIP_BASE_URL:-}
+      - INFOBIP_SENDER=${INFOBIP_SENDER:-TALY SCHOOL}
+      - TWILIO_ACCOUNT_SID=${TWILIO_ACCOUNT_SID:-}
+      - TWILIO_AUTH_TOKEN=${TWILIO_AUTH_TOKEN:-}
+      - TWILIO_FROM_NUMBER=${TWILIO_FROM_NUMBER:-}
+      - TWILIO_INDICATIF_DEFAUT=${TWILIO_INDICATIF_DEFAUT:-+224}
+      - TWILIO_WHATSAPP_FROM_NUMBER=${TWILIO_WHATSAPP_FROM_NUMBER:-}
+      - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY:-}
     depends_on:
       pgbouncer:
         condition: service_healthy
