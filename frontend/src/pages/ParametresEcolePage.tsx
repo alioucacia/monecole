@@ -25,6 +25,12 @@ function PayerAbonnementDjomySection({ ecole, onPaye }: { ecole: Ecole; onPaye: 
   const [modalOpen, setModalOpen] = useState(false);
   const [payerNumber, setPayerNumber] = useState("");
   const [periode, setPeriode] = useState<"mensuel" | "annuel">("mensuel");
+  // Plans d'abonnement paramétrés par le Super Admin : le montant payé est celui du plan choisi
+  // (présélection : le plan de l'école). Sans plan actif, repli sur Mensuel / Annuel.
+  const plans = ecole.plans_disponibles ?? [];
+  const [planId, setPlanId] = useState<number | null>(null);
+  const planChoisi = plans.find((p) => p.id === planId) ?? null;
+  const JOURS_PERIODICITE: Record<string, number> = { mensuel: 30, trimestriel: 90, annuel: 365 };
   const [error, setError] = useState("");
   const [initiating, setInitiating] = useState(false);
   const [transaction, setTransaction] = useState<TransactionAbonnement | null>(null);
@@ -53,6 +59,7 @@ function PayerAbonnementDjomySection({ ecole, onPaye }: { ecole: Ecole; onPaye: 
   const openModal = () => {
     setPayerNumber("");
     setPeriode("mensuel");
+    setPlanId((plans.find((p) => p.id === ecole.plan) ?? plans[0])?.id ?? null);
     setError("");
     setTransaction(null);
     setModalOpen(true);
@@ -63,7 +70,11 @@ function PayerAbonnementDjomySection({ ecole, onPaye }: { ecole: Ecole; onPaye: 
     setInitiating(true);
     setError("");
     try {
-      const { data } = await abonnementDjomyApi.payer(payerNumber, periode);
+      if (plans.length > 0 && !planChoisi) {
+        setError("Choisissez un plan d'abonnement.");
+        return;
+      }
+      const { data } = await abonnementDjomyApi.payer(payerNumber, planChoisi ? { plan: planChoisi.id } : { periode });
       setTransaction(data);
       if (data.redirect_url) window.open(data.redirect_url, "_blank", "noopener,noreferrer");
     } catch (err) {
@@ -106,6 +117,35 @@ function PayerAbonnementDjomySection({ ecole, onPaye }: { ecole: Ecole; onPaye: 
       <Modal open={modalOpen} onClose={() => setModalOpen(false)} title="Payer l'abonnement — Djomy">
         {!transaction ? (
           <form noValidate onSubmit={handleSubmit} className="space-y-4">
+            {plans.length > 0 ? (
+              <div>
+                <p className="text-sm font-medium text-ink-900 mb-2">Plan d'abonnement</p>
+                <div className="space-y-2">
+                  {plans.map((p) => (
+                    <button
+                      key={p.id}
+                      type="button"
+                      onClick={() => setPlanId(p.id)}
+                      className={`w-full text-left rounded-xl border px-3.5 py-2.5 transition ${
+                        planId === p.id ? "border-brand-600 bg-brand-50" : "border-slate-200 hover:border-slate-300"
+                      }`}
+                    >
+                      <span className="flex items-center justify-between gap-3">
+                        <span className="text-sm font-semibold text-ink-900">
+                          {p.nom}
+                          {p.id === ecole.plan && <span className="ml-1.5 text-xs font-medium text-brand-600">(votre plan)</span>}
+                        </span>
+                        <span className="text-sm font-bold text-ink-900 whitespace-nowrap">{Number(p.montant).toLocaleString("fr-FR")} GNF</span>
+                      </span>
+                      <span className="block text-xs text-slate-500 mt-0.5">
+                        {p.periodicite_display} — {JOURS_PERIODICITE[p.periodicite]} jours d'abonnement
+                        {p.description && ` · ${p.description}`}
+                      </span>
+                    </button>
+                  ))}
+                </div>
+              </div>
+            ) : (
             <div>
               <p className="text-sm font-medium text-ink-900 mb-2">Période à régler</p>
               <div className="grid grid-cols-2 gap-2">
@@ -129,16 +169,20 @@ function PayerAbonnementDjomySection({ ecole, onPaye }: { ecole: Ecole; onPaye: 
                 </button>
               </div>
             </div>
+            )}
             <p className="text-sm text-slate-500">
               Montant à régler :{" "}
               <span className="font-semibold text-ink-900">
-                {(Number(ecole.abonnement_mensuel) * (periode === "annuel" ? 12 : 1)).toLocaleString("fr-FR")} GNF
+                {(planChoisi
+                  ? Number(planChoisi.montant)
+                  : Number(ecole.abonnement_mensuel) * (periode === "annuel" ? 12 : 1)
+                ).toLocaleString("fr-FR")} GNF
               </span>
-              {periode === "annuel" && <span className="text-slate-400"> (12 mois)</span>}
             </p>
             <p className="text-xs text-slate-400">
               Dès que Djomy valide le paiement, l'abonnement est prolongé automatiquement de{" "}
-              {periode === "annuel" ? "365" : "30"} jours (à la suite des jours restants) — même si vous fermez cette page.
+              {planChoisi ? JOURS_PERIODICITE[planChoisi.periodicite] : periode === "annuel" ? 365 : 30} jours (à la suite des
+              jours restants) — même si vous fermez cette page.
             </p>
             <Input
               label="Numéro Mobile Money (payeur)" required placeholder="622000000"

@@ -16,6 +16,10 @@ export const ecolesApi = {
   create: (data: Record<string, unknown>) =>
     api.post<Ecole & { notification_admin?: NotificationAdmin }>("/tenants/ecoles/", toFormData(data), multipartHeaders),
   update: (id: number, data: Record<string, unknown>) => api.patch<Ecole>(`/tenants/ecoles/${id}/`, toFormData(data), multipartHeaders),
+  /** Super Admin : ajoute (ou retire, jours négatifs) des jours d'abonnement, ou fixe les jours
+   * restants (`mode: "fixer"`). */
+  ajusterAbonnement: (id: number, mode: "ajouter" | "fixer", jours: number) =>
+    api.post<Ecole>(`/tenants/ecoles/${id}/ajuster-abonnement/`, { mode, jours }),
   // `code_suppression` : second secret propre au Super Admin (voir User.code_suppression côté
   // backend), distinct du mot de passe de connexion — exigé en plus du nom de l'école déjà tapé
   // par l'utilisateur (voir EcoleDetailPage.handleSupprimer) avant toute suppression définitive.
@@ -76,8 +80,10 @@ export const parametresEcoleApi = {
 };
 
 export const abonnementDjomyApi = {
-  payer: (payer_number: string, periode: "mensuel" | "annuel") =>
-    api.post<TransactionAbonnement>("/tenants/mon-ecole/payer-abonnement/", { payer_number, periode }),
+  /** `plan` : plan d'abonnement choisi (montant et durée fixés par le Super Admin) ; `periode`
+   * ne sert que si la plateforme n'a aucun plan actif. */
+  payer: (payer_number: string, choix: { plan?: number; periode?: "mensuel" | "annuel" }) =>
+    api.post<TransactionAbonnement>("/tenants/mon-ecole/payer-abonnement/", { payer_number, ...choix }),
   verifier: (transactionId: string) => api.get<TransactionAbonnement>(`/tenants/mon-ecole/transactions-djomy/${transactionId}/verifier/`),
 };
 

@@ -244,6 +244,29 @@ export default function EcoleDetailPage() {
   };
 
   const [reinitialisation, setReinitialisation] = useState(false);
+  // Réglage manuel des jours d'abonnement (onglet Aperçu).
+  const [joursAjustement, setJoursAjustement] = useState("");
+  const [ajustementEnCours, setAjustementEnCours] = useState(false);
+
+  const handleAjusterAbonnement = async (mode: "ajouter" | "retirer" | "fixer") => {
+    if (!ecole) return;
+    const jours = Math.trunc(Number(joursAjustement));
+    if (!joursAjustement || Number.isNaN(jours) || jours < 0 || (mode !== "fixer" && jours === 0)) {
+      toast.error("Indiquez un nombre de jours valide.");
+      return;
+    }
+    setAjustementEnCours(true);
+    try {
+      const { data } = await ecolesApi.ajusterAbonnement(ecole.id, mode === "fixer" ? "fixer" : "ajouter", mode === "retirer" ? -jours : jours);
+      setEcole(data);
+      setJoursAjustement("");
+      toast.success(`Abonnement ajusté : ${data.jours_restants_abonnement} jour(s) restant(s).`);
+    } catch (err) {
+      toast.error(extractErrorMessage(err));
+    } finally {
+      setAjustementEnCours(false);
+    }
+  };
   const handleReinitialiser = async () => {
     if (!ecole) return;
     const saisie = await demander(
@@ -383,6 +406,39 @@ export default function EcoleDetailPage() {
               {ecole.dernier_paiement && (
                 <div className="flex justify-between"><span className="text-slate-500">Dernier paiement</span><span className="font-semibold">{new Date(ecole.dernier_paiement.mois).toLocaleDateString("fr-FR", { month: "long", year: "numeric" })}</span></div>
               )}
+              <div className="flex justify-between">
+                <span className="text-slate-500">Fin de l'abonnement</span>
+                <span className="font-semibold">
+                  {ecole.date_fin_abonnement ? new Date(ecole.date_fin_abonnement).toLocaleDateString("fr-FR") : "—"}
+                  {" "}
+                  <span className={ecole.jours_restants_abonnement < 0 ? "text-rose-600" : "text-slate-500"}>
+                    ({ecole.jours_restants_abonnement >= 0
+                      ? `${ecole.jours_restants_abonnement} jour${ecole.jours_restants_abonnement > 1 ? "s" : ""} restant${ecole.jours_restants_abonnement > 1 ? "s" : ""}`
+                      : `dépassée de ${-ecole.jours_restants_abonnement} jour${ecole.jours_restants_abonnement < -1 ? "s" : ""}`})
+                  </span>
+                </span>
+              </div>
+            </div>
+
+            {/* Réglage manuel des jours d'abonnement par le Super Admin. */}
+            <div className="mt-5 pt-4 border-t border-slate-100">
+              <p className="text-sm font-semibold text-ink-900 mb-2">Ajuster les jours d'abonnement</p>
+              <div className="flex flex-wrap items-end gap-2">
+                <Input
+                  label="Nombre de jours" type="number" min={0} placeholder="Ex : 30"
+                  value={joursAjustement} onChange={(e) => setJoursAjustement(e.target.value)}
+                  className="w-32"
+                />
+                <Button type="button" onClick={() => handleAjusterAbonnement("ajouter")} disabled={ajustementEnCours}>+ Ajouter</Button>
+                <Button type="button" variant="secondary" onClick={() => handleAjusterAbonnement("retirer")} disabled={ajustementEnCours}>− Retirer</Button>
+                <Button type="button" variant="secondary" onClick={() => handleAjusterAbonnement("fixer")} disabled={ajustementEnCours}>
+                  Fixer les jours restants
+                </Button>
+              </div>
+              <p className="text-xs text-slate-400 mt-2">
+                « Ajouter » / « Retirer » modifient la fin actuelle de ce nombre de jours ; « Fixer » laisse exactement ce
+                nombre de jours restants à partir d'aujourd'hui (0 = l'abonnement se termine ce soir).
+              </p>
             </div>
           </Card>
           {ecole.plan_limite_eleves && stats && (

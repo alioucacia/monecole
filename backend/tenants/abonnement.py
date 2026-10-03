@@ -23,9 +23,13 @@ STATUTS_REUSSIS = {"SUCCESS", "SUCCESSFUL", "COMPLETED", "PAID"}
 STATUTS_ECHOUES = {"FAILED", "CANCELLED", "CANCELED", "EXPIRED", "ERROR", "REJECTED"}
 
 
+JOURS_PAR_NB_MOIS = {1: JOURS_ABONNEMENT_MENSUEL, 3: 90, 12: JOURS_ABONNEMENT_ANNUEL}
+NB_MOIS_PAR_PERIODICITE = {"mensuel": 1, "trimestriel": 3, "annuel": 12}
+
+
 def jours_pour_transaction(transaction: TransactionAbonnement) -> int:
-    """30 jours pour un paiement Mensuel, 365 pour un Annuel (`nb_mois` = 12)."""
-    return JOURS_ABONNEMENT_ANNUEL if transaction.nb_mois >= 12 else JOURS_ABONNEMENT_MENSUEL
+    """30 jours pour un paiement Mensuel, 90 pour un Trimestriel, 365 pour un Annuel."""
+    return JOURS_PAR_NB_MOIS.get(transaction.nb_mois, JOURS_ABONNEMENT_MENSUEL * transaction.nb_mois)
 
 
 def _premier_du_mois_dans(n_mois: int, depuis: date) -> date:

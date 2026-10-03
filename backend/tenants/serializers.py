@@ -101,7 +101,7 @@ class TransactionAbonnementSerializer(serializers.ModelSerializer):
     class Meta:
         model = TransactionAbonnement
         fields = [
-            "id", "mois", "montant", "nb_mois", "payer_number", "transaction_id", "redirect_url",
+            "id", "mois", "montant", "nb_mois", "plan", "payer_number", "transaction_id", "redirect_url",
             "statut", "statut_display", "cree_le", "verifie_le",
         ]
         read_only_fields = fields
@@ -267,6 +267,8 @@ class MonEcoleSerializer(serializers.ModelSerializer):
     jours_avant_prochaine_echeance = serializers.IntegerField(read_only=True)
     periodicite_abonnement_display = serializers.CharField(read_only=True)
     jours_restants_abonnement = serializers.IntegerField(read_only=True)
+    # Plans d'abonnement actifs (paramétrés par le Super Admin) proposés au paiement en ligne.
+    plans_disponibles = serializers.SerializerMethodField()
 
     class Meta:
         model = Ecole
@@ -275,15 +277,25 @@ class MonEcoleSerializer(serializers.ModelSerializer):
             "entete_ministere_1", "entete_ministere_2", "entete_republique", "entete_devise",
             "abonnement_mensuel", "jour_echeance", "jours_grace", "statut_abonnement",
             "jours_avant_echeance", "jours_avant_blocage", "jours_avant_prochaine_echeance",
-            "periodicite_abonnement_display", "date_fin_abonnement", "jours_restants_abonnement", "parametres",
+            "periodicite_abonnement_display", "date_fin_abonnement", "jours_restants_abonnement",
+            "plan", "plans_disponibles", "parametres",
             "couleur_principale", "couleur_secondaire", "fonctionnalites_desactivees",
         ]
         # La personnalisation des documents et l'activation des fonctionnalités restent
         # décidées par le Super Admin (EcoleViewSet) — l'admin de l'école les consulte ici
         # en lecture seule mais ne peut pas les modifier lui-même.
         read_only_fields = [
-            "abonnement_mensuel", "jour_echeance", "jours_grace", "date_fin_abonnement",
+            "abonnement_mensuel", "jour_echeance", "jours_grace", "date_fin_abonnement", "plan",
             "couleur_principale", "couleur_secondaire", "fonctionnalites_desactivees",
+        ]
+
+    def get_plans_disponibles(self, ecole):
+        return [
+            {
+                "id": p.id, "nom": p.nom, "montant": p.montant, "periodicite": p.periodicite,
+                "periodicite_display": p.get_periodicite_display(), "description": p.description,
+            }
+            for p in PlanAbonnement.objects.filter(actif=True)
         ]
 
     def validate_logo(self, fichier):

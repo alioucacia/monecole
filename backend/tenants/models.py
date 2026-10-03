@@ -275,6 +275,15 @@ class Ecole(models.Model):
         self.save(update_fields=["date_fin_abonnement"])
         return self.date_fin_abonnement
 
+    def ajuster_abonnement(self, jours: int, mode: str = "ajouter") -> date:
+        """Réglage manuel par le Super Admin : `mode="ajouter"` ajoute `jours` (négatif pour en
+        retirer) à la fin d'abonnement actuelle ; `mode="fixer"` la place à aujourd'hui + `jours`
+        (jours restants voulus)."""
+        base = date.today() if mode == "fixer" else self._date_fin_effective()
+        self.date_fin_abonnement = base + timedelta(days=jours)
+        self.save(update_fields=["date_fin_abonnement"])
+        return self.date_fin_abonnement
+
     @property
     def statut_abonnement(self) -> str:
         """'suspendu' | 'paye' | 'en_attente' | 'en_retard' | 'bloque' — en jours :
@@ -389,7 +398,12 @@ class TransactionAbonnement(models.Model):
     mois = models.DateField(help_text="Premier jour du mois que ce paiement doit couvrir")
     montant = models.DecimalField(max_digits=10, decimal_places=2)
     nb_mois = models.PositiveSmallIntegerField(
-        default=1, help_text="Nombre de mois couverts par ce paiement — 1 (Mensuel) ou 12 (Annuel), choisi par l'Administrateur au moment de payer"
+        default=1, help_text="Nombre de mois couverts par ce paiement — 1 (Mensuel), 3 (Trimestriel) ou 12 (Annuel), selon le plan choisi par l'Administrateur au moment de payer"
+    )
+    # Plan d'abonnement (paramétré par le Super Admin) choisi et payé — son montant et sa
+    # périodicité fixent le prix et la durée ajoutée (30 / 90 / 365 jours).
+    plan = models.ForeignKey(
+        PlanAbonnement, on_delete=models.SET_NULL, null=True, blank=True, related_name="transactions_djomy",
     )
     payer_number = models.CharField(max_length=30)
     transaction_id = models.CharField(max_length=100, unique=True)

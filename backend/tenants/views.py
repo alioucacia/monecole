@@ -130,6 +130,39 @@ class EcoleViewSet(viewsets.ModelViewSet):
         )
         return Response(bilan)
 
+    @action(detail=True, methods=["post"], url_path="ajuster-abonnement")
+    def ajuster_abonnement(self, request, pk=None):
+        """Augmente ou diminue les jours d'abonnement d'une école (Super Admin) :
+        `{"mode": "ajouter", "jours": 10}` ajoute 10 jours (ou en retire avec un nombre négatif)
+        à la fin actuelle ; `{"mode": "fixer", "jours": 3}` laisse exactement 3 jours restants."""
+        from rest_framework.exceptions import ValidationError
+
+        ecole = self.get_object()
+        mode = request.data.get("mode", "ajouter")
+        if mode not in ("ajouter", "fixer"):
+            raise ValidationError({"mode": "Doit être « ajouter » ou « fixer »."})
+        try:
+            jours = int(request.data.get("jours"))
+        except (TypeError, ValueError):
+            raise ValidationError({"jours": "Nombre de jours entier requis."})
+        if abs(jours) > 3650:
+            raise ValidationError({"jours": "Au plus 3650 jours (10 ans) à la fois."})
+        if mode == "ajouter" and jours == 0:
+            raise ValidationError({"jours": "Indiquez un nombre de jours à ajouter ou à retirer."})
+
+        avant = ecole.jours_restants_abonnement
+        date_fin = ecole.ajuster_abonnement(jours, mode)
+        detail = (
+            f"jours restants fixés à {jours}" if mode == "fixer"
+            else f"{'+' if jours > 0 else ''}{jours} jour(s)"
+        )
+        _journaliser(
+            request, JournalActivite.Action.ECOLE_MODIFIEE, ecole,
+            f"Abonnement ajusté : {detail} ({avant} → {ecole.jours_restants_abonnement} jours restants, "
+            f"fin le {date_fin:%d/%m/%Y})",
+        )
+        return Response(EcoleSerializer(ecole, context={"request": request}).data)
+
     @action(detail=False, methods=["get"], url_path="stats")
     def stats(self, request):
         ecoles = list(self.get_queryset())
@@ -519,19 +552,38 @@ class PayerAbonnementDjomyView(APIView):
         if not payer_number:
             raise ValidationError({"payer_number": "Ce champ est requis."})
 
-        periode = request.data.get("periode") or "mensuel"
-        if periode not in ("mensuel", "annuel"):
-            raise ValidationError({"periode": "Doit être « mensuel » ou « annuel »."})
-        nb_mois = 12 if periode == "annuel" else 1
+        from .abonnement import JOURS_PAR_NB_MOIS, NB_MOIS_PAR_PERIODICITE
+
+        # Le prix est celui d'un plan d'abonnement paramétré par le Super Admin (montant et
+        # périodicité → durée ajoutée). Sans aucun plan actif, repli sur l'ancien calcul :
+        # montant mensuel de l'école × 1 (Mensuel) ou × 12 (Annuel).
+        plans_actifs = PlanAbonnement.objects.filter(actif=True)
+        plan = None
+        if plans_actifs.exists():
+            plan = plans_actifs.filter(pk=request.data.get("plan") or 0).first()
+            if plan is None:
+                raise ValidationError({"plan": "Choisissez un plan d'abonnement."})
+            nb_mois = NB_MOIS_PAR_PERIODICITE[plan.periodicite]
+            montant = plan.montant
+            libelle = f"{plan.nom} — {plan.get_periodicite_display()}"
+        else:
+            periode = request.data.get("periode") or "mensuel"
+            if periode not in ("mensuel", "annuel"):
+                raise ValidationError({"periode": "Doit être « mensuel » ou « annuel »."})
+            nb_mois = 12 if periode == "annuel" else 1
+            montant = ecole.abonnement_mensuel * nb_mois
+            libelle = "Annuel" if nb_mois == 12 else "Mensuel"
+        if montant <= 0:
+            raise ValidationError({"plan": "Le montant de cet abonnement n'est pas paramétré — contactez la plateforme."})
 
         mois = ecole._mois_echeance_courante()
-        montant = ecole.abonnement_mensuel * nb_mois
+        jours = JOURS_PAR_NB_MOIS[nb_mois]
 
         try:
             resultat = djomy_services.create_payment(
                 amount=float(montant),
                 payer_number=payer_number,
-                description=f"Abonnement {ecole.nom} — {'Annuel (365 jours)' if nb_mois == 12 else 'Mensuel (30 jours)'}",
+                description=f"Abonnement {ecole.nom} — {libelle} ({jours} jours)",
             )
         except Exception as exc:  # noqa: BLE001 — erreur réseau/API Djomy, message renvoyé tel quel
             return Response(
@@ -541,7 +593,7 @@ class PayerAbonnementDjomyView(APIView):
 
         data = resultat.get("data", {})
         transaction = TransactionAbonnement.objects.create(
-            ecole=ecole, mois=mois, montant=montant, nb_mois=nb_mois, payer_number=payer_number,
+            ecole=ecole, mois=mois, montant=montant, nb_mois=nb_mois, plan=plan, payer_number=payer_number,
             transaction_id=data["transactionId"], redirect_url=data.get("redirectUrl", ""),
         )
         return Response(TransactionAbonnementSerializer(transaction).data, status=status.HTTP_201_CREATED)

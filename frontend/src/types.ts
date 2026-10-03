@@ -101,6 +101,8 @@ export interface Ecole {
   /** Dernier jour couvert par l'abonnement payé (décompte en jours : +30 par paiement
    * mensuel, +365 par paiement annuel) — modifiable par le Super Admin. */
   date_fin_abonnement: string | null;
+  /** Plans d'abonnement actifs proposés au paiement en ligne (paramètres de l'école — admin). */
+  plans_disponibles?: PlanPaiement[];
   /** Jours restants avant la fin de l'abonnement (négatif une fois dépassée). */
   jours_restants_abonnement: number;
   nombre_utilisateurs: number;
@@ -146,6 +148,16 @@ export const MODELES_DOCUMENT: { value: number; label: string }[] = [
 export interface Fonctionnalite {
   cle: string;
   label: string;
+}
+
+/** Plan d'abonnement tel que proposé à l'admin d'une école pour payer en ligne. */
+export interface PlanPaiement {
+  id: number;
+  nom: string;
+  montant: string;
+  periodicite: "mensuel" | "trimestriel" | "annuel";
+  periodicite_display: string;
+  description: string;
 }
 
 export interface PlanAbonnement {
