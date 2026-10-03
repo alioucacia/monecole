@@ -1,4 +1,4 @@
-from decimal import Decimal
+from decimal import ROUND_HALF_UP, Decimal
 
 from django.db.models import Sum
 from rest_framework import serializers
@@ -86,6 +86,10 @@ class PaiementSerializer(serializers.ModelSerializer):
         if frais.type_frais.est_mensuel and not mois:
             # Sans mois précisé, le versement échappait au contrôle mois par mois ci-dessous.
             raise serializers.ValidationError({"mois": "Précisez le mois payé pour ce frais mensuel."})
+        if frais.type_frais.est_mensuel and mois.month == 9:
+            raise serializers.ValidationError({
+                "mois": "Septembre est le mois de l'inscription/réinscription, pas une mensualité (Octobre à Juin)."
+            })
         if mois and frais.type_frais.est_mensuel:
             # Tous les frais de ce type de l'élève pour l'année (un frais par mois d'échéance est
             # permis) : un mois payé sur l'un ne peut pas être repayé sur un autre.
@@ -184,11 +188,39 @@ class FraisSerializer(serializers.ModelSerializer):
             "montant", "montant_du", "date_echeance", "montant_paye", "solde", "statut", "paiements",
         ]
 
+    @staticmethod
+    def montant_parametre(eleve, type_frais, annee) -> Decimal:
+        """Montant paramétré d'un type de frais pour un élève : tarif de sa classe pour l'année
+        (Paiements → Tarifs par classe) s'il y en a un, sinon le montant standard du type."""
+        tarif = None
+        if eleve.classe_id:
+            tarif = TarifClasse.objects.filter(
+                type_frais=type_frais, classe_id=eleve.classe_id, annee_scolaire=annee,
+            ).values_list("montant", flat=True).first()
+        return tarif if tarif is not None else type_frais.montant_standard
+
     def validate(self, attrs):
         eleve = attrs.get("eleve", getattr(self.instance, "eleve", None))
         type_frais = attrs.get("type_frais", getattr(self.instance, "type_frais", None))
         annee = attrs.get("annee_scolaire", getattr(self.instance, "annee_scolaire", None))
         echeance = attrs.get("date_echeance", getattr(self.instance, "date_echeance", None))
+        if type_frais and type_frais.est_mensuel and echeance and echeance.month == 9:
+            raise serializers.ValidationError({
+                "date_echeance": "Septembre est le mois de l'inscription/réinscription, pas une mensualité (Octobre à Juin)."
+            })
+        # Montant non modifiable : celui paramétré (tarif de la classe, sinon montant standard) —
+        # seule la remise fidélité de 5 % d'un frais Annuel (voir PaymentsPage) peut le réduire.
+        montant = attrs.get("montant")
+        modifie = montant is not None and (self.instance is None or montant != self.instance.montant)
+        if modifie and eleve and type_frais and annee:
+            parametre = self.montant_parametre(eleve, type_frais, annee)
+            autorises = {parametre}
+            if type_frais.periodicite == TypeFrais.Periodicite.ANNUEL:
+                autorises.add((parametre * Decimal("0.95")).quantize(Decimal("1"), rounding=ROUND_HALF_UP))
+            if montant not in autorises:
+                raise serializers.ValidationError({
+                    "montant": f"Le montant est fixé par le paramétrage ({parametre:.0f} GNF) et ne peut pas être modifié."
+                })
         filtre = Frais.filtre_equivalents(eleve, type_frais, annee, echeance) if eleve and type_frais and annee else None
         if filtre is None:
             return attrs

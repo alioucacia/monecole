@@ -573,8 +573,9 @@ export const fraisApi = {
     downloadFile("/payments/frais/fiches-paiement/", params || {}, filename),
   suiviMensuel: (eleveId: number, anneeScolaireId?: number) =>
     api.get<SuiviMensuelEleve>("/payments/frais/suivi-mensuel/", { params: { eleve: eleveId, annee_scolaire: anneeScolaireId } }),
-  suiviMensuelClasse: (classeId: number) =>
-    api.get<SuiviMensuelClasse>("/payments/frais/suivi-mensuel-classe/", { params: { classe: classeId } }),
+  /** Suivi mensuel d'une classe, ou de toutes les classes d'un cycle (sans `classe`). */
+  suiviMensuelClasse: (params: { classe?: number; cycle?: string }) =>
+    api.get<SuiviMensuelClasse>("/payments/frais/suivi-mensuel-classe/", { params }),
   /** Facture proforma (PDF) : récapitule tous les frais dus par un élève sur une année scolaire
    * (montant/payé/solde), sans historique de transactions — un document d'estimation à
    * présenter avant paiement, distinct de la fiche de paiement. */

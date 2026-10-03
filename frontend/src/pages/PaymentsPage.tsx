@@ -39,6 +39,10 @@ const emptyFraisForm = {
   remise5: false,
 };
 
+// Septembre : mois de l'inscription/réinscription — jamais proposé comme mois de mensualité
+// (les mensualités vont d'Octobre à Juin, voir payments.views.MOIS_MENSUALITE côté backend).
+const MOIS_INSCRIPTION = "09";
+
 const MOIS_NOMS = [
   "Janvier", "Février", "Mars", "Avril", "Mai", "Juin",
   "Juillet", "Août", "Septembre", "Octobre", "Novembre", "Décembre",
@@ -86,7 +90,7 @@ function moisDeLAnnee(annee: AnneeScolaire): string[] {
     mois.push(`${courant.getFullYear()}-${String(courant.getMonth() + 1).padStart(2, "0")}`);
     courant = new Date(courant.getFullYear(), courant.getMonth() + 1, 1);
   }
-  return mois;
+  return mois.filter((m) => m.slice(5) !== MOIS_INSCRIPTION);
 }
 
 function moisLabelLong(mois: string) {
@@ -713,7 +717,16 @@ export default function PaymentsPage() {
             <option value="">— Sélectionner —</option>
             {annees.map((a) => <option key={a.id} value={a.id}>{a.libelle}</option>)}
           </Select>
-          <Input label="Montant (GNF)" type="number" min={0} required value={fraisForm.montant} onChange={(e) => setFraisForm({ ...fraisForm, montant: e.target.value })} />
+          {/* Montant non modifiable : repris du paramétrage (tarif de la classe, sinon montant
+              standard du type de frais) — également imposé côté serveur (FraisSerializer). */}
+          <div>
+            <Input
+              label="Montant (GNF)" type="number" required readOnly value={fraisForm.montant}
+              className="bg-slate-50 text-slate-600 cursor-not-allowed"
+              title="Montant fixé par le paramétrage du type de frais / tarif de la classe"
+            />
+            <p className="text-xs text-slate-400 mt-1">Fixé par le paramétrage (Types de frais / Tarifs par classe).</p>
+          </div>
 
           {/* Remise de fidélité de 5% — un type de frais Annuel n'a qu'une seule échéance dans
               l'année, donc rien à cocher/recalculer plus tard : la remise réduit directement le
@@ -746,7 +759,10 @@ export default function PaymentsPage() {
               });
             }}>
               <option value="">— Choisir un mois —</option>
-              {MOIS_NOMS.map((nom, i) => <option key={nom} value={String(i + 1).padStart(2, "0")}>{nom}</option>)}
+              {/* Septembre exclu : mois de l'inscription/réinscription, pas une mensualité. */}
+              {MOIS_NOMS.map((nom, i) => ({ nom, valeur: String(i + 1).padStart(2, "0") }))
+                .filter(({ valeur }) => valeur !== MOIS_INSCRIPTION)
+                .map(({ nom, valeur }) => <option key={nom} value={valeur}>{nom}</option>)}
             </Select>
           )}
           {typeFraisSelectionne?.periodicite === "trimestriel" && (

@@ -5,13 +5,16 @@ import { classesApi, fraisApi, unwrapList } from "../api/services";
 import { extractBlobErrorMessage, extractErrorMessage } from "../api/client";
 import { Badge, EmptyState, PageHeader, Select, Spinner, Table } from "../components/ui";
 import { CycleSelect } from "../components/CycleSelect";
-import type { Classe, Cycle, SuiviMensuelClasse } from "../types";
+import type { Classe, Cycle, SuiviMensuelClasse, SuiviMensuelInscription, SuiviMensuelMois } from "../types";
 
 const STATUT_BADGE: Record<string, { label: string; color: "green" | "amber" | "rose" }> = {
   paye: { label: "Payé", color: "green" },
   partiel: { label: "Partiel", color: "amber" },
   non_paye: { label: "Non payé", color: "rose" },
 };
+
+// Valeur du filtre Classe pour afficher toutes les classes du cycle choisi.
+const TOUTES_CLASSES = "toutes";
 
 function montant(value: string | number) {
   return Number(value).toLocaleString("fr-FR");
@@ -22,16 +25,39 @@ function money(value: string | number) {
 }
 
 function moisLabel(mois: string) {
-  // "2026-09" -> "Sept. 2026"
+  // "2026-10" -> "oct. 26"
   const [annee, m] = mois.split("-");
   const date = new Date(Number(annee), Number(m) - 1, 1);
   return date.toLocaleDateString("fr-FR", { month: "short", year: "2-digit" });
+}
+
+function moisLabelLong(mois: string) {
+  const [annee, m] = mois.split("-");
+  return new Date(Number(annee), Number(m) - 1, 1).toLocaleDateString("fr-FR", { month: "long", year: "numeric" });
+}
+
+/** Cellule payé / partiel / non payé, commune aux mois et à l'inscription. */
+function CelluleStatut({ ligne, note }: { ligne: SuiviMensuelMois | SuiviMensuelInscription; note?: string }) {
+  return (
+    <div className="flex flex-col items-center gap-0.5" title={`Payé ${montant(ligne.montant_paye)} / ${montant(ligne.montant_du)} GNF`}>
+      <Badge color={STATUT_BADGE[ligne.statut].color}>{STATUT_BADGE[ligne.statut].label}</Badge>
+      <span className="text-[10px] text-slate-500">
+        {montant(ligne.montant_paye)} / {money(ligne.montant_du)}
+      </span>
+      {ligne.statut === "partiel" && (
+        <span className="text-[10px] font-semibold text-amber-600">reste {money(ligne.reste)}</span>
+      )}
+      {note && <span className="text-[10px] text-brand-600">{note}</span>}
+    </div>
+  );
 }
 
 export default function SuiviMensuelPage() {
   const [classes, setClasses] = useState<Classe[]>([]);
   const [cycleFiltre, setCycleFiltre] = useState<Cycle | "">("");
   const [classeId, setClasseId] = useState<string>("");
+  // "" = tous les mois (avec la colonne Inscription / Réinscription), sinon "AAAA-MM".
+  const [moisFiltre, setMoisFiltre] = useState("");
   const [suivi, setSuivi] = useState<SuiviMensuelClasse | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
@@ -46,13 +72,15 @@ export default function SuiviMensuelPage() {
 
   useEffect(() => {
     if (!classeId) return;
+    const params = classeId === TOUTES_CLASSES ? { cycle: cycleFiltre || undefined } : { classe: Number(classeId) };
+    if (classeId === TOUTES_CLASSES && !cycleFiltre) return;
     setLoading(true);
     setError("");
-    fraisApi.suiviMensuelClasse(Number(classeId))
+    fraisApi.suiviMensuelClasse(params)
       .then(({ data }) => setSuivi(data))
       .catch((err) => setError(extractErrorMessage(err)))
       .finally(() => setLoading(false));
-  }, [classeId]);
+  }, [classeId, cycleFiltre]);
 
   const handleSuiviMensuelPdf = async (eleveId: number, matricule: string) => {
     setError("");
@@ -65,16 +93,19 @@ export default function SuiviMensuelPage() {
     }
   };
 
-  // Un élève exonéré de mensualité (Fondation gratuite, inscription seulement) a un tableau `mois`
-  // vide — on ne peut donc pas se baser sur le premier élève de la liste pour connaître les
-  // colonnes : on prend le premier qui a effectivement une mensualité à suivre.
-  const tousLesMois = suivi?.eleves.find((e) => e.mois.length > 0)?.mois.map((m) => m.mois) ?? [];
+  // Mois de mensualité de l'année (Octobre → Juin) : Septembre, mois de l'inscription, n'en
+  // fait pas partie — il est remplacé par la colonne Inscription / Réinscription.
+  const tousLesMois = suivi?.mois ?? [];
+  const moisAffiches = moisFiltre ? tousLesMois.filter((m) => m === moisFiltre) : tousLesMois;
+  const avecInscription = !moisFiltre;
+  const parCycle = classeId === TOUTES_CLASSES;
+  const aSuivre = suivi?.eleves.some((e) => e.mois.length > 0 || e.inscription) ?? false;
 
   return (
     <div>
       <PageHeader
         title="Suivi mensuel des paiements"
-        description="Frais mensuels (ex : scolarité) — statut payé / partiel / non payé, mois par mois, par élève."
+        description="Inscription / réinscription puis mensualités d'Octobre à Juin — statut payé / partiel / non payé, mois par mois, par élève (paiements mensuels, annuels ou par tranches)."
         actions={<Link to="/paiements" className="text-sm text-brand-600 font-medium hover:underline">← Retour aux paiements</Link>}
       />
 
@@ -84,13 +115,19 @@ export default function SuiviMensuelPage() {
           value={cycleFiltre}
           onChange={(c) => {
             setCycleFiltre(c);
+            if (classeId === TOUTES_CLASSES && c) return;
             const premiere = classes.find((cl) => !c || cl.cycle === c);
             setClasseId(premiere ? String(premiere.id) : "");
           }}
           className="max-w-xs"
         />
         <Select label="Classe" value={classeId} onChange={(e) => setClasseId(e.target.value)} className="max-w-xs">
+          {cycleFiltre && <option value={TOUTES_CLASSES}>— Toutes les classes du cycle —</option>}
           {classes.filter((c) => !cycleFiltre || c.cycle === cycleFiltre).map((c) => <option key={c.id} value={c.id}>{c.nom}</option>)}
+        </Select>
+        <Select label="Mois" value={moisFiltre} onChange={(e) => setMoisFiltre(e.target.value)} className="max-w-xs">
+          <option value="">— Tous les mois —</option>
+          {tousLesMois.map((m) => <option key={m} value={m} className="capitalize">{moisLabelLong(m)}</option>)}
         </Select>
       </div>
 
@@ -99,19 +136,23 @@ export default function SuiviMensuelPage() {
       ) : error ? (
         <p className="text-sm text-rose-600 bg-rose-50 border border-rose-100 rounded-xl px-3.5 py-2.5">{error}</p>
       ) : !suivi || suivi.eleves.length === 0 ? (
-        <EmptyState title="Aucun élève" description="Cette classe ne compte aucun élève actif, ou aucun frais mensuel n'est configuré." />
-      ) : tousLesMois.length === 0 ? (
+        <EmptyState title="Aucun élève" description="Cette sélection ne compte aucun élève actif." />
+      ) : !aSuivre ? (
         <EmptyState
-          title="Aucun frais mensuel"
-          description="Aucun élève de cette classe n'a de frais lié à un type de frais marqué « mensuel ». Configurez-le depuis Paiements → Types de frais."
+          title="Aucun frais à suivre"
+          description="Aucun élève de cette sélection n'a de frais d'inscription/réinscription ni de scolarité (mensuelle, annuelle ou par tranches). Configurez-les depuis Paiements → Types de frais."
         />
       ) : (
         <>
           <p className="text-sm text-slate-500 mb-4">
-            Année scolaire <span className="font-semibold text-ink-900">{suivi.annee_scolaire}</span> — {suivi.eleves.length} élève(s).
+            Année scolaire <span className="font-semibold text-ink-900">{suivi.annee_scolaire}</span> — {suivi.classe} — {suivi.eleves.length} élève(s).
           </p>
           <div className="overflow-x-auto">
-            <Table headers={["Élève", "Matricule", "Catégorie", "Mois impayés", ...tousLesMois.map(moisLabel)]}>
+            <Table headers={[
+              "Élève", "Matricule", ...(parCycle ? ["Classe"] : []), "Catégorie", "Mois impayés",
+              ...(avecInscription ? ["Inscription / Réinscription"] : []),
+              ...moisAffiches.map(moisLabel),
+            ]}>
               {suivi.eleves.map((e) => {
                 const parMois = new Map(e.mois.map((m) => [m.mois, m]));
                 // Seuls les mois échus comptent comme impayés — les mois à venir restent affichés.
@@ -130,6 +171,7 @@ export default function SuiviMensuelPage() {
                       </button>
                     </td>
                     <td className="px-4 py-2.5 text-xs font-mono text-slate-400 whitespace-nowrap">{e.matricule}</td>
+                    {parCycle && <td className="px-4 py-2.5 text-xs text-slate-500 whitespace-nowrap">{e.classe_nom || "—"}</td>}
                     <td className="px-4 py-2.5 text-xs text-slate-500 whitespace-nowrap">
                       {e.categorie_paiement !== "standard" ? (
                         <Badge color="amber">{e.categorie_paiement_display}</Badge>
@@ -147,26 +189,20 @@ export default function SuiviMensuelPage() {
                         </div>
                       )}
                     </td>
-                    {tousLesMois.map((mois) => {
+                    {avecInscription && (
+                      <td className="px-2 py-2.5 text-center whitespace-nowrap">
+                        {e.inscription ? (
+                          <CelluleStatut ligne={e.inscription} note={e.inscription.libelle} />
+                        ) : (
+                          <span className="text-slate-300 text-xs">—</span>
+                        )}
+                      </td>
+                    )}
+                    {moisAffiches.map((mois) => {
                       const m = parMois.get(mois);
                       return (
                         <td key={mois} className="px-2 py-2.5 text-center whitespace-nowrap">
-                          {m ? (
-                            <div
-                              className="flex flex-col items-center gap-0.5"
-                              title={`Payé ${montant(m.montant_paye)} / ${montant(m.montant_du)} GNF`}
-                            >
-                              <Badge color={STATUT_BADGE[m.statut].color}>{STATUT_BADGE[m.statut].label}</Badge>
-                              <span className="text-[10px] text-slate-500">
-                                {montant(m.montant_paye)} / {money(m.montant_du)}
-                              </span>
-                              {m.statut === "partiel" && (
-                                <span className="text-[10px] font-semibold text-amber-600">reste {money(m.reste)}</span>
-                              )}
-                            </div>
-                          ) : (
-                            <span className="text-slate-300 text-xs">—</span>
-                          )}
+                          {m ? <CelluleStatut ligne={m} note={m.couvert_par || undefined} /> : <span className="text-slate-300 text-xs">—</span>}
                         </td>
                       );
                     })}

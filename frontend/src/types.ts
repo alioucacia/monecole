@@ -763,6 +763,19 @@ export interface SuiviMensuelMois {
   statut: "paye" | "partiel" | "non_paye";
   /** Mois pas encore commencé — affiché mais pas compté dans les impayés. */
   a_venir: boolean;
+  /** « Annuel » / « Tranche N » quand le mois est réglé par un frais annuel ou une tranche
+   * plutôt que mois par mois — vide pour une mensualité. */
+  couvert_par: string;
+}
+
+/** Frais d'inscription ou de réinscription de l'année — colonne qui remplace Septembre dans le
+ * suivi mensuel. */
+export interface SuiviMensuelInscription {
+  libelle: "Inscription" | "Réinscription";
+  montant_du: string;
+  montant_paye: string;
+  reste: string;
+  statut: "paye" | "partiel" | "non_paye";
 }
 
 export interface SuiviMensuelEleve {
@@ -772,20 +785,25 @@ export interface SuiviMensuelEleve {
   categorie_paiement_display: string;
   annee_scolaire: string;
   mois: SuiviMensuelMois[];
+  inscription: SuiviMensuelInscription | null;
 }
 
 export interface SuiviMensuelClasseEleve {
   eleve_id: number;
   eleve_nom: string;
   matricule: string;
+  classe_nom: string;
   categorie_paiement: CategoriePaiement;
   categorie_paiement_display: string;
   mois: SuiviMensuelMois[];
+  inscription: SuiviMensuelInscription | null;
 }
 
 export interface SuiviMensuelClasse {
   classe: string;
   annee_scolaire: string;
+  /** Mois de mensualité de l'année ("AAAA-MM"), Octobre → Juin — sans Septembre. */
+  mois: string[];
   eleves: SuiviMensuelClasseEleve[];
 }
 

@@ -35,33 +35,93 @@ def _mois_entre(date_debut, date_fin):
     return mois
 
 
-def _calculer_suivi_mensuel(eleve, annee_scolaire):
-    """Statut payé/partiel/non payé de CHAQUE mois de l'année scolaire (passés et à venir) pour
-    les frais mensuels (type de périodicité « Mensuel », ex : Mensualité/scolarité) d'un élève.
+# Mois de mensualité d'une année scolaire : Octobre à Juin (9 mois). Septembre est le mois de
+# l'inscription/réinscription — il n'est pas une mensualité et n'apparaît donc ni dans le suivi
+# mensuel (où la colonne Inscription/Réinscription le remplace) ni dans les listes de mois.
+MOIS_MENSUALITE = (10, 11, 12, 1, 2, 3, 4, 5, 6)
+MOIS_INSCRIPTION = 9
+# Mois couverts par chaque tranche de scolarité (frais de périodicité « Tranche »), dans l'ordre
+# des Periode de l'année (Trimestre 1, 2, 3) : la 1re tranche couvre aussi Juin, dernier mois.
+MOIS_PAR_TRANCHE = ((10, 11, 12, 6), (1, 2, 3), (4, 5))
 
-    Montant dû d'un mois = pour chaque type de frais mensuel, le `montant_du` du frais dont
-    l'échéance tombe dans ce mois (les écoles créent un frais par mois) ; un mois dont le frais
-    n'a pas encore été créé reste dû au même tarif mensuel (celui du frais de ce type le plus
-    proche) — sinon il disparaîtrait du suivi au lieu d'apparaître « Non payé ». `montant_du`
-    tient compte de la catégorie de paiement (Fondation 50 %...) : un élève exonéré (Fondation
-    gratuite, inscription seulement) n'a aucun mois à suivre.
 
-    Montant payé d'un mois = paiements sur ces frais dont `Paiement.mois` est ce mois, plus
-    (données anciennes) ceux sans mois précisé sur le frais dont l'échéance tombe ce mois-là.
-    `a_venir` : mois pas encore commencé (non compté dans les impayés)."""
-    frais_mensuels = list(
-        Frais.objects.filter(eleve=eleve, annee_scolaire=annee_scolaire, type_frais__est_mensuel=True)
-        .select_related("type_frais", "eleve").order_by("date_echeance")
+def _mois_mensualite(annee_scolaire):
+    """Premiers jours des mois de mensualité (Octobre → Juin) de l'année scolaire."""
+    return [
+        m for m in _mois_entre(annee_scolaire.date_debut, annee_scolaire.date_fin)
+        if m.month in MOIS_MENSUALITE
+    ]
+
+
+def _frais_suivi_par_eleve(eleves, annee_scolaire) -> dict[int, list[Frais]]:
+    """Tous les frais de l'année des élèves donnés, paiements préchargés — 2 requêtes au total
+    quel que soit le nombre d'élèves (le suivi d'un cycle entier en compte des centaines)."""
+    par_eleve: dict[int, list[Frais]] = {e.id: [] for e in eleves}
+    frais = (
+        Frais.objects.filter(eleve__in=eleves, annee_scolaire=annee_scolaire)
+        .select_related("type_frais", "eleve").prefetch_related("paiements").order_by("date_echeance")
     )
-    if not frais_mensuels:
+    for f in frais:
+        par_eleve.setdefault(f.eleve_id, []).append(f)
+    return par_eleve
+
+
+def _total_paye(frais, **filtre) -> Decimal:
+    """Total versé sur un frais (paiements préchargés), éventuellement limité à une tranche."""
+    periode_id = filtre.get("periode_id")
+    return sum(
+        (p.montant for p in frais.paiements.all() if periode_id is None or p.periode_id == periode_id),
+        Decimal("0"),
+    )
+
+
+def _statut(du, paye) -> str:
+    if du <= 0 or paye >= du:
+        return "paye"
+    return "partiel" if paye > 0 else "non_paye"
+
+
+def _calculer_suivi_mensuel(eleve, annee_scolaire, frais=None, periodes=None):
+    """Statut payé/partiel/non payé de chaque mois de mensualité (Octobre → Juin, passés et à
+    venir) de la scolarité d'un élève, quelle que soit sa formule de paiement :
+
+    - Mensuel (type de périodicité « Mensuel ») : montant dû d'un mois = `montant_du` du frais
+      dont l'échéance tombe ce mois-là ; un mois dont le frais n'a pas encore été créé reste dû
+      au tarif mensuel du frais de ce type le plus proche (sinon il disparaîtrait du suivi au
+      lieu d'apparaître « Non payé »). Payé = paiements dont `Paiement.mois` est ce mois (ou,
+      données anciennes sans mois, sur le frais dont l'échéance tombe ce mois-là).
+    - Annuel (hors inscription) : le frais couvre les 9 mois — dû et versé répartis à parts
+      égales, donc un paiement annuel complet affiche les 9 mois payés.
+    - Tranche (hors inscription) : chaque tranche (Periode de l'année, dans l'ordre) couvre ses
+      mois de MOIS_PAR_TRANCHE — la 1re tranche payée affiche Octobre, Novembre, Décembre et
+      Juin payés, la 2e Janvier à Mars, la 3e Avril et Mai.
+
+    `montant_du` tient compte de la catégorie de paiement (Fondation 50 %...) : un élève exonéré
+    (Fondation gratuite, inscription seulement) n'a aucun mois à suivre. `a_venir` : mois pas
+    encore commencé (non compté dans les impayés). `couvert_par` : « Annuel » / « Tranche N »
+    quand le mois est réglé par un frais annuel ou une tranche plutôt que mois par mois.
+
+    `frais` / `periodes` : préchargés par l'appelant pour le suivi d'une classe entière (voir
+    `_frais_suivi_par_eleve`), sinon chargés ici."""
+    from grades.models import Periode
+
+    if frais is None:
+        frais = _frais_suivi_par_eleve([eleve], annee_scolaire)[eleve.id]
+    hors_inscription = [f for f in frais if f.type_frais.usage not in USAGES_INSCRIPTION]
+    mensuels = [f for f in hors_inscription if f.type_frais.est_mensuel]
+    annuels = [f for f in hors_inscription if f.type_frais.periodicite == TypeFrais.Periodicite.ANNUEL]
+    tranches = [f for f in hors_inscription if f.type_frais.periodicite == TypeFrais.Periodicite.TRIMESTRIEL]
+    tous_les_mois = _mois_mensualite(annee_scolaire)
+    if not (mensuels or annuels or tranches) or not tous_les_mois:
         return []
 
-    tous_les_mois = _mois_entre(annee_scolaire.date_debut, annee_scolaire.date_fin)
-
-    # Montant dû par mois, type de frais par type de frais.
     du_par_mois = {mois: Decimal("0") for mois in tous_les_mois}
+    paye_par_mois = {mois: Decimal("0") for mois in tous_les_mois}
+    couvert_par = {mois: [] for mois in tous_les_mois}
+
+    # 1) Mensuel, type de frais par type de frais.
     par_type: dict[int, list[Frais]] = {}
-    for f in frais_mensuels:
+    for f in mensuels:
         par_type.setdefault(f.type_frais_id, []).append(f)
     for frais_du_type in par_type.values():
         par_mois_echeance = {}
@@ -73,31 +133,61 @@ def _calculer_suivi_mensuel(eleve, annee_scolaire):
             else:
                 reference = min(frais_du_type, key=lambda f: abs((f.date_echeance.replace(day=1) - mois).days))
                 du_par_mois[mois] += reference.montant_du
+        for f in frais_du_type:
+            for p in f.paiements.all():
+                mois = p.mois or f.date_echeance.replace(day=1)
+                if mois in paye_par_mois:
+                    paye_par_mois[mois] += p.montant
+
+    def repartir(mois_couverts, du, paye, libelle):
+        n = len(mois_couverts)
+        for mois in mois_couverts:
+            du_par_mois[mois] += (du / n).quantize(Decimal("0.01"))
+            paye_par_mois[mois] += (paye / n).quantize(Decimal("0.01"))
+            couvert_par[mois].append(libelle)
+
+    # 2) Annuel : les 9 mois.
+    for f in annuels:
+        repartir(tous_les_mois, f.montant_du, _total_paye(f), "Annuel")
+
+    # 3) Tranches : chaque Periode de l'année couvre ses mois (voir MOIS_PAR_TRANCHE).
+    if tranches:
+        if periodes is None:
+            periodes = list(Periode.objects.filter(annee_scolaire=annee_scolaire).order_by("date_debut"))
+        for f in tranches:
+            for index, periode in enumerate(periodes[:len(MOIS_PAR_TRANCHE)]):
+                mois_tranche = [m for m in tous_les_mois if m.month in MOIS_PAR_TRANCHE[index]]
+                if mois_tranche:
+                    repartir(mois_tranche, f.montant_du, _total_paye(f, periode_id=periode.id), f"Tranche {index + 1}")
 
     if all(du <= 0 for du in du_par_mois.values()):
         return []  # élève exonéré de mensualité : rien à suivre
-
-    paye_par_mois = {mois: Decimal("0") for mois in tous_les_mois}
-    for p in Paiement.objects.filter(frais__in=frais_mensuels).select_related("frais"):
-        mois = p.mois or p.frais.date_echeance.replace(day=1)
-        if mois in paye_par_mois:
-            paye_par_mois[mois] += p.montant
 
     mois_courant = date.today().replace(day=1)
     resultat = []
     for mois in tous_les_mois:
         du, paye = du_par_mois[mois], paye_par_mois[mois]
-        if du <= 0 or paye >= du:
-            statut = "paye"
-        elif paye > 0:
-            statut = "partiel"
-        else:
-            statut = "non_paye"
         resultat.append({
             "mois": mois.strftime("%Y-%m"), "montant_du": du, "montant_paye": paye,
-            "reste": max(du - paye, Decimal("0")), "statut": statut, "a_venir": mois > mois_courant,
+            "reste": max(du - paye, Decimal("0")), "statut": _statut(du, paye), "a_venir": mois > mois_courant,
+            "couvert_par": ", ".join(dict.fromkeys(couvert_par[mois])),
         })
     return resultat
+
+
+def _suivi_inscription(frais):
+    """Frais d'inscription ou de réinscription de l'année (colonne qui remplace Septembre dans le
+    suivi mensuel) — `None` si l'élève n'en a pas."""
+    frais_inscription = [f for f in frais if f.type_frais.usage in USAGES_INSCRIPTION]
+    if not frais_inscription:
+        return None
+    du = sum((f.montant_du for f in frais_inscription), Decimal("0"))
+    paye = sum((_total_paye(f) for f in frais_inscription), Decimal("0"))
+    reinscription = any(f.type_frais.usage == TypeFrais.Usage.REINSCRIPTION for f in frais_inscription)
+    return {
+        "libelle": "Réinscription" if reinscription else "Inscription",
+        "montant_du": du, "montant_paye": paye, "reste": max(du - paye, Decimal("0")), "statut": _statut(du, paye),
+    }
 
 
 def _fiche_context(frais: Frais) -> dict:
@@ -682,38 +772,61 @@ class FraisViewSet(viewsets.ModelViewSet):
         if not annee:
             raise ValidationError("Aucune année scolaire active pour votre établissement.")
 
+        frais = _frais_suivi_par_eleve([eleve], annee)[eleve.id]
         return Response({
             "eleve_id": eleve.id, "eleve_nom": eleve.user.get_full_name(),
             "categorie_paiement": eleve.categorie_paiement, "categorie_paiement_display": eleve.get_categorie_paiement_display(),
-            "annee_scolaire": annee.libelle, "mois": _calculer_suivi_mensuel(eleve, annee),
+            "annee_scolaire": annee.libelle, "mois": _calculer_suivi_mensuel(eleve, annee, frais=frais),
+            "inscription": _suivi_inscription(frais),
         })
 
     @action(detail=False, methods=["get"], url_path="suivi-mensuel-classe")
     def suivi_mensuel_classe(self, request):
-        """Grille de suivi mensuel (payé/partiel/non payé) pour tous les élèves d'une classe —
-        vue d'ensemble pour la comptabilité, sans avoir à ouvrir chaque élève."""
-        from academics.models import Classe
+        """Grille de suivi mensuel (payé/partiel/non payé) pour tous les élèves d'une classe — ou,
+        sans `classe`, de toutes les classes d'un `cycle` de l'année active — vue d'ensemble pour
+        la comptabilité, sans avoir à ouvrir chaque élève. Chaque élève porte aussi le statut de
+        son inscription/réinscription (colonne qui remplace Septembre)."""
+        from academics.models import AnneeScolaire, Classe
+        from grades.models import Periode
         from people.models import EleveProfile
 
         classe_id = request.query_params.get("classe")
-        if not classe_id:
-            raise ValidationError("Le paramètre 'classe' est requis.")
-        classe = get_object_or_404(Classe, pk=classe_id, annee_scolaire__ecole_id=request.user.ecole_id)
-        annee = classe.annee_scolaire
+        cycle = request.query_params.get("cycle")
+        if classe_id:
+            classe = get_object_or_404(Classe, pk=classe_id, annee_scolaire__ecole_id=request.user.ecole_id)
+            annee = classe.annee_scolaire
+            eleves_qs = EleveProfile.objects.filter(classe=classe, actif=True)
+            libelle = classe.nom
+        elif cycle:
+            annee = AnneeScolaire.objects.filter(ecole_id=request.user.ecole_id, active=True).first()
+            if not annee:
+                raise ValidationError("Aucune année scolaire active pour votre établissement.")
+            eleves_qs = EleveProfile.objects.filter(classe__annee_scolaire=annee, classe__cycle=cycle, actif=True)
+            libelle = f"Cycle {cycle}"
+        else:
+            raise ValidationError("Le paramètre 'classe' (ou 'cycle') est requis.")
 
-        eleves = (
-            EleveProfile.objects.filter(classe=classe, actif=True)
-            .select_related("user").order_by("user__last_name", "user__first_name")
+        eleves = list(
+            eleves_qs.select_related("user", "classe")
+            .order_by("classe__niveau", "classe__nom", "user__last_name", "user__first_name")
         )
+        frais_par_eleve = _frais_suivi_par_eleve(eleves, annee)
+        periodes = list(Periode.objects.filter(annee_scolaire=annee).order_by("date_debut"))
         data = [
             {
                 "eleve_id": e.id, "eleve_nom": e.user.get_full_name(), "matricule": e.matricule,
+                "classe_nom": e.classe.nom if e.classe else "",
                 "categorie_paiement": e.categorie_paiement, "categorie_paiement_display": e.get_categorie_paiement_display(),
-                "mois": _calculer_suivi_mensuel(e, annee),
+                "mois": _calculer_suivi_mensuel(e, annee, frais=frais_par_eleve[e.id], periodes=periodes),
+                "inscription": _suivi_inscription(frais_par_eleve[e.id]),
             }
             for e in eleves
         ]
-        return Response({"classe": classe.nom, "annee_scolaire": annee.libelle, "eleves": data})
+        return Response({
+            "classe": libelle, "annee_scolaire": annee.libelle,
+            "mois": [m.strftime("%Y-%m") for m in _mois_mensualite(annee)],
+            "eleves": data,
+        })
 
     @action(detail=False, methods=["post"], url_path="generer-pour-classe")
     def generer_pour_classe(self, request):
@@ -786,7 +899,9 @@ class FraisViewSet(viewsets.ModelViewSet):
             for type_frais in types_frais:
                 if (eleve.id, type_frais.id) in existants:
                     continue
-                if type_frais.est_mensuel and eleve.facteur_mensualite == 0:
+                if type_frais.est_mensuel and (eleve.facteur_mensualite == 0 or echeance.month == MOIS_INSCRIPTION):
+                    # Exonéré de mensualité, ou Septembre (mois de l'inscription, pas une
+                    # mensualité — voir MOIS_MENSUALITE).
                     continue
                 if type_frais.usage in USAGES_INSCRIPTION:
                     if eleve.id in deja_inscrits:
