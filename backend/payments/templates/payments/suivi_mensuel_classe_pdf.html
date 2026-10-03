@@ -44,10 +44,10 @@
             <tr>
                 <th class="gauche">Élève</th>
                 <th>Mois impayés</th>
-                <th>Total payé</th>
-                <th>Reste</th>
                 {% if avec_inscription %}<th>Inscription / Réinscription</th>{% endif %}
                 {% for entete in entetes_mois %}<th>{{ entete }}</th>{% endfor %}
+                <th>Total payé</th>
+                <th>Reste</th>
             </tr>
         </thead>
         <tbody>
@@ -64,8 +64,6 @@
                         <span class="a_jour">À jour</span>
                     {% endif %}
                 </td>
-                <td class="total">{{ ligne.total_paye|floatformat:"0g" }} GNF</td>
-                <td class="total{% if ligne.reste %} reste{% endif %}">{{ ligne.reste|floatformat:"0g" }} GNF</td>
                 {% if avec_inscription %}
                     {% if ligne.inscription %}
                     <td class="{{ ligne.inscription.statut }}">
@@ -88,14 +86,15 @@
                     <td class="vide">—</td>
                     {% endif %}
                 {% endfor %}
+                <td class="total">{{ ligne.total_paye|floatformat:"0g" }} GNF</td>
+                <td class="total{% if ligne.reste %} reste{% endif %}">{{ ligne.reste|floatformat:"0g" }} GNF</td>
             </tr>
             {% endfor %}
             <tr class="ligne-total">
                 <td class="gauche">Total ({{ total }} élève{{ total|pluralize }})</td>
-                <td></td>
+                <td colspan="{{ nb_colonnes_mois|add:1 }}"></td>
                 <td class="total">{{ total_paye|floatformat:"0g" }} GNF</td>
                 <td class="total reste">{{ total_reste|floatformat:"0g" }} GNF</td>
-                <td colspan="{{ nb_colonnes_mois }}"></td>
             </tr>
         </tbody>
     </table>

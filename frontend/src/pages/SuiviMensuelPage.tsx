@@ -186,11 +186,13 @@ export default function SuiviMensuelPage() {
           </p>
           <div className="overflow-x-auto">
             <Table headers={[
-              "Élève", "Mois impayés", "Total payé", "Reste",
+              "Élève", "Mois impayés",
               // Titre sur deux lignes : sur une seule, il élargissait la colonne bien au-delà de
               // celles des mois.
               ...(avecInscription ? [<span className="block text-center leading-tight">Inscription /<br />Réinscription</span>] : []),
               ...moisAffiches.map(moisLabel),
+              // Après le dernier mois (Juin).
+              "Total payé", "Reste",
             ]}>
               {suivi.eleves.map((e) => {
                 const parMois = new Map(e.mois.map((m) => [m.mois, m]));
@@ -227,10 +229,6 @@ export default function SuiviMensuelPage() {
                         </div>
                       )}
                     </td>
-                    <td className="px-4 py-2.5 whitespace-nowrap text-sm font-semibold text-emerald-700">{money(totaux.paye)}</td>
-                    <td className={`px-4 py-2.5 whitespace-nowrap text-sm font-semibold ${totaux.reste > 0 ? "text-rose-600" : "text-slate-400"}`}>
-                      {money(totaux.reste)}
-                    </td>
                     {avecInscription && (
                       <td className="px-2 py-2.5 text-center whitespace-nowrap">
                         {e.inscription ? (
@@ -248,15 +246,18 @@ export default function SuiviMensuelPage() {
                         </td>
                       );
                     })}
+                    <td className="px-4 py-2.5 whitespace-nowrap text-sm font-semibold text-emerald-700">{money(totaux.paye)}</td>
+                    <td className={`px-4 py-2.5 whitespace-nowrap text-sm font-semibold ${totaux.reste > 0 ? "text-rose-600" : "text-slate-400"}`}>
+                      {money(totaux.reste)}
+                    </td>
                   </tr>
                 );
               })}
               <tr className="bg-slate-50 font-bold border-t-2 border-slate-200">
                 <td className="px-4 py-3 text-ink-900 whitespace-nowrap">Total ({suivi.eleves.length} élève{suivi.eleves.length > 1 ? "s" : ""})</td>
-                <td className="px-4 py-3" />
+                <td className="px-4 py-3" colSpan={1 + (avecInscription ? 1 : 0) + moisAffiches.length} />
                 <td className="px-4 py-3 whitespace-nowrap text-emerald-700">{money(totauxGeneraux.paye)}</td>
                 <td className="px-4 py-3 whitespace-nowrap text-rose-600">{money(totauxGeneraux.reste)}</td>
-                <td className="px-4 py-3" colSpan={(avecInscription ? 1 : 0) + moisAffiches.length} />
               </tr>
             </Table>
           </div>
