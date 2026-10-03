@@ -436,6 +436,12 @@ export default function PaymentsPage() {
   const handlePaiementSubmit = async (e: FormEvent) => {
     e.preventDefault();
     if (!paiementTarget) return;
+    // Sans tranche précisée, le versement ne pourrait être rattaché à aucun mois dans le suivi
+    // mensuel (voir payments.views.MOIS_PAR_TRANCHE).
+    if (paiementTarget.type_frais_periodicite === "trimestriel" && !paiementForm.periode) {
+      setPaiementError("Choisissez la tranche payée.");
+      return;
+    }
     const montantMax = restantAVerser(paiementTarget, paiementForm.mois, paiementForm.periode);
     if (Number(paiementForm.montant) > montantMax) {
       setPaiementError(`Le montant dépasse ce qu'il reste à payer (${money(montantMax)}).`);
@@ -860,11 +866,12 @@ export default function PaymentsPage() {
             {paiementTarget.type_frais_periodicite === "trimestriel" && (
               <div>
                 <Select
-                  label="Tranche payée (optionnel)"
+                  label="Tranche payée"
+                  required
                   value={paiementForm.periode}
                   onChange={(e) => setPaiementForm({ ...paiementForm, periode: e.target.value })}
                 >
-                  <option value="">— Aucune tranche précise —</option>
+                  <option value="">— Choisir la tranche —</option>
                   {periodesPaiement.map((p, i) => {
                     const statut = statutPeriodePourFrais(paiementTarget, p.id);
                     return (
@@ -875,7 +882,10 @@ export default function PaymentsPage() {
                     );
                   })}
                 </Select>
-                <p className="text-xs text-slate-400 mt-1">Ce frais est facturé par tranche — précisez laquelle ce versement couvre.</p>
+                <p className="text-xs text-slate-400 mt-1">
+                  Ce frais est facturé par tranche — dans le suivi mensuel, la 1ère tranche couvre Octobre, Novembre,
+                  Décembre et Juin, la 2ème Janvier à Mars, la 3ème Avril et Mai.
+                </p>
               </div>
             )}
             <Input label="Référence (optionnel)" value={paiementForm.reference} onChange={(e) => setPaiementForm({ ...paiementForm, reference: e.target.value })} />

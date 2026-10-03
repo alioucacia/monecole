@@ -75,6 +75,9 @@ class PaiementSerializer(serializers.ModelSerializer):
         mois = attrs.get("mois", getattr(self.instance, "mois", None))
         periode = attrs.get("periode", getattr(self.instance, "periode", None))
         montant = attrs.get("montant", getattr(self.instance, "montant", None))
+        if frais.type_frais.periodicite == TypeFrais.Periodicite.TRIMESTRIEL and not periode:
+            # Sans tranche précisée, le versement ne serait rattaché à aucun mois du suivi mensuel.
+            raise serializers.ValidationError({"periode": "Précisez la tranche payée pour ce frais par tranche."})
         if periode and periode.annee_scolaire_id != frais.annee_scolaire_id:
             raise serializers.ValidationError({"periode": "Cette tranche n'appartient pas à l'année scolaire de ce frais."})
 

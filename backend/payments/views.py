@@ -150,15 +150,26 @@ def _calculer_suivi_mensuel(eleve, annee_scolaire, frais=None, periodes=None):
     for f in annuels:
         repartir(tous_les_mois, f.montant_du, _total_paye(f), "Annuel")
 
-    # 3) Tranches : chaque Periode de l'année couvre ses mois (voir MOIS_PAR_TRANCHE).
+    # 3) Tranches : chaque Periode de l'année couvre ses mois (voir MOIS_PAR_TRANCHE) — seuls
+    #    les mois d'une tranche payée passent « Payé », les autres restent « Non payé » jusqu'au
+    #    paiement de leur tranche. Un versement sans tranche précisée (données antérieures à
+    #    l'obligation de la choisir) complète les tranches dans l'ordre : 1re, puis 2e...
     if tranches:
         if periodes is None:
             periodes = list(Periode.objects.filter(annee_scolaire=annee_scolaire).order_by("date_debut"))
+        periodes_tranches = periodes[:len(MOIS_PAR_TRANCHE)]
         for f in tranches:
-            for index, periode in enumerate(periodes[:len(MOIS_PAR_TRANCHE)]):
+            sans_tranche = sum(
+                (p.montant for p in f.paiements.all() if p.periode_id not in {pe.id for pe in periodes_tranches}),
+                Decimal("0"),
+            )
+            for index, periode in enumerate(periodes_tranches):
+                verse = _total_paye(f, periode_id=periode.id)
+                complement = min(sans_tranche, max(f.montant_du - verse, Decimal("0")))
+                sans_tranche -= complement
                 mois_tranche = [m for m in tous_les_mois if m.month in MOIS_PAR_TRANCHE[index]]
                 if mois_tranche:
-                    repartir(mois_tranche, f.montant_du, _total_paye(f, periode_id=periode.id), f"Tranche {index + 1}")
+                    repartir(mois_tranche, f.montant_du, verse + complement, f"Tranche {index + 1}")
 
     if all(du <= 0 for du in du_par_mois.values()):
         return []  # élève exonéré de mensualité : rien à suivre
@@ -783,7 +794,8 @@ class FraisViewSet(viewsets.ModelViewSet):
     @action(detail=False, methods=["get"], url_path="suivi-mensuel-classe")
     def suivi_mensuel_classe(self, request):
         """Grille de suivi mensuel (payé/partiel/non payé) pour tous les élèves d'une classe — ou,
-        sans `classe`, de toutes les classes d'un `cycle` de l'année active — vue d'ensemble pour
+        sans `classe`, de toutes les classes d'un `cycle` (ou de toute l'école, sans filtre) de
+        l'année active — vue d'ensemble pour
         la comptabilité, sans avoir à ouvrir chaque élève. Chaque élève porte aussi le statut de
         son inscription/réinscription (colonne qui remplace Septembre)."""
         from academics.models import AnneeScolaire, Classe
@@ -797,14 +809,16 @@ class FraisViewSet(viewsets.ModelViewSet):
             annee = classe.annee_scolaire
             eleves_qs = EleveProfile.objects.filter(classe=classe, actif=True)
             libelle = classe.nom
-        elif cycle:
+        else:
+            # Sans classe : toutes les classes du cycle, ou par défaut tous les élèves de l'année
+            # active (page ouverte sans filtre).
             annee = AnneeScolaire.objects.filter(ecole_id=request.user.ecole_id, active=True).first()
             if not annee:
                 raise ValidationError("Aucune année scolaire active pour votre établissement.")
-            eleves_qs = EleveProfile.objects.filter(classe__annee_scolaire=annee, classe__cycle=cycle, actif=True)
-            libelle = f"Cycle {cycle}"
-        else:
-            raise ValidationError("Le paramètre 'classe' (ou 'cycle') est requis.")
+            eleves_qs = EleveProfile.objects.filter(classe__annee_scolaire=annee, actif=True)
+            if cycle:
+                eleves_qs = eleves_qs.filter(classe__cycle=cycle)
+            libelle = f"Cycle {cycle}" if cycle else "Toutes les classes"
 
         eleves = list(
             eleves_qs.select_related("user", "classe")

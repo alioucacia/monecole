@@ -13,9 +13,6 @@ const STATUT_BADGE: Record<string, { label: string; color: "green" | "amber" | "
   non_paye: { label: "Non payé", color: "rose" },
 };
 
-// Valeur du filtre Classe pour afficher toutes les classes du cycle choisi.
-const TOUTES_CLASSES = "toutes";
-
 function montant(value: string | number) {
   return Number(value).toLocaleString("fr-FR");
 }
@@ -55,6 +52,7 @@ function CelluleStatut({ ligne, note }: { ligne: SuiviMensuelMois | SuiviMensuel
 export default function SuiviMensuelPage() {
   const [classes, setClasses] = useState<Classe[]>([]);
   const [cycleFiltre, setCycleFiltre] = useState<Cycle | "">("");
+  // "" (par défaut) = toutes les classes — du cycle choisi, ou de toute l'école.
   const [classeId, setClasseId] = useState<string>("");
   // "" = tous les mois (avec la colonne Inscription / Réinscription), sinon "AAAA-MM".
   const [moisFiltre, setMoisFiltre] = useState("");
@@ -63,17 +61,12 @@ export default function SuiviMensuelPage() {
   const [error, setError] = useState("");
 
   useEffect(() => {
-    classesApi.list({ page_size: 200 }).then(({ data }) => {
-      const liste = unwrapList(data);
-      setClasses(liste);
-      if (liste.length > 0) setClasseId(liste[0].id.toString());
-    });
+    classesApi.list({ page_size: 200 }).then(({ data }) => setClasses(unwrapList(data)));
   }, []);
 
+  // Par défaut (aucun filtre) : tous les élèves de l'année active.
   useEffect(() => {
-    if (!classeId) return;
-    const params = classeId === TOUTES_CLASSES ? { cycle: cycleFiltre || undefined } : { classe: Number(classeId) };
-    if (classeId === TOUTES_CLASSES && !cycleFiltre) return;
+    const params = classeId ? { classe: Number(classeId) } : { cycle: cycleFiltre || undefined };
     setLoading(true);
     setError("");
     fraisApi.suiviMensuelClasse(params)
@@ -98,7 +91,7 @@ export default function SuiviMensuelPage() {
   const tousLesMois = suivi?.mois ?? [];
   const moisAffiches = moisFiltre ? tousLesMois.filter((m) => m === moisFiltre) : tousLesMois;
   const avecInscription = !moisFiltre;
-  const parCycle = classeId === TOUTES_CLASSES;
+  const plusieursClasses = !classeId;
   const aSuivre = suivi?.eleves.some((e) => e.mois.length > 0 || e.inscription) ?? false;
 
   return (
@@ -115,14 +108,12 @@ export default function SuiviMensuelPage() {
           value={cycleFiltre}
           onChange={(c) => {
             setCycleFiltre(c);
-            if (classeId === TOUTES_CLASSES && c) return;
-            const premiere = classes.find((cl) => !c || cl.cycle === c);
-            setClasseId(premiere ? String(premiere.id) : "");
+            setClasseId("");
           }}
           className="max-w-xs"
         />
         <Select label="Classe" value={classeId} onChange={(e) => setClasseId(e.target.value)} className="max-w-xs">
-          {cycleFiltre && <option value={TOUTES_CLASSES}>— Toutes les classes du cycle —</option>}
+          <option value="">— Toutes les classes —</option>
           {classes.filter((c) => !cycleFiltre || c.cycle === cycleFiltre).map((c) => <option key={c.id} value={c.id}>{c.nom}</option>)}
         </Select>
         <Select label="Mois" value={moisFiltre} onChange={(e) => setMoisFiltre(e.target.value)} className="max-w-xs">
@@ -149,7 +140,7 @@ export default function SuiviMensuelPage() {
           </p>
           <div className="overflow-x-auto">
             <Table headers={[
-              "Élève", "Matricule", ...(parCycle ? ["Classe"] : []), "Catégorie", "Mois impayés",
+              "Élève", ...(plusieursClasses ? ["Classe"] : []), "Mois impayés",
               ...(avecInscription ? ["Inscription / Réinscription"] : []),
               ...moisAffiches.map(moisLabel),
             ]}>
@@ -170,15 +161,7 @@ export default function SuiviMensuelPage() {
                         📄
                       </button>
                     </td>
-                    <td className="px-4 py-2.5 text-xs font-mono text-slate-400 whitespace-nowrap">{e.matricule}</td>
-                    {parCycle && <td className="px-4 py-2.5 text-xs text-slate-500 whitespace-nowrap">{e.classe_nom || "—"}</td>}
-                    <td className="px-4 py-2.5 text-xs text-slate-500 whitespace-nowrap">
-                      {e.categorie_paiement !== "standard" ? (
-                        <Badge color="amber">{e.categorie_paiement_display}</Badge>
-                      ) : (
-                        <span className="text-slate-300">Standard</span>
-                      )}
-                    </td>
+                    {plusieursClasses && <td className="px-4 py-2.5 text-xs text-slate-500 whitespace-nowrap">{e.classe_nom || "—"}</td>}
                     <td className="px-4 py-2.5 whitespace-nowrap">
                       {nbImpayes === 0 && nbPartiels === 0 ? (
                         <span className="text-emerald-600 text-xs">✓ à jour</span>
