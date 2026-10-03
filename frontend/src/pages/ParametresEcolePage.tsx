@@ -10,7 +10,10 @@ import type { AnneeScolaire, Ecole, ModeleMessage, Periode, TransactionAbonnemen
 
 // Statuts pour lesquels un paiement est effectivement dû — masque le bouton quand l'abonnement
 // est déjà à jour ou suspendu (le Super Admin doit alors réactiver l'école lui-même).
-const STATUTS_ABONNEMENT_PAYABLES = new Set(["en_attente", "en_retard", "bloque"]);
+// Paiement possible à tout moment (y compris en avance, quand l'abonnement est encore à jour) :
+// les jours payés s'ajoutent à la fin de la période en cours. Seule une école suspendue
+// manuellement par le Super Admin ne peut pas payer.
+const STATUTS_ABONNEMENT_PAYABLES = new Set(["paye", "en_attente", "en_retard", "bloque"]);
 
 /** Paiement en ligne de l'abonnement (self-service) via la passerelle Mobile Money Djomy —
  * initie une transaction (POST payer-abonnement), ouvre la page de paiement Djomy renvoyée
@@ -113,7 +116,7 @@ function PayerAbonnementDjomySection({ ecole, onPaye }: { ecole: Ecole; onPaye: 
                     periode === "mensuel" ? "border-brand-600 bg-brand-50 text-brand-700" : "border-slate-200 text-slate-600 hover:border-slate-300"
                   }`}
                 >
-                  Mensuel
+                  Mensuel — 30 jours
                 </button>
                 <button
                   type="button"
@@ -122,7 +125,7 @@ function PayerAbonnementDjomySection({ ecole, onPaye }: { ecole: Ecole; onPaye: 
                     periode === "annuel" ? "border-brand-600 bg-brand-50 text-brand-700" : "border-slate-200 text-slate-600 hover:border-slate-300"
                   }`}
                 >
-                  Annuel
+                  Annuel — 365 jours
                 </button>
               </div>
             </div>
@@ -132,6 +135,10 @@ function PayerAbonnementDjomySection({ ecole, onPaye }: { ecole: Ecole; onPaye: 
                 {(Number(ecole.abonnement_mensuel) * (periode === "annuel" ? 12 : 1)).toLocaleString("fr-FR")} GNF
               </span>
               {periode === "annuel" && <span className="text-slate-400"> (12 mois)</span>}
+            </p>
+            <p className="text-xs text-slate-400">
+              Dès que Djomy valide le paiement, l'abonnement est prolongé automatiquement de{" "}
+              {periode === "annuel" ? "365" : "30"} jours (à la suite des jours restants) — même si vous fermez cette page.
             </p>
             <Input
               label="Numéro Mobile Money (payeur)" required placeholder="622000000"
@@ -729,6 +736,14 @@ export default function ParametresEcolePage() {
           {ecole && (
             <div className="mt-4 pt-4 border-t border-slate-100 text-xs text-slate-400">
               Abonnement plateforme : <Badge color={ecole.statut_abonnement === "paye" ? "green" : "amber"}>{ecole.statut_abonnement}</Badge>
+              {ecole.date_fin_abonnement && ecole.jours_restants_abonnement >= 0 && (
+                <p className="mt-2 text-slate-500">
+                  Valable jusqu'au {new Date(ecole.date_fin_abonnement).toLocaleDateString("fr-FR")} —{" "}
+                  <span className="font-semibold">
+                    {ecole.jours_restants_abonnement} jour{ecole.jours_restants_abonnement > 1 ? "s" : ""} restant{ecole.jours_restants_abonnement > 1 ? "s" : ""}
+                  </span>
+                </p>
+              )}
               {ecole.statut_abonnement === "en_attente" && ecole.jours_avant_echeance !== null && (
                 <p className="mt-2 text-slate-500">
                   {ecole.jours_avant_echeance > 0

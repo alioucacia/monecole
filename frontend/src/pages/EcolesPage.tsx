@@ -39,6 +39,7 @@ const emptyEditForm = {
   nom: "", adresse: "", ville: "", pays: "", telephone: "", email: "",
   directeur_nom: "", type_etablissement: "",
   plan: "", abonnement_mensuel: "", jour_echeance: 5, jours_grace: 5,
+  date_fin_abonnement: "",
 };
 
 const TYPE_ETABLISSEMENT_LABELS: Record<string, string> = {
@@ -153,6 +154,7 @@ export default function EcolesPage() {
       directeur_nom: ecole.directeur_nom, type_etablissement: ecole.type_etablissement,
       plan: ecole.plan ? String(ecole.plan) : "",
       abonnement_mensuel: ecole.abonnement_mensuel, jour_echeance: ecole.jour_echeance, jours_grace: ecole.jours_grace,
+      date_fin_abonnement: ecole.date_fin_abonnement ?? "",
     });
     setEditLogo(null);
     setEditLogoPreview(ecole.logo);
@@ -171,6 +173,9 @@ export default function EcolesPage() {
     setEditError("");
     try {
       const payload: Record<string, unknown> = { ...editForm, plan: editForm.plan || null };
+      // Champ laissé vide : on ne touche pas à la fin d'abonnement (une date vide n'est pas
+      // une valeur valide côté serveur).
+      if (!editForm.date_fin_abonnement) delete payload.date_fin_abonnement;
       if (editLogo) payload.logo = editLogo;
       await ecolesApi.update(editTarget.id, payload);
       setEditTarget(null);
@@ -473,6 +478,17 @@ export default function EcolesPage() {
             <Input label="Abonnement mensuel (GNF)" type="number" min={0} required value={editForm.abonnement_mensuel} onChange={(e) => setEditForm({ ...editForm, abonnement_mensuel: e.target.value })} />
             <Input label="Jour d'échéance (1-28)" type="number" min={1} max={28} value={editForm.jour_echeance} onChange={(e) => setEditForm({ ...editForm, jour_echeance: Number(e.target.value) })} />
             <Input label="Jours de grâce" type="number" min={0} value={editForm.jours_grace} onChange={(e) => setEditForm({ ...editForm, jours_grace: Number(e.target.value) })} />
+            <div className="sm:col-span-2">
+              <Input
+                label="Fin de l'abonnement" type="date" value={editForm.date_fin_abonnement}
+                onChange={(e) => setEditForm({ ...editForm, date_fin_abonnement: e.target.value })}
+              />
+              <p className="text-xs text-slate-400 mt-1">
+                Dernier jour couvert par l'abonnement. Chaque paiement validé la prolonge de 30 jours (mensuel) ou
+                365 jours (annuel).
+                {editTarget && ` Actuellement : ${editTarget.jours_restants_abonnement} jour(s) restant(s).`}
+              </p>
+            </div>
 
             {editError && <p className="sm:col-span-2 text-sm text-rose-600 bg-rose-50 border border-rose-100 rounded-xl px-3.5 py-2.5">{editError}</p>}
 

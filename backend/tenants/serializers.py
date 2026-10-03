@@ -116,6 +116,9 @@ class EcoleSerializer(serializers.ModelSerializer):
     # pour chaque école dans EcolesPage/EcoleDetailPage, au lieu d'un décompte toujours mensuel.
     jours_avant_prochaine_echeance = serializers.IntegerField(read_only=True)
     periodicite_abonnement_display = serializers.CharField(read_only=True)
+    # Décompte en jours (voir Ecole.date_fin_abonnement) — `date_fin_abonnement` modifiable par
+    # le Super Admin (ex : corriger ou raccourcir un abonnement).
+    jours_restants_abonnement = serializers.IntegerField(read_only=True)
     nombre_utilisateurs = serializers.SerializerMethodField()
     dernier_paiement = serializers.SerializerMethodField()
     parametres = ParametresEcoleSerializer(read_only=True)
@@ -141,6 +144,7 @@ class EcoleSerializer(serializers.ModelSerializer):
             "abonnement_mensuel", "jour_echeance", "jours_grace", "actif", "date_creation",
             "statut_abonnement", "jours_avant_echeance", "jours_avant_blocage",
             "jours_avant_prochaine_echeance", "periodicite_abonnement_display",
+            "date_fin_abonnement", "jours_restants_abonnement",
             "nombre_utilisateurs", "dernier_paiement", "parametres",
             "couleur_principale", "couleur_secondaire", "fonctionnalites_desactivees",
             "modele_recu", "modele_recu_display", "modele_badge", "modele_badge_display",
@@ -262,6 +266,7 @@ class MonEcoleSerializer(serializers.ModelSerializer):
     # (Layout.tsx AbonnementBadge).
     jours_avant_prochaine_echeance = serializers.IntegerField(read_only=True)
     periodicite_abonnement_display = serializers.CharField(read_only=True)
+    jours_restants_abonnement = serializers.IntegerField(read_only=True)
 
     class Meta:
         model = Ecole
@@ -270,14 +275,14 @@ class MonEcoleSerializer(serializers.ModelSerializer):
             "entete_ministere_1", "entete_ministere_2", "entete_republique", "entete_devise",
             "abonnement_mensuel", "jour_echeance", "jours_grace", "statut_abonnement",
             "jours_avant_echeance", "jours_avant_blocage", "jours_avant_prochaine_echeance",
-            "periodicite_abonnement_display", "parametres",
+            "periodicite_abonnement_display", "date_fin_abonnement", "jours_restants_abonnement", "parametres",
             "couleur_principale", "couleur_secondaire", "fonctionnalites_desactivees",
         ]
         # La personnalisation des documents et l'activation des fonctionnalités restent
         # décidées par le Super Admin (EcoleViewSet) — l'admin de l'école les consulte ici
         # en lecture seule mais ne peut pas les modifier lui-même.
         read_only_fields = [
-            "abonnement_mensuel", "jour_echeance", "jours_grace",
+            "abonnement_mensuel", "jour_echeance", "jours_grace", "date_fin_abonnement",
             "couleur_principale", "couleur_secondaire", "fonctionnalites_desactivees",
         ]
 

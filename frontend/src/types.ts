@@ -98,6 +98,11 @@ export interface Ecole {
   // périodicité effectivement appliquée (Mensuel/Trimestriel/Annuel, selon `plan.periodicite`).
   jours_avant_prochaine_echeance: number | null;
   periodicite_abonnement_display: string;
+  /** Dernier jour couvert par l'abonnement payé (décompte en jours : +30 par paiement
+   * mensuel, +365 par paiement annuel) — modifiable par le Super Admin. */
+  date_fin_abonnement: string | null;
+  /** Jours restants avant la fin de l'abonnement (négatif une fois dépassée). */
+  jours_restants_abonnement: number;
   nombre_utilisateurs: number;
   dernier_paiement: PaiementEcole | null;
   parametres: ParametresEcole | null;
@@ -271,7 +276,8 @@ export interface SauvegardeLog {
   fichier: string;
   taille_octets: number;
   duree_secondes: number;
-  statut: "succes" | "echec";
+  /** "en_cours" : sauvegarde lancée depuis la page, exécutée en arrière-plan. */
+  statut: "succes" | "echec" | "en_cours";
   message: string;
 }
 

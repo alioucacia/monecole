@@ -10,6 +10,9 @@ class SauvegardeLog(models.Model):
     class Statut(models.TextChoices):
         SUCCES = "succes", "Succès"
         ECHEC = "echec", "Échec"
+        # Sauvegarde lancée depuis la page du Super Admin, exécutée en arrière-plan (voir
+        # core/sauvegarde.py) — passe ensuite à Succès ou Échec.
+        EN_COURS = "en_cours", "En cours"
 
     date_lancement = models.DateTimeField(auto_now_add=True)
     fichier = models.CharField(max_length=255, blank=True, help_text="Chemin du fichier de sauvegarde généré")

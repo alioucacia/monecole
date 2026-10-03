@@ -97,7 +97,11 @@ export default function SupervisionPage() {
         <Card className="lg:col-span-2">
           <div className="flex items-center justify-between mb-4">
             <h3 className="font-bold text-ink-900">Dernières sauvegardes</h3>
-            {derniere && <Badge color={derniere.statut === "succes" ? "green" : "rose"}>{derniere.statut === "succes" ? "Dernière : succès" : "Dernière : échec"}</Badge>}
+            {derniere && (
+              <Badge color={derniere.statut === "succes" ? "green" : derniere.statut === "en_cours" ? "amber" : "rose"}>
+                {derniere.statut === "succes" ? "Dernière : succès" : derniere.statut === "en_cours" ? "En cours…" : "Dernière : échec"}
+              </Badge>
+            )}
           </div>
           {data.dernieres_sauvegardes.length === 0 ? (
             <EmptyState title="Aucune sauvegarde enregistrée" />
@@ -106,7 +110,9 @@ export default function SupervisionPage() {
               {data.dernieres_sauvegardes.map((log) => (
                 <tr key={log.id}>
                   <td className="px-4 py-3 text-slate-600 text-sm">{new Date(log.date_lancement).toLocaleString("fr-FR")}</td>
-                  <td className="px-4 py-3"><Badge color={log.statut === "succes" ? "green" : "rose"}>{log.statut === "succes" ? "Succès" : "Échec"}</Badge></td>
+                  <td className="px-4 py-3"><Badge color={log.statut === "succes" ? "green" : log.statut === "en_cours" ? "amber" : "rose"}>
+                    {log.statut === "succes" ? "Succès" : log.statut === "en_cours" ? "En cours…" : "Échec"}
+                  </Badge></td>
                   <td className="px-4 py-3 text-sm">{taille(log.taille_octets)}</td>
                   <td className="px-4 py-3 text-sm">{log.duree_secondes.toFixed(1)} s</td>
                 </tr>

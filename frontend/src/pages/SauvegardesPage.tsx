@@ -5,6 +5,12 @@ import { extractErrorMessage } from "../api/client";
 import { Badge, Button, EmptyState, PageHeader, Spinner, Table } from "../components/ui";
 import type { SauvegardeLog } from "../types";
 
+const STATUT: Record<SauvegardeLog["statut"], { label: string; color: "green" | "rose" | "amber" }> = {
+  succes: { label: "Succès", color: "green" },
+  echec: { label: "Échec", color: "rose" },
+  en_cours: { label: "En cours…", color: "amber" },
+};
+
 function taille(octets: number) {
   if (octets < 1024) return `${octets} o`;
   if (octets < 1024 * 1024) return `${(octets / 1024).toFixed(1)} Ko`;
@@ -17,19 +23,28 @@ export default function SauvegardesPage() {
   const [lancement, setLancement] = useState(false);
   const [error, setError] = useState("");
 
-  const load = () => {
-    setLoading(true);
+  const load = (silencieux = false) => {
+    if (!silencieux) setLoading(true);
     sauvegardesApi.list({ page_size: 100 }).then(({ data }) => setLogs(unwrapList(data))).finally(() => setLoading(false));
   };
 
-  useEffect(load, []);
+  useEffect(() => load(), []);
+
+  // La sauvegarde s'exécute en arrière-plan côté serveur : tant qu'une est « en cours », on
+  // recharge l'historique toutes les 3 s pour afficher son résultat dès qu'il est connu.
+  const enCours = logs.some((l) => l.statut === "en_cours");
+  useEffect(() => {
+    if (!enCours) return;
+    const id = setInterval(() => load(true), 3000);
+    return () => clearInterval(id);
+  }, [enCours]);
 
   const handleLancer = async () => {
     setLancement(true);
     setError("");
     try {
       await sauvegardesApi.lancer();
-      load();
+      load(true);
     } catch (err) {
       setError(extractErrorMessage(err));
     } finally {
@@ -44,7 +59,11 @@ export default function SauvegardesPage() {
       <PageHeader
         title="Sauvegardes"
         description="Sauvegarde journalière automatique de toute la plateforme (toutes écoles), conservée 30 jours."
-        actions={<Button onClick={handleLancer} disabled={lancement}>{lancement ? "Sauvegarde en cours…" : "🗄️ Lancer une sauvegarde maintenant"}</Button>}
+        actions={
+          <Button onClick={handleLancer} disabled={lancement || enCours}>
+            {lancement || enCours ? "Sauvegarde en cours…" : "🗄️ Lancer une sauvegarde maintenant"}
+          </Button>
+        }
       />
 
       {error && <p className="text-sm text-rose-600 bg-rose-50 border border-rose-100 rounded-xl px-3.5 py-2.5 mb-4">{error}</p>}
@@ -55,7 +74,7 @@ export default function SauvegardesPage() {
             <p className="text-xs text-slate-400 font-semibold uppercase tracking-wide">Dernière sauvegarde</p>
             <p className="text-lg font-bold text-ink-900">{new Date(derniere.date_lancement).toLocaleString("fr-FR")}</p>
           </div>
-          <Badge color={derniere.statut === "succes" ? "green" : "rose"}>{derniere.statut === "succes" ? "Succès" : "Échec"}</Badge>
+          <Badge color={STATUT[derniere.statut].color}>{STATUT[derniere.statut].label}</Badge>
         </div>
       )}
 
@@ -73,7 +92,7 @@ export default function SauvegardesPage() {
           {logs.map((log) => (
             <tr key={log.id}>
               <td className="px-4 py-3 text-slate-600">{new Date(log.date_lancement).toLocaleString("fr-FR")}</td>
-              <td className="px-4 py-3"><Badge color={log.statut === "succes" ? "green" : "rose"}>{log.statut === "succes" ? "Succès" : "Échec"}</Badge></td>
+              <td className="px-4 py-3"><Badge color={STATUT[log.statut].color}>{STATUT[log.statut].label}</Badge></td>
               <td className="px-4 py-3">{taille(log.taille_octets)}</td>
               <td className="px-4 py-3">{log.duree_secondes.toFixed(1)} s</td>
               <td className="px-4 py-3 text-xs text-slate-500">{log.message}</td>

@@ -8,7 +8,6 @@ from pathlib import Path
 
 import django
 from django.conf import settings
-from django.core.management import call_command
 from django.db.models import Count, Q, Sum
 from django.http import FileResponse, Http404
 from django.utils import timezone
@@ -304,10 +303,17 @@ class SauvegardeViewSet(viewsets.ReadOnlyModelViewSet):
 
     @action(detail=False, methods=["post"], url_path="lancer")
     def lancer(self, request):
-        """Déclenche une sauvegarde immédiate (en plus de la tâche planifiée quotidienne)."""
-        call_command("backup_daily")
-        dernier = SauvegardeLog.objects.first()
-        return Response(SauvegardeLogSerializer(dernier).data, status=201)
+        """Déclenche une sauvegarde immédiate (en plus de la tâche planifiée quotidienne),
+        exécutée en arrière-plan : la réponse arrive tout de suite avec l'entrée « en cours »,
+        mise à jour à la fin (voir core/sauvegarde.py)."""
+        from .sauvegarde import lancer_en_arriere_plan, sauvegarde_en_cours
+
+        if sauvegarde_en_cours():
+            return Response(
+                {"detail": "Une sauvegarde est déjà en cours — patientez jusqu'à la fin avant d'en relancer une."},
+                status=409,
+            )
+        return Response(SauvegardeLogSerializer(lancer_en_arriere_plan()).data, status=202)
 
     @action(detail=True, methods=["get"], url_path="telecharger")
     def telecharger(self, request, pk=None):

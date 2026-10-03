@@ -1,4 +1,4 @@
-from datetime import date, time
+from datetime import date, time, timedelta
 from decimal import Decimal
 
 from django.conf import settings
@@ -7,6 +7,13 @@ from django.db import models
 from django.db.models.signals import post_save
 from django.dispatch import receiver
 from django.utils.text import slugify
+
+
+# Abonnement décompté en jours (voir Ecole.date_fin_abonnement) : durée ajoutée par un paiement
+# mensuel / annuel, et nombre de jours avant la fin à partir duquel le paiement est « bientôt dû ».
+JOURS_ABONNEMENT_MENSUEL = 30
+JOURS_ABONNEMENT_ANNUEL = 365
+JOURS_ALERTE_ECHEANCE = 5
 
 
 class PlanAbonnement(models.Model):
@@ -111,6 +118,14 @@ class Ecole(models.Model):
     )
     actif = models.BooleanField(
         default=True, help_text="Désactivation manuelle par le Super Admin, indépendante du statut de paiement"
+    )
+    # Fin de la période d'abonnement payée — l'abonnement se décompte en JOURS : chaque paiement
+    # validé la prolonge de 30 jours (Mensuel) ou 365 jours (Annuel), à partir de la fin en cours
+    # si elle n'est pas dépassée, sinon d'aujourd'hui (voir `prolonger_abonnement`). Modifiable
+    # par le Super Admin. Vide (école sans paiement depuis ce mode de calcul) : repli sur
+    # l'ancienne échéance mensuelle (`_date_echeance_courante`).
+    date_fin_abonnement = models.DateField(
+        null=True, blank=True, help_text="Dernier jour couvert par l'abonnement payé",
     )
     date_creation = models.DateField(auto_now_add=True)
 
@@ -233,21 +248,47 @@ class Ecole(models.Model):
         return self._mois_echeance_courante().replace(day=min(self.jour_echeance, 28))
 
     @property
+    def duree_periode_jours(self) -> int:
+        """Jours d'abonnement ajoutés par UN paiement enregistré par le Super Admin, selon la
+        périodicité du plan : 30 (Mensuel), 90 (Trimestriel), 365 (Annuel)."""
+        return {1: JOURS_ABONNEMENT_MENSUEL, 3: 90, 12: JOURS_ABONNEMENT_ANNUEL}[self.duree_periode_mois]
+
+    def _date_fin_effective(self) -> date:
+        """Dernier jour couvert par l'abonnement : `date_fin_abonnement`, ou à défaut l'ancienne
+        échéance mensuelle."""
+        return self.date_fin_abonnement or self._date_echeance_courante()
+
+    @property
+    def jours_restants_abonnement(self) -> int:
+        """Jours restants avant la fin de l'abonnement payé (négatif une fois dépassée)."""
+        return (self._date_fin_effective() - date.today()).days
+
+    def prolonger_abonnement(self, jours: int) -> date:
+        """Ajoute `jours` d'abonnement (30 pour un paiement mensuel, 365 pour un annuel) : à la
+        suite de la période en cours si elle n'est pas terminée — rien n'est perdu en payant en
+        avance — sinon à partir d'aujourd'hui. Réactive ainsi automatiquement une école en
+        retard ou bloquée dès que son paiement est validé."""
+        aujourd_hui = date.today()
+        fin = self._date_fin_effective()
+        depart = fin if fin >= aujourd_hui else aujourd_hui
+        self.date_fin_abonnement = depart + timedelta(days=jours)
+        self.save(update_fields=["date_fin_abonnement"])
+        return self.date_fin_abonnement
+
+    @property
     def statut_abonnement(self) -> str:
-        """'suspendu' | 'paye' | 'en_attente' | 'en_retard' | 'bloque'."""
+        """'suspendu' | 'paye' | 'en_attente' | 'en_retard' | 'bloque' — en jours :
+        à jour tant qu'il reste plus de JOURS_ALERTE_ECHEANCE jours, « en attente » (paiement
+        bientôt dû) dans les derniers jours, puis « en retard » pendant `jours_grace` jours après
+        la fin, enfin « bloqué »."""
         if not self.actif:
             return "suspendu"
-        today = date.today()
-        mois_echeance = self._mois_echeance_courante()
-        if today < mois_echeance:
-            # Encore dans un mois entièrement couvert par le dernier paiement — à jour, quelle
-            # que soit la périodicité (1/3/12 mois).
+        restants = self.jours_restants_abonnement
+        if restants > JOURS_ALERTE_ECHEANCE:
             return "paye"
-        date_echeance = mois_echeance.replace(day=min(self.jour_echeance, 28))
-        if today <= date_echeance:
+        if restants >= 0:
             return "en_attente"
-        jours_retard = (today - date_echeance).days
-        if jours_retard <= self.jours_grace:
+        if -restants <= self.jours_grace:
             return "en_retard"
         return "bloque"
 
@@ -262,8 +303,7 @@ class Ecole(models.Model):
         None si l'école n'est pas en situation de retard (à jour, bloquée ou suspendue)."""
         if self.statut_abonnement != "en_retard":
             return None
-        jours_retard = (date.today() - self._date_echeance_courante()).days
-        return max(self.jours_grace - jours_retard, 0)
+        return max(self.jours_grace + self.jours_restants_abonnement, 0)
 
     @property
     def jours_avant_echeance(self) -> int | None:
@@ -273,7 +313,7 @@ class Ecole(models.Model):
         alors `jours_avant_blocage`)."""
         if self.statut_abonnement != "en_attente":
             return None
-        return (self._date_echeance_courante() - date.today()).days
+        return self.jours_restants_abonnement
 
     @property
     def jours_avant_prochaine_echeance(self) -> int | None:
@@ -287,7 +327,7 @@ class Ecole(models.Model):
         bloqué ou suspendu (l'échéance est alors dépassée, un décompte n'a plus de sens)."""
         if self.statut_abonnement in ("bloque", "suspendu"):
             return None
-        return (self._date_echeance_courante() - date.today()).days
+        return self.jours_restants_abonnement
 
 
 class PaiementEcole(models.Model):

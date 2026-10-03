@@ -67,9 +67,10 @@ pour ne jamais écraser un compte par erreur.
 ## Tâches planifiées (cron)
 
 Aucun ordonnanceur (Celery beat, django-crontab...) n'est utilisé dans ce projet — volontairement,
-pour ne pas ajouter d'infrastructure supplémentaire (file de tâches, worker dédié) pour deux
-commandes quotidiennes. Deux management commands sont **conçues pour tourner une fois par jour**
-mais ne se déclenchent jamais toutes seules : c'est à l'ordonnanceur du système d'exploitation
+pour ne pas ajouter d'infrastructure supplémentaire (file de tâches, worker dédié) pour quelques
+commandes périodiques. Ces management commands sont **conçues pour tourner régulièrement** (une
+fois par jour, ou toutes les 5 minutes pour `verifier_paiements_djomy`) mais ne se déclenchent
+jamais toutes seules : c'est à l'ordonnanceur du système d'exploitation
 (cron sur Linux, Planificateur de tâches sur Windows) de les invoquer.
 
 - `backup_daily` — sauvegarde la base (dump JSON compressé), journalise le résultat dans
@@ -77,6 +78,14 @@ mais ne se déclenchent jamais toutes seules : c'est à l'ordonnanceur du systè
 - `notifier_impayes` — envoie les rappels (email + SMS) aux parents dont un frais est en retard,
   toutes écoles confondues (limité à une relance par famille tous les 7 jours, voir
   `payments/notifications.py`).
+- `verifier_paiements_djomy` — **toutes les 5 minutes** : vérifie auprès de Djomy les paiements
+  d'abonnement encore en attente et prolonge automatiquement l'abonnement des écoles dont le
+  paiement est validé (30 jours Mensuel, 365 jours Annuel), même si l'administrateur a fermé la
+  page de paiement. (La page de l'admin vérifie aussi d'elle-même pendant qu'elle est ouverte, et
+  à chaque retour sur les paramètres de l'école.)
+- `abonnement_jours "<école>" <jours>` — ponctuelle, pour corriger ou tester : fixe la fin
+  d'abonnement d'une école à aujourd'hui + `<jours>` (ex. `3`). Le Super Admin peut aussi modifier
+  cette date depuis la fiche de l'école (« Fin de l'abonnement »).
 
 Exemple de configuration cron (`/etc/cron.d/ecole-manager`, sur l'hôte qui exécute
 `docker compose`) :
@@ -85,6 +94,7 @@ Exemple de configuration cron (`/etc/cron.d/ecole-manager`, sur l'hôte qui exé
 0 6 * * * root cd /chemin/vers/le/projet && docker compose -f docker-compose.prod.yml --env-file .env.prod run --rm backend python manage.py backup_daily >> /var/log/ecole-manager/backup.log 2>&1
 0 7 * * * root cd /chemin/vers/le/projet && docker compose -f docker-compose.prod.yml --env-file .env.prod run --rm backend python manage.py notifier_impayes >> /var/log/ecole-manager/notifier.log 2>&1
 30 6 * * * root cd /chemin/vers/le/projet && docker compose -f docker-compose.prod.yml --env-file .env.prod run --rm backend python manage.py generer_rapports_annuels >> /var/log/ecole-manager/rapports.log 2>&1
+*/5 * * * * root cd /chemin/vers/le/projet && docker compose -f docker-compose.prod.yml --env-file .env.prod exec -T backend python manage.py verifier_paiements_djomy >> /var/log/ecole-manager/djomy.log 2>&1
 ```
 
 Sans conteneurs (backend lancé directement dans un virtualenv) :

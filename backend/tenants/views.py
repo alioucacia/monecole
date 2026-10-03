@@ -42,11 +42,6 @@ def _premier_du_mois_il_y_a(n_mois: int, depuis: date) -> date:
     return date(mois_total // 12, mois_total % 12 + 1, 1)
 
 
-def _premier_du_mois_dans(n_mois: int, depuis: date) -> date:
-    """Premier jour du mois situé `n_mois` mois après `depuis`."""
-    return _premier_du_mois_il_y_a(-n_mois, depuis)
-
-
 class PlanAbonnementViewSet(viewsets.ModelViewSet):
     """Plans tarifaires proposés aux établissements — gestion réservée au Super Admin."""
 
@@ -409,9 +404,13 @@ class PaiementEcoleViewSet(viewsets.ModelViewSet):
 
     def perform_create(self, serializer):
         paiement = serializer.save(enregistre_par=self.request.user)
+        # Paiement encaissé manuellement : prolonge l'abonnement de la durée du plan de l'école
+        # (30 / 90 / 365 jours) — et le réactive s'il était en retard ou bloqué.
+        ecole = paiement.ecole
+        date_fin = ecole.prolonger_abonnement(ecole.duree_periode_jours)
         _journaliser(
-            self.request, JournalActivite.Action.PAIEMENT_ENREGISTRE, paiement.ecole,
-            f"{paiement.montant} GNF pour {paiement.mois:%m/%Y}",
+            self.request, JournalActivite.Action.PAIEMENT_ENREGISTRE, ecole,
+            f"{paiement.montant} GNF pour {paiement.mois:%m/%Y} — abonnement valable jusqu'au {date_fin:%d/%m/%Y}",
         )
 
     @action(detail=False, methods=["get"], url_path="export")
@@ -477,7 +476,15 @@ class MonEcoleView(APIView):
         return Ecole.objects.select_related("parametres", "plan").get(pk=request.user.ecole_id)
 
     def get(self, request):
-        return Response(MonEcoleSerializer(self.get_ecole(request)).data)
+        from .abonnement import verifier_transactions_en_attente
+
+        ecole = self.get_ecole(request)
+        # Un paiement Djomy confirmé alors que la page de paiement avait été fermée est pris en
+        # compte dès que l'administrateur revient sur les paramètres de son école.
+        if ecole.transactions_djomy.filter(statut=TransactionAbonnement.Statut.EN_ATTENTE).exists():
+            verifier_transactions_en_attente(ecole=ecole, acteur=request.user)
+            ecole.refresh_from_db()
+        return Response(MonEcoleSerializer(ecole).data)
 
     def patch(self, request):
         ecole = self.get_ecole(request)
@@ -506,9 +513,8 @@ class PayerAbonnementDjomyView(APIView):
         if ecole is None:
             raise NotFound("Aucun établissement rattaché à ce compte.")
 
-        if ecole.statut_abonnement == "paye":
-            raise ValidationError("L'abonnement est déjà à jour — aucun paiement n'est dû actuellement.")
-
+        # Paiement possible à tout moment, y compris en avance : les jours payés s'ajoutent à la
+        # fin de la période en cours (voir Ecole.prolonger_abonnement).
         payer_number = (request.data.get("payer_number") or "").strip()
         if not payer_number:
             raise ValidationError({"payer_number": "Ce champ est requis."})
@@ -525,7 +531,7 @@ class PayerAbonnementDjomyView(APIView):
             resultat = djomy_services.create_payment(
                 amount=float(montant),
                 payer_number=payer_number,
-                description=f"Abonnement {ecole.nom} — {'Annuel' if nb_mois == 12 else 'Mensuel'} à partir de {mois:%m/%Y}",
+                description=f"Abonnement {ecole.nom} — {'Annuel (365 jours)' if nb_mois == 12 else 'Mensuel (30 jours)'}",
             )
         except Exception as exc:  # noqa: BLE001 — erreur réseau/API Djomy, message renvoyé tel quel
             return Response(
@@ -543,73 +549,31 @@ class PayerAbonnementDjomyView(APIView):
 
 class VerifierPaiementDjomyView(APIView):
     """Interroge le statut réel d'une transaction Djomy auprès de leur API et, seulement si
-    elle est confirmée « réussie », crée le `PaiementEcole` correspondant — c'est le SEUL
-    déclencheur qui fait progresser `Ecole.statut_abonnement` suite à un paiement en ligne (voir
-    la docstring de `TransactionAbonnement`). Appelé en polling par le frontend après ouverture
-    de la page de paiement Djomy (`redirectUrl`)."""
+    elle est confirmée « réussie », prolonge l'abonnement de l'école (30 jours pour un paiement
+    Mensuel, 365 pour un Annuel) — ce qui la réactive automatiquement si elle était en retard ou
+    bloquée. Appelé en polling par le frontend après ouverture de la page de paiement Djomy
+    (`redirectUrl`) ; voir aussi `tenants.abonnement` pour la vérification automatique des
+    paiements en attente (sans que la page reste ouverte)."""
 
     permission_classes = [IsAdmin]
 
-    # Vocabulaire de statut Djomy non documenté publiquement (observé en sandbox : "CREATED") —
-    # on ne bascule à REUSSI/ECHOUE que sur une valeur explicitement reconnue parmi les plus
-    # probables, sinon la transaction reste EN_ATTENTE : jamais de faux positif qui débloquerait
-    # à tort l'accès d'une école qui n'a pas réellement payé.
-    STATUTS_REUSSIS = {"SUCCESS", "SUCCESSFUL", "COMPLETED", "PAID"}
-    STATUTS_ECHOUES = {"FAILED", "CANCELLED", "CANCELED", "EXPIRED", "ERROR", "REJECTED"}
-
     def get(self, request, transaction_id):
-        from django.utils import timezone
         from rest_framework.exceptions import NotFound
 
-        from djomy import services as djomy_services
+        from .abonnement import verifier_transaction_djomy
 
         ecole = request.user.ecole
         transaction = TransactionAbonnement.objects.filter(ecole=ecole, transaction_id=transaction_id).first()
         if transaction is None:
             raise NotFound("Transaction introuvable.")
 
-        if transaction.statut != TransactionAbonnement.Statut.EN_ATTENTE:
-            return Response(TransactionAbonnementSerializer(transaction).data)
-
         try:
-            data = djomy_services.get_payment_status(transaction_id)
+            transaction = verifier_transaction_djomy(transaction, acteur=request.user)
         except Exception as exc:  # noqa: BLE001 — erreur réseau/API Djomy, on retente au prochain polling
             return Response(
                 {"detail": f"Impossible de vérifier le paiement Djomy : {exc}"},
                 status=status.HTTP_502_BAD_GATEWAY,
             )
-
-        statut_djomy = (data.get("status") or "").upper()
-
-        if statut_djomy in self.STATUTS_REUSSIS:
-            # Le paiement peut couvrir plusieurs mois consécutifs (option « Annuel », voir
-            # PayerAbonnementDjomyView) : un `PaiementEcole` est créé par mois couvert, chacun
-            # pour la part mensuelle du montant — c'est ce que lit `Ecole.statut_abonnement`
-            # (dernier `mois` payé + périodicité du plan) pour faire avancer l'échéance.
-            montant_mensuel = transaction.montant / transaction.nb_mois
-            dernier_paiement = None
-            for i in range(transaction.nb_mois):
-                dernier_paiement, _ = PaiementEcole.objects.get_or_create(
-                    ecole=ecole, mois=_premier_du_mois_dans(i, transaction.mois),
-                    defaults={
-                        "montant": montant_mensuel,
-                        "mode_paiement": PaiementEcole.ModePaiement.MOBILE_MONEY,
-                        "reference": transaction.transaction_id,
-                    },
-                )
-            transaction.statut = TransactionAbonnement.Statut.REUSSI
-            transaction.paiement = dernier_paiement
-            transaction.verifie_le = timezone.now()
-            transaction.save()
-            _journaliser(
-                request, JournalActivite.Action.PAIEMENT_ENREGISTRE, ecole,
-                f"{transaction.montant} GNF pour {transaction.nb_mois} mois à partir de {transaction.mois:%m/%Y} (Djomy, {transaction.payer_number})",
-            )
-        elif statut_djomy in self.STATUTS_ECHOUES:
-            transaction.statut = TransactionAbonnement.Statut.ECHOUE
-            transaction.verifie_le = timezone.now()
-            transaction.save()
-
         return Response(TransactionAbonnementSerializer(transaction).data)
 
 

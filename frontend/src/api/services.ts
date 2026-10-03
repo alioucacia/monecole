@@ -115,6 +115,7 @@ export const annuaireUtilisateursApi = {
 // ---- Sauvegardes (Super Admin) ----
 export const sauvegardesApi = {
   list: (params?: Record<string, unknown>) => api.get<Paginated<SauvegardeLog> | SauvegardeLog[]>("/dashboard/sauvegardes/", { params }),
+  /** Lance une sauvegarde en arrière-plan — répond tout de suite avec l'entrée « en cours ». */
   lancer: () => api.post<SauvegardeLog>("/dashboard/sauvegardes/lancer/"),
   telecharger: (id: number, filename: string) => downloadFile(`/dashboard/sauvegardes/${id}/telecharger/`, {}, filename),
 };
