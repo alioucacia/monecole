@@ -75,6 +75,11 @@ class EleveProfileViewSet(viewsets.ModelViewSet):
     # → "Enfants") sans avoir à filtrer côté client sur la liste complète des élèves de l'école.
     filterset_fields = ["classe", "actif", "statut_inscription", "parent"]
     search_fields = ["user__first_name", "user__last_name", "matricule"]
+    # Liste (et exports CSV/PDF) dans l'ordre d'inscription — `id` départage les élèves inscrits
+    # le même jour (`date_inscription` n'a pas d'heure), dans leur ordre réel de création. Le
+    # tri alphabétique de `EleveProfile.Meta.ordering` reste celui des autres listes (classes,
+    # bulletins...). Surchargeable via `?ordering=` (OrderingFilter).
+    ordering = ["date_inscription", "id"]
 
     def get_serializer_class(self):
         if self.action in ("create", "update", "partial_update"):
