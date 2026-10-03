@@ -5,13 +5,28 @@ from rest_framework import serializers
 
 from core.validators import EXTENSIONS_DOCUMENT, TAILLE_MAX_DOCUMENT, valider_taille_fichier
 
-from .models import USAGES_INSCRIPTION, CategorieDepense, Depense, Frais, Paiement, TarifClasse, TypeFrais
+from .models import FORMULES_SCOLARITE, MESSAGE_MOIS_HORS_MENSUALITE, MOIS_MENSUALITE, PERIODICITES_SCOLARITE, USAGES_INSCRIPTION, CategorieDepense, Depense, Frais, Paiement, TarifClasse, TypeFrais
 
 
 MOIS_FR = [
     "janvier", "février", "mars", "avril", "mai", "juin",
     "juillet", "août", "septembre", "octobre", "novembre", "décembre",
 ]
+
+
+def verifier_formule_scolarite(eleve_id, annee_scolaire_id, type_frais, champ):
+    """Refuse une mensualité / tranche / scolarité annuelle d'une autre formule que celle déjà
+    commencée par l'élève cette année (voir Frais.formule_scolarite)."""
+    if type_frais.usage in USAGES_INSCRIPTION or type_frais.periodicite not in PERIODICITES_SCOLARITE:
+        return
+    formule = Frais.formule_scolarite(eleve_id, annee_scolaire_id)
+    if formule and formule != type_frais.periodicite:
+        raise serializers.ValidationError({
+            champ: (
+                f"Cet élève paie déjà sa scolarité {FORMULES_SCOLARITE[formule]} cette année : il ne peut pas "
+                f"la payer {FORMULES_SCOLARITE[type_frais.periodicite]} pour cette même année scolaire."
+            )
+        })
 
 
 class CategorieDepenseSerializer(serializers.ModelSerializer):
@@ -75,6 +90,7 @@ class PaiementSerializer(serializers.ModelSerializer):
         mois = attrs.get("mois", getattr(self.instance, "mois", None))
         periode = attrs.get("periode", getattr(self.instance, "periode", None))
         montant = attrs.get("montant", getattr(self.instance, "montant", None))
+        verifier_formule_scolarite(frais.eleve_id, frais.annee_scolaire_id, frais.type_frais, "frais")
         if frais.type_frais.periodicite == TypeFrais.Periodicite.TRIMESTRIEL and not periode:
             # Sans tranche précisée, le versement ne serait rattaché à aucun mois du suivi mensuel.
             raise serializers.ValidationError({"periode": "Précisez la tranche payée pour ce frais par tranche."})
@@ -89,10 +105,8 @@ class PaiementSerializer(serializers.ModelSerializer):
         if frais.type_frais.est_mensuel and not mois:
             # Sans mois précisé, le versement échappait au contrôle mois par mois ci-dessous.
             raise serializers.ValidationError({"mois": "Précisez le mois payé pour ce frais mensuel."})
-        if frais.type_frais.est_mensuel and mois.month == 9:
-            raise serializers.ValidationError({
-                "mois": "Septembre est le mois de l'inscription/réinscription, pas une mensualité (Octobre à Juin)."
-            })
+        if frais.type_frais.est_mensuel and mois.month not in MOIS_MENSUALITE:
+            raise serializers.ValidationError({"mois": MESSAGE_MOIS_HORS_MENSUALITE})
         if mois and frais.type_frais.est_mensuel:
             # Tous les frais de ce type de l'élève pour l'année (un frais par mois d'échéance est
             # permis) : un mois payé sur l'un ne peut pas être repayé sur un autre.
@@ -207,10 +221,10 @@ class FraisSerializer(serializers.ModelSerializer):
         type_frais = attrs.get("type_frais", getattr(self.instance, "type_frais", None))
         annee = attrs.get("annee_scolaire", getattr(self.instance, "annee_scolaire", None))
         echeance = attrs.get("date_echeance", getattr(self.instance, "date_echeance", None))
-        if type_frais and type_frais.est_mensuel and echeance and echeance.month == 9:
-            raise serializers.ValidationError({
-                "date_echeance": "Septembre est le mois de l'inscription/réinscription, pas une mensualité (Octobre à Juin)."
-            })
+        if self.instance is None and eleve and type_frais and annee:
+            verifier_formule_scolarite(eleve.id, annee.id, type_frais, "type_frais")
+        if type_frais and type_frais.est_mensuel and echeance and echeance.month not in MOIS_MENSUALITE:
+            raise serializers.ValidationError({"date_echeance": MESSAGE_MOIS_HORS_MENSUALITE})
         # Montant non modifiable : celui paramétré (tarif de la classe, sinon montant standard) —
         # seule la remise fidélité de 5 % d'un frais Annuel (voir PaymentsPage) peut le réduire.
         montant = attrs.get("montant")

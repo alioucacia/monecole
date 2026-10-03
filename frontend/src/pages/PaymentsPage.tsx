@@ -39,9 +39,10 @@ const emptyFraisForm = {
   remise5: false,
 };
 
-// Septembre : mois de l'inscription/réinscription — jamais proposé comme mois de mensualité
-// (les mensualités vont d'Octobre à Juin, voir payments.views.MOIS_MENSUALITE côté backend).
-const MOIS_INSCRIPTION = "09";
+// Mois de mensualité, dans l'ordre de l'année scolaire : Octobre à Juin (9 mois) — ni Septembre
+// (inscription/réinscription), ni Juillet/Août (hors année scolaire). Même liste que
+// payments.models.MOIS_MENSUALITE côté backend, qui refuse aussi les autres mois.
+const MOIS_MENSUALITE = ["10", "11", "12", "01", "02", "03", "04", "05", "06"];
 
 const MOIS_NOMS = [
   "Janvier", "Février", "Mars", "Avril", "Mai", "Juin",
@@ -90,7 +91,7 @@ function moisDeLAnnee(annee: AnneeScolaire): string[] {
     mois.push(`${courant.getFullYear()}-${String(courant.getMonth() + 1).padStart(2, "0")}`);
     courant = new Date(courant.getFullYear(), courant.getMonth() + 1, 1);
   }
-  return mois.filter((m) => m.slice(5) !== MOIS_INSCRIPTION);
+  return mois.filter((m) => MOIS_MENSUALITE.includes(m.slice(5)));
 }
 
 function moisLabelLong(mois: string) {
@@ -765,10 +766,8 @@ export default function PaymentsPage() {
               });
             }}>
               <option value="">— Choisir un mois —</option>
-              {/* Septembre exclu : mois de l'inscription/réinscription, pas une mensualité. */}
-              {MOIS_NOMS.map((nom, i) => ({ nom, valeur: String(i + 1).padStart(2, "0") }))
-                .filter(({ valeur }) => valeur !== MOIS_INSCRIPTION)
-                .map(({ nom, valeur }) => <option key={nom} value={valeur}>{nom}</option>)}
+              {/* Octobre → Juin seulement (voir MOIS_MENSUALITE). */}
+              {MOIS_MENSUALITE.map((valeur) => <option key={valeur} value={valeur}>{MOIS_NOMS[Number(valeur) - 1]}</option>)}
             </Select>
           )}
           {typeFraisSelectionne?.periodicite === "trimestriel" && (

@@ -62,6 +62,23 @@ class TypeFrais(models.Model):
 
 
 USAGES_INSCRIPTION = (TypeFrais.Usage.INSCRIPTION, TypeFrais.Usage.REINSCRIPTION)
+# Mois de mensualité d'une année scolaire : Octobre à Juin (9 mois). Septembre est le mois de
+# l'inscription/réinscription, Juillet et Août sont hors année scolaire — aucun des trois n'est
+# une mensualité (ni dans le suivi mensuel, ni dans les listes de mois, ni à l'encaissement).
+MOIS_MENSUALITE = (10, 11, 12, 1, 2, 3, 4, 5, 6)
+MESSAGE_MOIS_HORS_MENSUALITE = (
+    "Les mensualités vont d'Octobre à Juin (9 mois) : Septembre est le mois de "
+    "l'inscription/réinscription, Juillet et Août sont hors année scolaire."
+)
+
+# Formules de paiement de la scolarité, exclusives l'une de l'autre sur une même année (voir
+# Frais.formule_scolarite).
+PERIODICITES_SCOLARITE = (TypeFrais.Periodicite.MENSUEL, TypeFrais.Periodicite.TRIMESTRIEL, TypeFrais.Periodicite.ANNUEL)
+FORMULES_SCOLARITE = {
+    TypeFrais.Periodicite.MENSUEL: "par mensualités",
+    TypeFrais.Periodicite.TRIMESTRIEL: "par tranches",
+    TypeFrais.Periodicite.ANNUEL: "à l'année",
+}
 
 
 class TarifClasse(models.Model):
@@ -132,6 +149,23 @@ class Frais(models.Model):
                 date_echeance__year=date_echeance.year, date_echeance__month=date_echeance.month,
             )
         return None
+
+    @staticmethod
+    def formule_scolarite(eleve_id, annee_scolaire_id) -> str | None:
+        """Formule de scolarité de l'élève pour l'année (périodicité Mensuel, Tranche ou Annuel),
+        fixée par son PREMIER paiement de scolarité — `None` tant qu'il n'a rien payé. Une fois
+        commencée, l'année se poursuit dans cette formule : un élève qui a payé à l'année ne
+        paie plus de mensualité ni de tranche, et un élève qui a commencé par mensualités (ou
+        par tranches) ne peut plus passer à l'annuel (ni à l'autre formule)."""
+        premier = (
+            Paiement.objects.filter(
+                frais__eleve_id=eleve_id, frais__annee_scolaire_id=annee_scolaire_id,
+                frais__type_frais__periodicite__in=PERIODICITES_SCOLARITE,
+            )
+            .exclude(frais__type_frais__usage__in=USAGES_INSCRIPTION)
+            .order_by("date_paiement", "id").values_list("frais__type_frais__periodicite", flat=True).first()
+        )
+        return premier
 
     def equivalents(self):
         """Ce frais et ses éventuels doublons (données antérieures au blocage des doublons) —

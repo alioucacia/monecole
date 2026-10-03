@@ -21,7 +21,7 @@ from xhtml2pdf import pisa
 from accounts.permissions import IsAdmin, IsAdminOrComptabilite, IsAdminOrComptabiliteOrReadOnly
 from people.views import _image_data_uri, _mm_px
 
-from .models import USAGES_INSCRIPTION, CategorieDepense, Depense, Frais, Paiement, TarifClasse, TypeFrais
+from .models import MOIS_MENSUALITE, PERIODICITES_SCOLARITE, USAGES_INSCRIPTION, CategorieDepense, Depense, Frais, Paiement, TarifClasse, TypeFrais
 from .serializers import CategorieDepenseSerializer, DepenseSerializer, FraisSerializer, PaiementSerializer, TarifClasseSerializer, TypeFraisSerializer
 
 
@@ -35,11 +35,8 @@ def _mois_entre(date_debut, date_fin):
     return mois
 
 
-# Mois de mensualité d'une année scolaire : Octobre à Juin (9 mois). Septembre est le mois de
-# l'inscription/réinscription — il n'est pas une mensualité et n'apparaît donc ni dans le suivi
-# mensuel (où la colonne Inscription/Réinscription le remplace) ni dans les listes de mois.
-MOIS_MENSUALITE = (10, 11, 12, 1, 2, 3, 4, 5, 6)
-MOIS_INSCRIPTION = 9
+# Mois de mensualité : voir payments.models.MOIS_MENSUALITE (Octobre → Juin). Dans le suivi
+# mensuel, la colonne Inscription/Réinscription remplace Septembre.
 # Mois couverts par chaque tranche de scolarité (frais de périodicité « Tranche »), dans l'ordre
 # des Periode de l'année (Trimestre 1, 2, 3) : la 1re tranche couvre aussi Juin, dernier mois.
 MOIS_PAR_TRANCHE = ((10, 11, 12, 6), (1, 2, 3), (4, 5))
@@ -908,14 +905,32 @@ class FraisViewSet(viewsets.ModelViewSet):
             .values_list("eleve_id", flat=True)
         )
 
+        # Formule de scolarité déjà commencée par chaque élève (voir Frais.formule_scolarite) :
+        # aucun frais d'une autre formule ne lui est généré pour cette année.
+        formule_par_eleve = {}
+        for eleve_id, periodicite in (
+            Paiement.objects.filter(
+                frais__eleve__in=eleves, frais__annee_scolaire=annee,
+                frais__type_frais__periodicite__in=PERIODICITES_SCOLARITE,
+            ).exclude(frais__type_frais__usage__in=USAGES_INSCRIPTION)
+            .order_by("date_paiement", "id").values_list("frais__eleve_id", "frais__type_frais__periodicite")
+        ):
+            formule_par_eleve.setdefault(eleve_id, periodicite)
+
         a_creer = []
         for eleve in eleves:
             for type_frais in types_frais:
+                formule = formule_par_eleve.get(eleve.id)
+                if (
+                    formule and type_frais.usage not in USAGES_INSCRIPTION
+                    and type_frais.periodicite in PERIODICITES_SCOLARITE and type_frais.periodicite != formule
+                ):
+                    continue
                 if (eleve.id, type_frais.id) in existants:
                     continue
-                if type_frais.est_mensuel and (eleve.facteur_mensualite == 0 or echeance.month == MOIS_INSCRIPTION):
-                    # Exonéré de mensualité, ou Septembre (mois de l'inscription, pas une
-                    # mensualité — voir MOIS_MENSUALITE).
+                if type_frais.est_mensuel and (eleve.facteur_mensualite == 0 or echeance.month not in MOIS_MENSUALITE):
+                    # Exonéré de mensualité, ou mois hors mensualité (Septembre : inscription ;
+                    # Juillet/Août : hors année scolaire — voir MOIS_MENSUALITE).
                     continue
                 if type_frais.usage in USAGES_INSCRIPTION:
                     if eleve.id in deja_inscrits:
