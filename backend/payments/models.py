@@ -1,3 +1,5 @@
+import re
+import unicodedata
 from datetime import date
 from decimal import ROUND_HALF_UP, Decimal
 
@@ -8,6 +10,29 @@ from django.dispatch import receiver
 
 from academics.models import AnneeScolaire, Classe
 from people.models import EleveProfile
+
+
+_ORDINAUX_TRANCHE = {"premiere": 1, "premier": 1, "deuxieme": 2, "second": 2, "seconde": 2, "troisieme": 3}
+
+
+def numero_tranche_du_nom(nom: str) -> int | None:
+    """Numéro de tranche indiqué par le nom d'un type de frais — « 1ère Tranche », « 2ème
+    tranche », « Tranche 3 », « Deuxième tranche »... — `None` si le nom n'en indique aucun
+    (type de frais unique couvrant toutes les tranches)."""
+    texte = unicodedata.normalize("NFKD", nom or "").encode("ascii", "ignore").decode().lower()
+    if "tranche" not in texte:
+        return None
+    # `texte` est déjà sans accents (« n° » y devient « n »).
+    chiffre = (
+        re.search(r"\b(\d+)\s*(?:ere|er|eme|e|re|nd|nde)?\s*tranche\b", texte)
+        or re.search(r"\btranche\s*(?:no?\.?\s*)?(\d+)\b", texte)
+    )
+    if chiffre:
+        return int(chiffre.group(1)) or None
+    for mot, numero in _ORDINAUX_TRANCHE.items():
+        if re.search(rf"\b{mot}\s+tranche\b", texte):
+            return numero
+    return None
 
 
 class TypeFrais(models.Model):
@@ -59,6 +84,15 @@ class TypeFrais(models.Model):
     def save(self, *args, **kwargs):
         self.est_mensuel = self.periodicite == self.Periodicite.MENSUEL
         super().save(*args, **kwargs)
+
+    @property
+    def numero_tranche(self) -> int | None:
+        """Pour un type de frais « Tranche » propre à UNE tranche (ex : « 2ème Tranche », chacun
+        avec son montant), le numéro de cette tranche — voir `numero_tranche_du_nom`. `None` pour
+        un type unique couvrant toutes les tranches (le paiement précise alors la tranche)."""
+        if self.periodicite != self.Periodicite.TRIMESTRIEL:
+            return None
+        return numero_tranche_du_nom(self.nom)
 
 
 USAGES_INSCRIPTION = (TypeFrais.Usage.INSCRIPTION, TypeFrais.Usage.REINSCRIPTION)

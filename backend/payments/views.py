@@ -10,6 +10,7 @@ from django.db.models import ProtectedError, Sum
 from django.http import HttpResponse
 from django.shortcuts import get_object_or_404
 from django.template.loader import render_to_string
+from django.utils import timezone
 from rest_framework import viewsets
 from rest_framework.decorators import action
 from rest_framework.exceptions import ValidationError
@@ -78,7 +79,30 @@ def _statut(du, paye) -> str:
     return "partiel" if paye > 0 else "non_paye"
 
 
-def _calculer_suivi_mensuel(eleve, annee_scolaire, frais=None, periodes=None):
+def _tarifs_tranches(eleve, annee_scolaire) -> dict[int, Decimal]:
+    """Montant de chaque tranche numérotée (types « 1ère Tranche », « 2ème Tranche »... — voir
+    TypeFrais.numero_tranche) pour la classe de l'élève : tarif de la classe pour l'année s'il y
+    en a un, sinon le montant standard du type."""
+    types = [
+        t for t in TypeFrais.objects.filter(
+            ecole_id=eleve.user.ecole_id, periodicite=TypeFrais.Periodicite.TRIMESTRIEL,
+        ).exclude(usage__in=USAGES_INSCRIPTION)
+        if t.numero_tranche
+    ]
+    tarifs_classe = {}
+    if eleve.classe_id:
+        tarifs_classe = dict(
+            TarifClasse.objects.filter(
+                classe_id=eleve.classe_id, annee_scolaire=annee_scolaire, type_frais__in=types,
+            ).values_list("type_frais_id", "montant")
+        )
+    tarifs = {}
+    for t in sorted(types, key=lambda t: t.id):
+        tarifs.setdefault(t.numero_tranche, tarifs_classe.get(t.id, t.montant_standard))
+    return tarifs
+
+
+def _calculer_suivi_mensuel(eleve, annee_scolaire, frais=None, periodes=None, cache_tarifs=None):
     """Statut payé/partiel/non payé de chaque mois de mensualité (Octobre → Juin, passés et à
     venir) de la scolarité d'un élève, quelle que soit sa formule de paiement :
 
@@ -98,8 +122,13 @@ def _calculer_suivi_mensuel(eleve, annee_scolaire, frais=None, periodes=None):
     encore commencé (non compté dans les impayés). `couvert_par` : « Annuel » / « Tranche N »
     quand le mois est réglé par un frais annuel ou une tranche plutôt que mois par mois.
 
-    `frais` / `periodes` : préchargés par l'appelant pour le suivi d'une classe entière (voir
-    `_frais_suivi_par_eleve`), sinon chargés ici."""
+    Tranches numérotées (types « 1ère Tranche », « 2ème Tranche »... chacun avec son montant) :
+    les mois d'une tranche dont le frais n'est pas (encore) créé restent dus au tarif de cette
+    tranche — « Non payé » tant qu'elle n'est pas payée, et non « Payé » faute de montant dû.
+
+    `frais` / `periodes` / `cache_tarifs` (tarifs des tranches par classe) : préchargés par
+    l'appelant pour le suivi d'une classe entière (voir `_frais_suivi_par_eleve`), sinon chargés
+    ici."""
     from grades.models import Periode
 
     if frais is None:
@@ -151,11 +180,21 @@ def _calculer_suivi_mensuel(eleve, annee_scolaire, frais=None, periodes=None):
     #    les mois d'une tranche payée passent « Payé », les autres restent « Non payé » jusqu'au
     #    paiement de leur tranche. Un versement sans tranche précisée (données antérieures à
     #    l'obligation de la choisir) complète les tranches dans l'ordre : 1re, puis 2e...
+    non_payes_sans_tarif = set()
     if tranches:
         if periodes is None:
             periodes = list(Periode.objects.filter(annee_scolaire=annee_scolaire).order_by("date_debut"))
         periodes_tranches = periodes[:len(MOIS_PAR_TRANCHE)]
         for f in tranches:
+            numero = f.type_frais.numero_tranche
+            if numero:
+                # Type propre à une tranche (« 2ème Tranche », avec son propre montant) : il ne
+                # couvre que les mois de SA tranche, et tout ce qui y est versé compte pour elle.
+                if numero <= len(MOIS_PAR_TRANCHE):
+                    mois_tranche = [m for m in tous_les_mois if m.month in MOIS_PAR_TRANCHE[numero - 1]]
+                    if mois_tranche:
+                        repartir(mois_tranche, f.montant_du, _total_paye(f), f"Tranche {numero}")
+                continue
             sans_tranche = sum(
                 (p.montant for p in f.paiements.all() if p.periode_id not in {pe.id for pe in periodes_tranches}),
                 Decimal("0"),
@@ -168,6 +207,28 @@ def _calculer_suivi_mensuel(eleve, annee_scolaire, frais=None, periodes=None):
                 if mois_tranche:
                     repartir(mois_tranche, f.montant_du, verse + complement, f"Tranche {index + 1}")
 
+        # Tranches numérotées dont l'élève n'a pas encore de frais : dues à leur tarif.
+        numeros_presents = {f.type_frais.numero_tranche for f in tranches if f.type_frais.numero_tranche}
+        if numeros_presents:
+            cle = (eleve.classe_id, annee_scolaire.id)
+            if cache_tarifs is not None and cle in cache_tarifs:
+                tarifs = cache_tarifs[cle]
+            else:
+                tarifs = _tarifs_tranches(eleve, annee_scolaire)
+                if cache_tarifs is not None:
+                    cache_tarifs[cle] = tarifs
+            for numero in range(1, len(MOIS_PAR_TRANCHE) + 1):
+                if numero in numeros_presents:
+                    continue
+                mois_tranche = [m for m in tous_les_mois if m.month in MOIS_PAR_TRANCHE[numero - 1]]
+                if not mois_tranche:
+                    continue
+                if tarifs.get(numero):
+                    repartir(mois_tranche, tarifs[numero], Decimal("0"), f"Tranche {numero}")
+                else:
+                    # Aucune « N-ième Tranche » paramétrée : montant inconnu, mais rien n'est payé.
+                    non_payes_sans_tarif.update(mois_tranche)
+
     if all(du <= 0 for du in du_par_mois.values()):
         return []  # élève exonéré de mensualité : rien à suivre
 
@@ -177,7 +238,9 @@ def _calculer_suivi_mensuel(eleve, annee_scolaire, frais=None, periodes=None):
         du, paye = du_par_mois[mois], paye_par_mois[mois]
         resultat.append({
             "mois": mois.strftime("%Y-%m"), "montant_du": du, "montant_paye": paye,
-            "reste": max(du - paye, Decimal("0")), "statut": _statut(du, paye), "a_venir": mois > mois_courant,
+            "reste": max(du - paye, Decimal("0")),
+            "statut": "non_paye" if mois in non_payes_sans_tarif and paye <= 0 else _statut(du, paye),
+            "a_venir": mois > mois_courant,
             "couvert_par": ", ".join(dict.fromkeys(couvert_par[mois])),
         })
     return resultat
@@ -788,13 +851,11 @@ class FraisViewSet(viewsets.ModelViewSet):
             "inscription": _suivi_inscription(frais),
         })
 
-    @action(detail=False, methods=["get"], url_path="suivi-mensuel-classe")
-    def suivi_mensuel_classe(self, request):
+    def _grille_suivi_mensuel(self, request) -> dict:
         """Grille de suivi mensuel (payé/partiel/non payé) pour tous les élèves d'une classe — ou,
         sans `classe`, de toutes les classes d'un `cycle` (ou de toute l'école, sans filtre) de
-        l'année active — vue d'ensemble pour
-        la comptabilité, sans avoir à ouvrir chaque élève. Chaque élève porte aussi le statut de
-        son inscription/réinscription (colonne qui remplace Septembre)."""
+        l'année active. Chaque élève porte aussi le statut de son inscription/réinscription
+        (colonne qui remplace Septembre). Partagée par l'écran et sa version imprimable."""
         from academics.models import AnneeScolaire, Classe
         from grades.models import Periode
         from people.models import EleveProfile
@@ -815,7 +876,7 @@ class FraisViewSet(viewsets.ModelViewSet):
             eleves_qs = EleveProfile.objects.filter(classe__annee_scolaire=annee, actif=True)
             if cycle:
                 eleves_qs = eleves_qs.filter(classe__cycle=cycle)
-            libelle = f"Cycle {cycle}" if cycle else "Toutes les classes"
+            libelle = f"Cycle {Classe.Cycle(cycle).label}" if cycle in Classe.Cycle.values else "Toutes les classes"
 
         eleves = list(
             eleves_qs.select_related("user", "classe")
@@ -823,21 +884,78 @@ class FraisViewSet(viewsets.ModelViewSet):
         )
         frais_par_eleve = _frais_suivi_par_eleve(eleves, annee)
         periodes = list(Periode.objects.filter(annee_scolaire=annee).order_by("date_debut"))
+        cache_tarifs = {}
         data = [
             {
                 "eleve_id": e.id, "eleve_nom": e.user.get_full_name(), "matricule": e.matricule,
                 "classe_nom": e.classe.nom if e.classe else "",
                 "categorie_paiement": e.categorie_paiement, "categorie_paiement_display": e.get_categorie_paiement_display(),
-                "mois": _calculer_suivi_mensuel(e, annee, frais=frais_par_eleve[e.id], periodes=periodes),
+                "mois": _calculer_suivi_mensuel(
+                    e, annee, frais=frais_par_eleve[e.id], periodes=periodes, cache_tarifs=cache_tarifs,
+                ),
                 "inscription": _suivi_inscription(frais_par_eleve[e.id]),
             }
             for e in eleves
         ]
-        return Response({
-            "classe": libelle, "annee_scolaire": annee.libelle,
+        return {
+            "classe": libelle, "annee_scolaire": annee.libelle, "par_classe": bool(classe_id),
             "mois": [m.strftime("%Y-%m") for m in _mois_mensualite(annee)],
             "eleves": data,
+        }
+
+    @action(detail=False, methods=["get"], url_path="suivi-mensuel-classe")
+    def suivi_mensuel_classe(self, request):
+        """Grille de suivi mensuel — voir `_grille_suivi_mensuel`."""
+        grille = self._grille_suivi_mensuel(request)
+        grille.pop("par_classe")
+        return Response(grille)
+
+    @action(detail=False, methods=["get"], url_path="suivi-mensuel-classe-pdf")
+    def suivi_mensuel_classe_pdf(self, request):
+        """Version imprimable (PDF, paysage) du suivi mensuel, avec les mêmes filtres que l'écran :
+        `classe` / `cycle`, et `mois` (« AAAA-MM ») pour n'imprimer que ce mois — sans la colonne
+        Inscription/Réinscription, comme à l'écran."""
+        grille = self._grille_suivi_mensuel(request)
+        mois_filtre = request.query_params.get("mois") or ""
+        mois_affiches = [m for m in grille["mois"] if not mois_filtre or m == mois_filtre]
+        mois_courts = ["janv.", "févr.", "mars", "avr.", "mai", "juin", "juil.", "août", "sept.", "oct.", "nov.", "déc."]
+        mois_longs = [
+            "janvier", "février", "mars", "avril", "mai", "juin",
+            "juillet", "août", "septembre", "octobre", "novembre", "décembre",
+        ]
+
+        def libelle_mois(mois, noms):
+            annee, numero = mois.split("-")
+            return f"{noms[int(numero) - 1]} {annee}"
+
+        lignes = []
+        for e in grille["eleves"]:
+            par_mois = {m["mois"]: m for m in e["mois"]}
+            lignes.append({
+                "eleve_nom": e["eleve_nom"], "classe_nom": e["classe_nom"],
+                "inscription": e["inscription"],
+                "nb_impayes": sum(1 for m in e["mois"] if m["statut"] == "non_paye" and not m["a_venir"]),
+                "nb_partiels": sum(1 for m in e["mois"] if m["statut"] == "partiel"),
+                "mois": [par_mois.get(m) for m in mois_affiches],
+            })
+
+        ecole = request.user.ecole
+        html = render_to_string("payments/suivi_mensuel_classe_pdf.html", {
+            "titre": grille["classe"], "annee_scolaire": grille["annee_scolaire"],
+            "mois_filtre": libelle_mois(mois_filtre, mois_longs) if mois_filtre else "",
+            "entetes_mois": [libelle_mois(m, mois_courts) for m in mois_affiches],
+            "avec_inscription": not mois_filtre, "avec_classe": not grille["par_classe"],
+            "lignes": lignes, "total": len(lignes),
+            "date_edition": timezone.now(),
+            "ecole_nom": ecole.nom if ecole else "Taly-School",
+            "ecole_logo_data_uri": _image_data_uri(ecole.logo, _mm_px(15, 15), mode="contain") if ecole and ecole.logo else None,
+            "couleur_principale": ecole.couleur_principale if ecole else "#14304f",
         })
+        buffer = BytesIO()
+        pisa.CreatePDF(html, dest=buffer, encoding="utf-8")
+        response = HttpResponse(buffer.getvalue(), content_type="application/pdf")
+        response["Content-Disposition"] = f'attachment; filename="suivi_mensuel_{grille["annee_scolaire"]}.pdf"'
+        return response
 
     @action(detail=False, methods=["post"], url_path="generer-pour-classe")
     def generer_pour_classe(self, request):

@@ -38,10 +38,14 @@ class CategorieDepenseSerializer(serializers.ModelSerializer):
 class TypeFraisSerializer(serializers.ModelSerializer):
     periodicite_display = serializers.CharField(source="get_periodicite_display", read_only=True)
     usage_display = serializers.CharField(source="get_usage_display", read_only=True)
+    numero_tranche = serializers.IntegerField(read_only=True)
 
     class Meta:
         model = TypeFrais
-        fields = ["id", "nom", "montant_standard", "periodicite", "periodicite_display", "est_mensuel", "usage", "usage_display"]
+        fields = [
+            "id", "nom", "montant_standard", "periodicite", "periodicite_display", "est_mensuel", "usage", "usage_display",
+            "numero_tranche",
+        ]
         # Dérivé automatiquement de `periodicite` par `TypeFrais.save()` — lecture seule ici pour
         # qu'il n'y ait qu'une seule source de vérité côté client (le sélecteur de périodicité).
         read_only_fields = ["est_mensuel"]
@@ -83,6 +87,17 @@ class PaiementSerializer(serializers.ModelSerializer):
             qs = qs.exclude(pk=self.instance.pk)
         return qs.aggregate(total=Sum("montant"))["total"] or Decimal("0")
 
+    def _reste_annuel_mensualites(self, frais) -> Decimal:
+        """Ce que l'élève doit encore payer en mensualités sur l'année du frais (Octobre → Juin),
+        d'après le suivi mensuel — le paiement en cours de modification n'est pas compté comme
+        déjà versé."""
+        from .views import _calculer_suivi_mensuel  # import différé : views importe ce module
+
+        reste = sum((m["reste"] for m in _calculer_suivi_mensuel(frais.eleve, frais.annee_scolaire)), Decimal("0"))
+        if self.instance and self.instance.frais.type_frais.est_mensuel:
+            reste += self.instance.montant
+        return reste
+
     def validate(self, attrs):
         frais = attrs.get("frais", getattr(self.instance, "frais", None))
         if not frais:
@@ -91,7 +106,20 @@ class PaiementSerializer(serializers.ModelSerializer):
         periode = attrs.get("periode", getattr(self.instance, "periode", None))
         montant = attrs.get("montant", getattr(self.instance, "montant", None))
         verifier_formule_scolarite(frais.eleve_id, frais.annee_scolaire_id, frais.type_frais, "frais")
-        if frais.type_frais.periodicite == TypeFrais.Periodicite.TRIMESTRIEL and not periode:
+        numero = frais.type_frais.numero_tranche
+        if numero:
+            # Type propre à une tranche (« 2ème Tranche ») : la tranche payée est forcément la
+            # sienne — la N-ième Periode de l'année (s'il y en a une de configurée).
+            from grades.models import Periode
+
+            sa_tranche = (
+                Periode.objects.filter(annee_scolaire_id=frais.annee_scolaire_id)
+                .order_by("date_debut")[numero - 1:numero].first()
+            )
+            if periode and sa_tranche and periode != sa_tranche:
+                raise serializers.ValidationError({"periode": f"Ce frais « {frais.type_frais.nom} » ne couvre que cette tranche."})
+            periode = attrs["periode"] = sa_tranche
+        elif frais.type_frais.periodicite == TypeFrais.Periodicite.TRIMESTRIEL and not periode:
             # Sans tranche précisée, le versement ne serait rattaché à aucun mois du suivi mensuel.
             raise serializers.ValidationError({"periode": "Précisez la tranche payée pour ce frais par tranche."})
         if periode and periode.annee_scolaire_id != frais.annee_scolaire_id:
@@ -121,6 +149,16 @@ class PaiementSerializer(serializers.ModelSerializer):
             if montant is not None and montant > restant:
                 raise serializers.ValidationError({
                     "montant": f"Le montant dépasse ce qu'il reste à payer pour {mois.strftime('%m/%Y')} ({restant} GNF)."
+                })
+            # Plafond annuel : jamais plus que ce que l'élève doit encore pour toute l'année
+            # (somme des restes des 9 mois du suivi mensuel) — couvre aussi plusieurs types de
+            # frais mensuels ou des mensualités de montants différents, que le contrôle mois par
+            # mois ci-dessus traite chacun séparément.
+            reste_annuel = self._reste_annuel_mensualites(frais)
+            if montant is not None and montant > reste_annuel:
+                raise serializers.ValidationError({
+                    "montant": f"Le montant dépasse ce que l'élève doit encore payer en mensualités pour l'année "
+                               f"{frais.annee_scolaire.libelle} ({reste_annuel} GNF)."
                 })
             return attrs
 
@@ -189,6 +227,7 @@ class FraisSerializer(serializers.ModelSerializer):
     type_frais_nom = serializers.CharField(source="type_frais.nom", read_only=True)
     type_frais_est_mensuel = serializers.BooleanField(source="type_frais.est_mensuel", read_only=True)
     type_frais_periodicite = serializers.CharField(source="type_frais.periodicite", read_only=True)
+    type_frais_numero_tranche = serializers.IntegerField(source="type_frais.numero_tranche", read_only=True)
     # Montant réellement dû après application de la catégorie de paiement/réduction fidélité de
     # l'élève (voir Frais.montant_du) — distinct de `montant`, qui reste le tarif standard.
     montant_du = serializers.DecimalField(max_digits=10, decimal_places=2, read_only=True)
@@ -201,7 +240,7 @@ class FraisSerializer(serializers.ModelSerializer):
         model = Frais
         fields = [
             "id", "eleve", "eleve_nom", "eleve_categorie_paiement", "type_frais", "type_frais_nom", "type_frais_est_mensuel",
-            "type_frais_periodicite", "annee_scolaire",
+            "type_frais_periodicite", "type_frais_numero_tranche", "annee_scolaire",
             "montant", "montant_du", "date_echeance", "montant_paye", "solde", "statut", "paiements",
         ]
 

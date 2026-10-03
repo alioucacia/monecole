@@ -144,10 +144,6 @@ export default function PaymentsPage() {
   const confirmer = useConfirm();
   const { user } = useAuth();
   const peutGerer = user?.role === "admin" || user?.role === "comptabilite";
-  // Import Excel de frais/paiements historiques : admin uniquement (même choix que l'import
-  // Excel des élèves, StudentsPage.tsx — une opération de migration en masse plus sensible
-  // qu'un encaissement au quotidien, voir IsAdmin sur FraisViewSet.import_excel côté backend).
-  const isAdmin = user?.role === "admin";
 
   const [types, setTypes] = useState<TypeFrais[]>([]);
   const [annees, setAnnees] = useState<AnneeScolaire[]>([]);
@@ -164,10 +160,6 @@ export default function PaymentsPage() {
   const [fraisForm, setFraisForm] = useState(emptyFraisForm);
   const [fraisError, setFraisError] = useState("");
   const [fraisSaving, setFraisSaving] = useState(false);
-  const [importModalOpen, setImportModalOpen] = useState(false);
-  const [importing, setImporting] = useState(false);
-  const [importRapport, setImportRapport] = useState<{ frais_crees: number; paiements_crees: number; total_lignes: number; erreurs: { ligne: number; message: string }[] } | null>(null);
-  const [importError, setImportError] = useState("");
   // Cycle/Classe : filtrent uniquement la liste déroulante "Élève" ci-dessous (pas envoyés à
   // l'API) — un grand établissement peut avoir des centaines d'élèves, difficiles à retrouver
   // dans une seule liste à plat sans pouvoir d'abord restreindre par classe.
@@ -185,6 +177,9 @@ export default function PaymentsPage() {
   // rechargées à l'ouverture (voir openPaiementModal), distinctes de `periodesAnnee` ci-dessus
   // (celle-ci suit l'année scolaire du frais encaissé, pas celle du formulaire "Nouveau frais").
   const [periodesPaiement, setPeriodesPaiement] = useState<Periode[]>([]);
+  // Reste à payer en mensualités sur l'année pour l'élève de la modale "Encaisser" (frais
+  // mensuel uniquement) — voir openPaiementModal.
+  const [resteAnnuel, setResteAnnuel] = useState<number | null>(null);
   const [paiementTarget, setPaiementTarget] = useState<Frais | null>(null);
   const [paiementForm, setPaiementForm] = useState(emptyPaiementForm);
   const [paiementError, setPaiementError] = useState("");
@@ -342,6 +337,20 @@ export default function PaymentsPage() {
 
   const typeFraisSelectionne = types.find((t) => t.id === Number(fraisForm.type_frais));
 
+  // Type propre à une tranche (« 2ème Tranche ») : sa tranche d'échéance est imposée — la N-ième
+  // période de l'année — et présélectionnée dès que le type et l'année sont choisis.
+  const numeroTrancheType = typeFraisSelectionne?.periodicite === "trimestriel" ? typeFraisSelectionne.numero_tranche : null;
+  const periodesEcheance = numeroTrancheType
+    ? periodesAnnee.slice(numeroTrancheType - 1, numeroTrancheType)
+    : periodesAnnee;
+  useEffect(() => {
+    if (!numeroTrancheType) return;
+    const periode = periodesAnnee[numeroTrancheType - 1];
+    setFraisForm((f) => ({
+      ...f, trimestre_echeance: periode ? String(periode.id) : "", date_echeance: periode ? periode.date_fin : f.date_echeance,
+    }));
+  }, [numeroTrancheType, periodesAnnee]);
+
   // Montant proposé pour "Nouveau frais" : reprend le tarif spécifique à la classe de l'élève
   // choisi (voir Paiements → 💰 Tarifs par classe / TarifClasse) s'il y en a un pour ce type de
   // frais + cette année scolaire, sinon le montant standard du type de frais. AVANT ce correctif,
@@ -404,34 +413,34 @@ export default function PaymentsPage() {
     }
   };
 
-  const handleImportFraisFile = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const fichier = e.target.files?.[0];
-    e.target.value = "";
-    if (!fichier) return;
-    setImporting(true);
-    setImportRapport(null);
-    setImportError("");
-    try {
-      const { data } = await fraisApi.importExcel(fichier);
-      setImportRapport(data);
-      if (data.frais_crees > 0 || data.paiements_crees > 0) {
-        reload();
-        loadSummary();
-      }
-    } catch (err) {
-      setImportError(extractErrorMessage(err));
-    } finally {
-      setImporting(false);
-    }
-  };
-
   const openPaiementModal = (frais: Frais) => {
     setPaiementTarget(frais);
     setPaiementForm({ ...emptyPaiementForm, montant: frais.solde });
     setPaiementError("");
-    if (frais.type_frais_periodicite === "trimestriel") {
-      periodesApi.list({ annee_scolaire: frais.annee_scolaire }).then(({ data }) => setPeriodesPaiement(unwrapList(data)));
+    setResteAnnuel(null);
+    // Mensualité : reste à payer sur toute l'année (somme des 9 mois du suivi mensuel) —
+    // plafond annuel également imposé côté serveur (PaiementSerializer).
+    if (frais.type_frais_est_mensuel) {
+      fraisApi.suiviMensuel(frais.eleve, frais.annee_scolaire)
+        .then(({ data }) => setResteAnnuel(data.mois.reduce((sum, m) => sum + Number(m.reste), 0)))
+        .catch(() => {});
     }
+    if (frais.type_frais_periodicite === "trimestriel") {
+      periodesApi.list({ annee_scolaire: frais.annee_scolaire }).then(({ data }) => {
+        const periodes = unwrapList(data);
+        setPeriodesPaiement(periodes);
+        // Frais propre à une tranche (« 2ème Tranche ») : sa tranche, présélectionnée.
+        const sienne = frais.type_frais_numero_tranche ? periodes[frais.type_frais_numero_tranche - 1] : undefined;
+        if (sienne) setPaiementForm((f) => ({ ...f, periode: String(sienne.id) }));
+      });
+    }
+  };
+
+  // Plafond d'un versement : reste du mois / de la tranche (ou solde du frais), et pour une
+  // mensualité, jamais plus que le reste à payer sur l'année.
+  const plafondVersement = (frais: Frais) => {
+    const restant = restantAVerser(frais, paiementForm.mois, paiementForm.periode);
+    return resteAnnuel !== null && frais.type_frais_est_mensuel ? Math.min(restant, resteAnnuel) : restant;
   };
 
   const handlePaiementSubmit = async (e: FormEvent) => {
@@ -439,11 +448,13 @@ export default function PaymentsPage() {
     if (!paiementTarget) return;
     // Sans tranche précisée, le versement ne pourrait être rattaché à aucun mois dans le suivi
     // mensuel (voir payments.views.MOIS_PAR_TRANCHE).
-    if (paiementTarget.type_frais_periodicite === "trimestriel" && !paiementForm.periode) {
+    // (Un frais propre à une tranche sans période configurée est accepté : le serveur l'impute
+    // à sa tranche.)
+    if (paiementTarget.type_frais_periodicite === "trimestriel" && !paiementForm.periode && !paiementTarget.type_frais_numero_tranche) {
       setPaiementError("Choisissez la tranche payée.");
       return;
     }
-    const montantMax = restantAVerser(paiementTarget, paiementForm.mois, paiementForm.periode);
+    const montantMax = plafondVersement(paiementTarget);
     if (Number(paiementForm.montant) > montantMax) {
       setPaiementError(`Le montant dépasse ce qu'il reste à payer (${money(montantMax)}).`);
       return;
@@ -556,11 +567,6 @@ export default function PaymentsPage() {
               <Button variant="secondary">💰 Tarifs par classe</Button>
             </Link>
             <Button variant="secondary" onClick={openTypesModal}>⚙️ Types de frais</Button>
-            {isAdmin && (
-              <Button variant="secondary" onClick={() => { setImportRapport(null); setImportError(""); setImportModalOpen(true); }}>
-                📥 Importer Excel
-              </Button>
-            )}
             <Button onClick={openFraisModal}>+ Nouveau frais</Button>
           </div>
         ) : undefined}
@@ -779,13 +785,21 @@ export default function PaymentsPage() {
               });
             }}>
               <option value="">
-                {periodesAnnee.length === 0 ? "— Aucune tranche configurée pour cette année —" : "— Choisir une tranche —"}
+                {periodesEcheance.length === 0
+                  ? numeroTrancheType
+                    ? `— Aucune ${ORDINAUX[numeroTrancheType - 1] || `${numeroTrancheType}ème`} tranche configurée pour cette année —`
+                    : "— Aucune tranche configurée pour cette année —"
+                  : "— Choisir une tranche —"}
               </option>
-              {periodesAnnee.map((p, i) => (
-                <option key={p.id} value={p.id}>
-                  {ORDINAUX[i] || `${i + 1}ème`} Tranche{fraisForm.montant ? ` — ${Number(fraisForm.montant).toLocaleString("fr-FR")} GNF` : ""}
-                </option>
-              ))}
+              {periodesEcheance.map((p) => {
+                // Rang réel de la période dans l'année (pas dans la liste filtrée).
+                const rang = periodesAnnee.indexOf(p);
+                return (
+                  <option key={p.id} value={p.id}>
+                    {ORDINAUX[rang] || `${rang + 1}ème`} Tranche{fraisForm.montant ? ` — ${Number(fraisForm.montant).toLocaleString("fr-FR")} GNF` : ""}
+                  </option>
+                );
+              })}
             </Select>
           )}
           {typeFraisSelectionne?.periodicite === "annuel" && (
@@ -817,15 +831,20 @@ export default function PaymentsPage() {
             <div>
               <Input
                 label="Montant reçu" type="number" min={0}
-                max={restantAVerser(paiementTarget, paiementForm.mois, paiementForm.periode)}
+                max={plafondVersement(paiementTarget)}
                 step="0.01" required
                 value={paiementForm.montant}
                 onChange={(e) => setPaiementForm({ ...paiementForm, montant: e.target.value })}
               />
               <p className="text-xs text-slate-400 mt-1">
                 Maximum pour {paiementForm.mois || paiementForm.periode ? "cette échéance" : "ce frais"} :{" "}
-                {money(restantAVerser(paiementTarget, paiementForm.mois, paiementForm.periode))}
+                {money(plafondVersement(paiementTarget))}
               </p>
+              {resteAnnuel !== null && (
+                <p className="text-xs text-slate-500 mt-0.5">
+                  Reste à payer en mensualités sur l'année : <span className="font-semibold">{money(resteAnnuel)}</span>
+                </p>
+              )}
             </div>
             <Select label="Mode de paiement" value={paiementForm.mode_paiement} onChange={(e) => setPaiementForm({ ...paiementForm, mode_paiement: e.target.value })}>
               <option value="especes">Espèces</option>
@@ -871,7 +890,9 @@ export default function PaymentsPage() {
                   onChange={(e) => setPaiementForm({ ...paiementForm, periode: e.target.value })}
                 >
                   <option value="">— Choisir la tranche —</option>
-                  {periodesPaiement.map((p, i) => {
+                  {periodesPaiement.map((p, i) => ({ p, i }))
+                    .filter(({ i }) => !paiementTarget.type_frais_numero_tranche || i === paiementTarget.type_frais_numero_tranche - 1)
+                    .map(({ p, i }) => {
                     const statut = statutPeriodePourFrais(paiementTarget, p.id);
                     return (
                       <option key={p.id} value={p.id} disabled={statut === "paye"}>
@@ -1028,55 +1049,6 @@ export default function PaymentsPage() {
               <Button type="submit" disabled={typeSaving}>{typeSaving ? "Enregistrement…" : typeEditTarget ? "Mettre à jour" : "Ajouter"}</Button>
             </div>
           </form>
-        </div>
-      </Modal>
-
-      <Modal open={importModalOpen} onClose={() => setImportModalOpen(false)} title="Importer des frais/paiements depuis Excel">
-        <div className="space-y-4">
-          <p className="text-sm text-slate-500">
-            Pour reprendre l'historique d'un autre logiciel sans tout ressaisir : remplissez le modèle (une ligne par
-            frais, avec le paiement déjà versé s'il y en a un — plusieurs lignes pour un même élève/type/année se
-            rattachent au même frais), puis importez-le ici. Les élèves, types de frais et années scolaires doivent
-            déjà exister sur le site. Chaque ligne est traitée indépendamment : les lignes en erreur sont listées
-            ci-dessous pour correction.
-          </p>
-
-          <Button variant="secondary" onClick={() => fraisApi.importExcelModele("modele_import_frais_paiements.xlsx")}>
-            ⬇️ Télécharger le modèle Excel
-          </Button>
-
-          <label className="block">
-            <span className="block text-sm font-semibold text-slate-600 mb-1.5">Fichier rempli (.xlsx)</span>
-            <input
-              type="file" accept=".xlsx" onChange={handleImportFraisFile} disabled={importing}
-              className="text-sm text-slate-500 file:mr-3 file:py-1.5 file:px-3 file:rounded-full file:border-0 file:text-xs file:font-semibold file:bg-brand-50 file:text-brand-700 hover:file:bg-brand-100"
-            />
-          </label>
-
-          {importing && <div className="flex justify-center py-4"><Spinner /></div>}
-
-          {importError && <p className="text-sm text-rose-600 bg-rose-50 border border-rose-100 rounded-xl px-3.5 py-2.5">{importError}</p>}
-
-          {importRapport && (
-            <div className="space-y-2">
-              <p className="text-sm font-semibold text-ink-900">
-                {importRapport.frais_crees} frais et {importRapport.paiements_crees} paiement{importRapport.paiements_crees > 1 ? "s" : ""} importé{importRapport.paiements_crees > 1 ? "s" : ""} sur {importRapport.total_lignes} ligne{importRapport.total_lignes > 1 ? "s" : ""}.
-              </p>
-              {importRapport.erreurs.length > 0 && (
-                <div className="max-h-48 overflow-y-auto rounded-xl border border-rose-100 bg-rose-50 divide-y divide-rose-100">
-                  {importRapport.erreurs.map((err, i) => (
-                    <p key={i} className="px-3.5 py-2 text-xs text-rose-700">
-                      <strong>Ligne {err.ligne}</strong> — {err.message}
-                    </p>
-                  ))}
-                </div>
-              )}
-            </div>
-          )}
-
-          <div className="flex justify-end">
-            <Button type="button" variant="secondary" onClick={() => setImportModalOpen(false)}>Fermer</Button>
-          </div>
         </div>
       </Modal>
     </div>

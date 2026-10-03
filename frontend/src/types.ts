@@ -663,6 +663,9 @@ export interface TypeFrais {
   est_mensuel: boolean;
   usage: UsageFrais;
   usage_display: string;
+  /** Type « Tranche » propre à UNE tranche, d'après son nom (« 2ème Tranche » → 2) — `null`
+   * pour un type unique couvrant toutes les tranches. */
+  numero_tranche: number | null;
 }
 
 /** Montant paramétré d'un type de frais pour une classe donnée, sur une année scolaire — sert de
@@ -816,6 +819,8 @@ export interface Frais {
   type_frais_nom: string;
   type_frais_est_mensuel: boolean;
   type_frais_periodicite: PeriodiciteFrais;
+  /** Voir TypeFrais.numero_tranche. */
+  type_frais_numero_tranche: number | null;
   annee_scolaire: number;
   montant: string;
   // Montant réellement dû après application de la catégorie de paiement/réduction fidélité de

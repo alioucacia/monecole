@@ -3,7 +3,7 @@ import { Link } from "react-router-dom";
 
 import { classesApi, fraisApi, unwrapList } from "../api/services";
 import { extractBlobErrorMessage, extractErrorMessage } from "../api/client";
-import { Badge, EmptyState, PageHeader, Select, Spinner, Table } from "../components/ui";
+import { Badge, Button, EmptyState, PageHeader, Select, Spinner, Table } from "../components/ui";
 import { CycleSelect } from "../components/CycleSelect";
 import type { Classe, Cycle, SuiviMensuelClasse, SuiviMensuelInscription, SuiviMensuelMois } from "../types";
 
@@ -59,6 +59,7 @@ export default function SuiviMensuelPage() {
   const [suivi, setSuivi] = useState<SuiviMensuelClasse | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
+  const [impression, setImpression] = useState(false);
 
   useEffect(() => {
     classesApi.list({ page_size: 200 }).then(({ data }) => setClasses(unwrapList(data)));
@@ -74,6 +75,25 @@ export default function SuiviMensuelPage() {
       .catch((err) => setError(extractErrorMessage(err)))
       .finally(() => setLoading(false));
   }, [classeId, cycleFiltre]);
+
+  // Imprime la liste telle que filtrée à l'écran (cycle / classe / mois) — PDF généré côté serveur.
+  const handleImprimer = async () => {
+    setImpression(true);
+    setError("");
+    try {
+      await fraisApi.suiviMensuelClassePdf(
+        {
+          ...(classeId ? { classe: Number(classeId) } : { cycle: cycleFiltre || undefined }),
+          mois: moisFiltre || undefined,
+        },
+        `suivi_mensuel${moisFiltre ? `_${moisFiltre}` : ""}.pdf`,
+      );
+    } catch (err) {
+      setError(await extractBlobErrorMessage(err));
+    } finally {
+      setImpression(false);
+    }
+  };
 
   const handleSuiviMensuelPdf = async (eleveId: number, matricule: string) => {
     setError("");
@@ -99,7 +119,14 @@ export default function SuiviMensuelPage() {
       <PageHeader
         title="Suivi mensuel des paiements"
         description="Inscription / réinscription puis mensualités d'Octobre à Juin — statut payé / partiel / non payé, mois par mois, par élève (paiements mensuels, annuels ou par tranches)."
-        actions={<Link to="/paiements" className="text-sm text-brand-600 font-medium hover:underline">← Retour aux paiements</Link>}
+        actions={
+          <div className="flex flex-wrap items-center gap-3">
+            <Button variant="secondary" onClick={handleImprimer} disabled={impression || loading || !suivi || suivi.eleves.length === 0}>
+              {impression ? "Préparation…" : "🖨️ Imprimer la liste"}
+            </Button>
+            <Link to="/paiements" className="text-sm text-brand-600 font-medium hover:underline">← Retour aux paiements</Link>
+          </div>
+        }
       />
 
       <div className="flex flex-wrap gap-3 mb-6">

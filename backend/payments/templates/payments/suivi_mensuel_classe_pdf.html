@@ -1,0 +1,92 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8" />
+<style>
+    @page { size: A4 landscape; margin: 1.2cm; }
+    body { font-family: Helvetica, Arial, sans-serif; color: #1e1b2e; font-size: 9px; }
+    .header { text-align: center; padding-bottom: 4px; }
+    hr.separateur { color: {{ couleur_principale }}; background-color: {{ couleur_principale }}; height: 3px; border: 0; margin: 0 0 10px 0; }
+    .header .logo { width: 15mm; height: 15mm; margin-bottom: 4px; }
+    .header h1 { color: {{ couleur_principale }}; font-size: 16px; margin: 0 0 3px 0; }
+    .header h2 { font-size: 12px; margin: 0 0 3px 0; }
+    .header p { color: #6b7280; margin: 0; font-size: 9px; }
+    table.suivi { width: 100%; border-collapse: collapse; }
+    table.suivi th { background-color: #f1f5f9; color: #334155; padding: 4px 3px; font-size: 8px; text-transform: uppercase; border: 1px solid #cbd5e1; text-align: center; }
+    table.suivi th.gauche, table.suivi td.gauche { text-align: left; }
+    table.suivi td { padding: 3px; border: 1px solid #e2e8f0; font-size: 8px; text-align: center; vertical-align: middle; }
+    .paye { background-color: #dcfce7; color: #166534; }
+    .partiel { background-color: #fef3c7; color: #92400e; }
+    .non_paye { background-color: #fee2e2; color: #991b1b; }
+    .statut { font-weight: bold; }
+    .montants { font-size: 7px; }
+    .note { font-size: 7px; color: #475569; }
+    .vide { color: #94a3b8; }
+    .a_jour { color: #166534; }
+    .footer { margin-top: 10px; font-size: 8px; color: #6b7280; text-align: right; }
+    .legende { margin-top: 6px; font-size: 8px; color: #475569; }
+</style>
+</head>
+<body>
+    <div class="header">
+        {% if ecole_logo_data_uri %}<img class="logo" src="{{ ecole_logo_data_uri }}" /><br/>{% endif %}
+        <h1>{{ ecole_nom }}</h1>
+        <h2>Suivi mensuel des paiements — {{ titre }}{% if mois_filtre %} — {{ mois_filtre }}{% endif %}</h2>
+        <p>Année scolaire {{ annee_scolaire }} — {{ total }} élève{{ total|pluralize }}</p>
+    </div>
+    <hr class="separateur" />
+
+    <table class="suivi" repeat="1">
+        <thead>
+            <tr>
+                <th class="gauche">Élève</th>
+                {% if avec_classe %}<th class="gauche">Classe</th>{% endif %}
+                <th>Mois impayés</th>
+                {% if avec_inscription %}<th>Inscription / Réinscription</th>{% endif %}
+                {% for entete in entetes_mois %}<th>{{ entete }}</th>{% endfor %}
+            </tr>
+        </thead>
+        <tbody>
+            {% for ligne in lignes %}
+            <tr>
+                <td class="gauche">{{ ligne.eleve_nom }}</td>
+                {% if avec_classe %}<td class="gauche">{{ ligne.classe_nom|default:"—" }}</td>{% endif %}
+                <td>
+                    {% if ligne.nb_impayes or ligne.nb_partiels %}
+                        {% if ligne.nb_impayes %}{{ ligne.nb_impayes }} impayé{{ ligne.nb_impayes|pluralize }}{% endif %}
+                        {% if ligne.nb_partiels %}{% if ligne.nb_impayes %}<br/>{% endif %}{{ ligne.nb_partiels }} partiel{{ ligne.nb_partiels|pluralize }}{% endif %}
+                    {% else %}
+                        <span class="a_jour">À jour</span>
+                    {% endif %}
+                </td>
+                {% if avec_inscription %}
+                    {% if ligne.inscription %}
+                    <td class="{{ ligne.inscription.statut }}">
+                        <span class="statut">{% if ligne.inscription.statut == "paye" %}Payé{% elif ligne.inscription.statut == "partiel" %}Partiel{% else %}Non payé{% endif %}</span><br/>
+                        <span class="montants">{{ ligne.inscription.montant_paye|floatformat:"0g" }} / {{ ligne.inscription.montant_du|floatformat:"0g" }}</span><br/>
+                        <span class="note">{{ ligne.inscription.libelle }}</span>
+                    </td>
+                    {% else %}
+                    <td class="vide">—</td>
+                    {% endif %}
+                {% endif %}
+                {% for m in ligne.mois %}
+                    {% if m %}
+                    <td class="{{ m.statut }}">
+                        <span class="statut">{% if m.statut == "paye" %}Payé{% elif m.statut == "partiel" %}Partiel{% else %}Non payé{% endif %}</span><br/>
+                        <span class="montants">{{ m.montant_paye|floatformat:"0g" }} / {{ m.montant_du|floatformat:"0g" }}</span>
+                        {% if m.couvert_par %}<br/><span class="note">{{ m.couvert_par }}</span>{% endif %}
+                    </td>
+                    {% else %}
+                    <td class="vide">—</td>
+                    {% endif %}
+                {% endfor %}
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+
+    <p class="legende">Montants en GNF : payé / dû. Mensualités d'Octobre à Juin ; Septembre est le mois de l'inscription / réinscription.</p>
+    <p class="footer">Édité le {{ date_edition|date:"d/m/Y à H:i" }}</p>
+</body>
+</html>
