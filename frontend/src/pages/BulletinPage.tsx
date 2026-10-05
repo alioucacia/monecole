@@ -6,12 +6,14 @@ import { extractBlobErrorMessage, extractErrorMessage } from "../api/client";
 import { PdfInlineViewer } from "../components/PdfInlineViewer";
 import { Button, EmptyState, PageHeader, Select, Spinner } from "../components/ui";
 import { CycleSelect } from "../components/CycleSelect";
+import { useAnnee } from "../context/AnneeContext";
 import { useAuth } from "../context/AuthContext";
 import type { Bulletin, Classe, Cycle, EleveProfile, Periode } from "../types";
 
 const ANNUEL_VALUE = "annuel";
 
 export default function BulletinPage() {
+  const { anneeId } = useAnnee();
   const { user } = useAuth();
   const [classes, setClasses] = useState<Classe[]>([]);
   const [cycleFiltre, setCycleFiltre] = useState<Cycle | "">("");
@@ -37,7 +39,8 @@ export default function BulletinPage() {
   useEffect(() => {
     periodesApi.list().then(({ data }) => setPeriodes(unwrapList(data)));
     if (user?.role === "admin" || user?.role === "teacher") {
-      classesApi.list().then(({ data }) => setClasses(unwrapList(data)));
+      // Classes de l'année affichée (sélecteur du haut).
+      classesApi.list({ annee_scolaire: anneeId ?? undefined }).then(({ data }) => setClasses(unwrapList(data)));
     }
     if (user?.role === "parent") {
       elevesApi.list({ page_size: 50 }).then(({ data }) => setEleves(unwrapList(data)));

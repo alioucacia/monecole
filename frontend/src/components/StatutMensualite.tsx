@@ -25,14 +25,15 @@ export function StatutMensualiteBadge({ categorie, exonereFratrie }: { categorie
   );
 }
 
-/** Distinction de l'enfant exonéré de mensualité au titre de la fratrie. */
+/** « Élève Bonus » : enfant de la classe la plus basse d'une famille d'au moins 6 enfants
+ * inscrits — ne paie pas la scolarité (voir backend people/fratrie.py). */
 export function ExonereFratrieBadge() {
   return (
     <span
-      title="Classe la plus basse d'une famille d'au moins 6 enfants inscrits : ne paie pas la mensualité"
+      title="Classe la plus basse d'une famille d'au moins 6 enfants inscrits : ne paie pas la scolarité"
       className="mt-1 inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-violet-100 text-violet-700 ring-1 ring-violet-300"
     >
-      ★ Exonéré — Fratrie
+      Élève Bonus
     </span>
   );
 }

@@ -505,7 +505,7 @@ export default function ComptesEcolePage() {
               <>
               {enfantsListe.some((el) => el.exonere_fratrie) && (
                 <p className="text-xs text-violet-700 bg-violet-50 border border-violet-100 rounded-xl px-3 py-2">
-                  Famille d'au moins 6 enfants inscrits : l'enfant de la classe la plus basse ne paie pas la mensualité.
+                  Famille d'au moins 6 enfants inscrits : l'enfant de la classe la plus basse est « Élève Bonus » et ne paie pas la scolarité.
                 </p>
               )}
               <ul className="divide-y divide-slate-100 -mx-1">

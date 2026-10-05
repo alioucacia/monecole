@@ -622,7 +622,8 @@ export default function StudentDetailPage() {
                 <ExonereFratrieBadge />
                 <span>
                   Classe la plus basse d'une famille d'au moins 6 enfants inscrits : cet élève ne paie pas la
-                  mensualité (calculé automatiquement, quelle que soit la catégorie ci-dessus).
+                  scolarité (calculé automatiquement, quelle que soit la catégorie ci-dessus). Inscription,
+                  cantine et transport restent dus.
                 </span>
               </div>
             )}

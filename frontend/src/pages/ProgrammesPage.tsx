@@ -6,7 +6,6 @@ import {
 } from "../api/services";
 import { extractErrorMessage } from "../api/client";
 import { Badge, Button, Card, EmptyState, Input, PageHeader, Select, Spinner } from "../components/ui";
-import { useAnnee } from "../context/AnneeContext";
 import { useAuth } from "../context/AuthContext";
 import { useConfirm } from "../context/ConfirmContext";
 import { useToast } from "../context/ToastContext";
@@ -138,7 +137,6 @@ function ChapitresMatiere({
  * matières/classes. */
 export default function ProgrammesPage() {
   const { user } = useAuth();
-  const { anneeId: anneeVueId } = useAnnee();
   const [annees, setAnnees] = useState<AnneeScolaire[]>([]);
   const [anneeId, setAnneeId] = useState("");
   const [classes, setClasses] = useState<AvancementClasse[]>([]);
@@ -152,14 +150,13 @@ export default function ProgrammesPage() {
     anneesApi.list().then(({ data }) => {
       const liste = unwrapList(data);
       setAnnees(liste);
-      // Par défaut : l'année affichée dans toute l'application (sélecteur du haut).
-      const active = liste.find((a) => a.id === anneeVueId) ?? liste.find((a) => a.active);
+      const active = liste.find((a) => a.active);
       if (active) setAnneeId(String(active.id));
     });
     if (user?.role === "teacher") {
       enseignementsApi.list({ page_size: 200 }).then(({ data }) => setMesEnseignements(unwrapList(data)));
     }
-  }, [user?.role, anneeVueId]);
+  }, [user?.role]);
 
   const charger = useCallback(() => {
     setError("");

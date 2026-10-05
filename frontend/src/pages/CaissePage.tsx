@@ -4,6 +4,7 @@ import { Link } from "react-router-dom";
 import { caisseApi } from "../api/services";
 import { extractErrorMessage } from "../api/client";
 import { Button, EmptyState, PageHeader, Spinner, StatCard, Table } from "../components/ui";
+import { useAnnee } from "../context/AnneeContext";
 import type { CaisseRapport } from "../types";
 
 function money(value: string | number) {
@@ -29,25 +30,35 @@ function calculerPeriode(raccourci: "jour" | "semaine" | "mois"): { debut: strin
   return { debut: iso(debut), fin: iso(aujourdhui) };
 }
 
-type Raccourci = "jour" | "semaine" | "mois" | "personnalise";
+type Raccourci = "jour" | "semaine" | "mois" | "annee" | "personnalise";
 const RACCOURCIS: { value: Raccourci; label: string }[] = [
   { value: "jour", label: "Aujourd'hui" },
   { value: "semaine", label: "Cette semaine" },
   { value: "mois", label: "Ce mois" },
+  { value: "annee", label: "Année scolaire" },
   { value: "personnalise", label: "Personnalisé" },
 ];
 
 export default function CaissePage() {
-  const [raccourci, setRaccourci] = useState<Raccourci>("jour");
-  const [dateDebut, setDateDebut] = useState(() => calculerPeriode("jour").debut);
-  const [dateFin, setDateFin] = useState(() => calculerPeriode("jour").fin);
+  // Année affichée (sélecteur du haut) : « Année scolaire » couvre ses dates de début et de fin,
+  // et devient le réglage par défaut quand l'administrateur consulte une année passée.
+  const { annee } = useAnnee();
+  const anneePassee = !!annee && !annee.active;
+  const [raccourci, setRaccourci] = useState<Raccourci>(anneePassee ? "annee" : "jour");
+  const [dateDebut, setDateDebut] = useState(() => (anneePassee ? annee.date_debut : calculerPeriode("jour").debut));
+  const [dateFin, setDateFin] = useState(() => (anneePassee ? annee.date_fin : calculerPeriode("jour").fin));
   const [rapport, setRapport] = useState<CaisseRapport | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
 
   const choisirRaccourci = (r: Raccourci) => {
     setRaccourci(r);
-    if (r !== "personnalise") {
+    if (r === "annee") {
+      if (annee) {
+        setDateDebut(annee.date_debut);
+        setDateFin(annee.date_fin);
+      }
+    } else if (r !== "personnalise") {
       const { debut, fin } = calculerPeriode(r);
       setDateDebut(debut);
       setDateFin(fin);

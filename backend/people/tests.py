@@ -91,3 +91,35 @@ class FratrieTests(TestCase):
         data = r.json()
         lignes = data["results"] if isinstance(data, dict) else data
         self.assertEqual([e["classe_nom"] for e in lignes if e["exonere_fratrie"]], ["3e annee"])
+
+    def test_eleve_bonus_ne_peut_pas_payer_la_scolarite(self):
+        from payments.models import Frais, TypeFrais
+        from rest_framework.test import APIClient
+
+        for c in ["Term A", "11e A", "9e A", "7e A", "6e annee"]:
+            self._enfant(c)
+        bonus = self._enfant("3e annee")
+        self.assertTrue(bonus.exonere_fratrie)
+
+        mensuel = TypeFrais.objects.create(ecole=self.ecole, nom="Scolarité", montant_standard=100000, periodicite="mensuel")
+        tranche = TypeFrais.objects.create(ecole=self.ecole, nom="1ère Tranche", montant_standard=300000, periodicite="trimestriel")
+        cantine = TypeFrais.objects.create(ecole=self.ecole, nom="Cantine", montant_standard=50000, periodicite="autre")
+        admin = User.objects.create_user(username="ad", password="x", role="admin", ecole=self.ecole)
+        client = APIClient()
+        client.force_authenticate(admin)
+
+        def creer(type_frais, **extra):
+            return client.post("/api/payments/frais/", {
+                "eleve": bonus.id, "type_frais": type_frais.id, "annee_scolaire": self.annee.id,
+                "montant": str(type_frais.montant_standard), "date_echeance": "2026-10-05", **extra,
+            }, format="json")
+
+        self.assertEqual(creer(mensuel, mois="2026-10-01").status_code, 400)
+        self.assertEqual(creer(tranche).status_code, 400)
+        self.assertEqual(creer(cantine).status_code, 201)  # hors scolarité : reste dû
+
+        # Frais de scolarité antérieur (créé avant l'exonération) : rien dû, encaissement refusé.
+        ancien = Frais.objects.create(eleve=bonus, type_frais=tranche, annee_scolaire=self.annee, montant=300000, date_echeance="2026-12-31")
+        self.assertEqual(ancien.montant_du, Decimal("0"))
+        r = client.post("/api/payments/paiements/", {"frais": ancien.id, "montant": "1000", "mode_paiement": "especes"}, format="json")
+        self.assertEqual(r.status_code, 400)

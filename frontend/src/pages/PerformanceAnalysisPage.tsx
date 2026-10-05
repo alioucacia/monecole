@@ -28,7 +28,8 @@ export default function PerformanceAnalysisPage() {
   const [loading, setLoading] = useState(false);
 
   useEffect(() => {
-    periodesApi.list().then(({ data }) => {
+    // Toutes les années : cette page n'est pas soumise au sélecteur d'année du haut.
+    periodesApi.list({ toutes_annees: 1 }).then(({ data }) => {
       const items = unwrapList(data);
       setPeriodes(items);
       setPeriodeValue(ANNUEL_VALUE);

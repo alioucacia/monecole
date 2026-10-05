@@ -25,7 +25,6 @@ from rest_framework.response import Response
 from rest_framework.views import APIView
 from xhtml2pdf import pisa
 
-from academics.annee import annee_courante
 from academics.models import Classe
 from accounts.models import User
 from accounts.permissions import (
@@ -75,9 +74,6 @@ class EleveProfileViewSet(viewsets.ModelViewSet):
     # "parent" : permet de retrouver les enfants d'un compte parent donné (voir ComptesEcolePage.tsx
     # → "Enfants") sans avoir à filtrer côté client sur la liste complète des élèves de l'école.
     filterset_fields = ["classe", "actif", "statut_inscription", "parent"]
-    # Élèves de l'année affichée (academics/annee.py) — sauf pour une `classe` précise.
-    annee_eleve_prefix = ""
-    annee_params_explicites = ("classe",)
     search_fields = ["user__first_name", "user__last_name", "matricule"]
     # Liste (et exports CSV/PDF) dans l'ordre d'inscription — `id` départage les élèves inscrits
     # le même jour (`date_inscription` n'a pas d'heure), dans leur ordre réel de création. Le
@@ -204,7 +200,7 @@ class EleveProfileViewSet(viewsets.ModelViewSet):
 
         eleve = self.get_object()
         ecole = eleve.user.ecole
-        annee = annee_courante(request)
+        annee = _annee_active(eleve.user)
         # `usage=INSCRIPTION` (voir TypeFrais.Usage) d'abord — fiable, réglé explicitement par
         # l'admin — avec repli sur l'ancien filtre par nom pour les frais créés avant l'ajout de
         # ce champ. `exclude` sur REINSCRIPTION : sans lui, un "Frais de réinscription" (qui
@@ -240,7 +236,7 @@ class EleveProfileViewSet(viewsets.ModelViewSet):
 
         eleve = self.get_object()
         ecole = eleve.user.ecole
-        annee = annee_courante(request)
+        annee = _annee_active(eleve.user)
         frais_reinscription = list(
             eleve.frais.select_related("type_frais")
             .filter(type_frais__usage=TypeFrais.Usage.REINSCRIPTION)
@@ -271,7 +267,7 @@ class EleveProfileViewSet(viewsets.ModelViewSet):
         propre dossier par `get_queryset`."""
         eleve = self.get_object()
         ecole = eleve.user.ecole
-        annee = annee_courante(request)
+        annee = _annee_active(eleve.user)
         if not annee:
             raise ValidationError("Aucune année scolaire active pour cet établissement.")
 
@@ -1188,7 +1184,6 @@ class BadgeVerifyView(APIView):
 class PointageEnseignantViewSet(viewsets.ModelViewSet):
     queryset = PointageEnseignant.objects.select_related("enseignant__user")
     serializer_class = PointageEnseignantSerializer
-    annee_date_field = "date"  # listes limitées à l'année affichée (academics/annee.py)
 
     def get_permissions(self):
         # Seul un admin ou la surveillance générale peut créer/modifier/supprimer un pointage
@@ -1288,7 +1283,6 @@ def _heures_pointees(enseignant, mois):
 class PaieEnseignantViewSet(viewsets.ModelViewSet):
     queryset = PaieEnseignant.objects.select_related("enseignant__user")
     serializer_class = PaieEnseignantSerializer
-    annee_date_field = "mois"
 
     def get_permissions(self):
         if self.action in ("create", "update", "partial_update", "destroy"):
@@ -1487,7 +1481,7 @@ class EvaluationEnseignantsView(APIView):
             return Response({"enseignant": enseignant.user.get_full_name(), "historique": historique})
 
         annee_id = request.query_params.get("annee_scolaire")
-        annee = annees.filter(pk=annee_id).first() if annee_id else annee_courante(request)
+        annee = annees.filter(pk=annee_id).first() if annee_id else annees.filter(active=True).first()
         if not annee:
             raise ValidationError("Aucune année scolaire active pour votre établissement.")
         enseignants = EnseignantProfile.objects.filter(user__ecole_id=request.user.ecole_id, user__is_active=True).select_related("user")

@@ -590,13 +590,14 @@ export function AppLayout() {
               </svg>
             </button>
             <p className="text-sm text-slate-400 font-medium hidden sm:block shrink-0">Bonjour 👋</p>
-            {/* Année scolaire affichée dans toute l'application : modifiable par l'administrateur
-                seulement — les autres rôles restent sur l'année active (simple étiquette). */}
+            {/* Année scolaire affichée (Paiements, Suivi mensuel, Dépenses, Caisse, Notes, Bulletins,
+                Résultats) : modifiable par l'administrateur seulement — les autres rôles restent
+                sur l'année active (simple étiquette). */}
             {annees.length > 0 && peutChanger && (
               <select
                 value={anneeId ?? ""}
                 onChange={(e) => setAnneeId(Number(e.target.value))}
-                title="Année scolaire affichée dans toute l'application"
+                title="Année scolaire affichée dans Paiements, Suivi mensuel, Dépenses, Caisse, Notes, Bulletins et Résultats"
                 className={`text-sm font-semibold border-none rounded-full pl-3 pr-7 py-1 cursor-pointer focus:outline-none focus:ring-2 focus:ring-brand-500/20 ${
                   annee && !annee.active ? "bg-amber-100 text-amber-800" : "bg-slate-100 text-slate-600"
                 }`}

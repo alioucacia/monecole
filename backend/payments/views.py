@@ -24,7 +24,7 @@ from academics.annee import AnneeScolaireFilterBackend, annee_courante, filtre_e
 from accounts.permissions import IsAdmin, IsAdminOrComptabilite, IsAdminOrComptabiliteOrReadOnly
 from people.views import _image_data_uri, _mm_px
 
-from .models import MOIS_MENSUALITE, PERIODICITES_SCOLARITE, USAGES_INSCRIPTION, CategorieDepense, Depense, Frais, Paiement, TarifClasse, TypeFrais
+from .models import MOIS_MENSUALITE, PERIODICITES_SCOLARITE, est_scolarite, USAGES_INSCRIPTION, CategorieDepense, Depense, Frais, Paiement, TarifClasse, TypeFrais
 from .serializers import CategorieDepenseSerializer, DepenseSerializer, FraisSerializer, PaiementSerializer, TarifClasseSerializer, TypeFraisSerializer
 
 
@@ -133,6 +133,8 @@ def _calculer_suivi_mensuel(eleve, annee_scolaire, frais=None, periodes=None, ca
     ici."""
     from grades.models import Periode
 
+    if eleve.exonere_fratrie:
+        return []  # « Élève Bonus » : aucune scolarité à suivre (voir people/fratrie.py)
     if frais is None:
         frais = _frais_suivi_par_eleve([eleve], annee_scolaire)[eleve.id]
     hors_inscription = [f for f in frais if f.type_frais.usage not in USAGES_INSCRIPTION]
@@ -1145,6 +1147,8 @@ class FraisViewSet(viewsets.ModelViewSet):
                     continue
                 if (eleve.id, type_frais.id) in existants:
                     continue
+                if eleve.exonere_fratrie and est_scolarite(type_frais):
+                    continue  # « Élève Bonus » : pas de scolarité (voir people/fratrie.py)
                 if type_frais.est_mensuel and (eleve.facteur_mensualite == 0 or echeance.month not in MOIS_MENSUALITE):
                     # Exonéré de mensualité, ou mois hors mensualité (Septembre : inscription ;
                     # Juillet/Août : hors année scolaire — voir MOIS_MENSUALITE).

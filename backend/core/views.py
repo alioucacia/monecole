@@ -17,7 +17,6 @@ from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
-from academics.annee import annee_courante, filtre_eleves_annee
 from academics.models import Classe, Creneau
 from accounts.models import User
 from accounts.permissions import IsSuperAdmin
@@ -39,9 +38,6 @@ class DashboardView(APIView):
 
     def get(self, request):
         user = request.user
-        # Chiffres de l'année affichée (l'année active, ou celle choisie par l'administrateur —
-        # voir academics/annee.py).
-        self.annee = annee_courante(request)
         if user.role == "admin":
             return Response(self._admin_dashboard(user))
         if user.role == "teacher":
@@ -56,25 +52,9 @@ class DashboardView(APIView):
             return Response(self._surveillance_dashboard(user))
         return Response({})
 
-    def _eleves_annee(self, ecole_id):
-        """Élèves de l'année affichée : les élèves actifs pour l'année active, ceux scolarisés
-        cette année-là (historique des classes) pour une année passée."""
-        eleves = EleveProfile.objects.filter(user__ecole_id=ecole_id)
-        if self.annee is None or self.annee.active:
-            return eleves.filter(actif=True)
-        return eleves.filter(filtre_eleves_annee(self.annee)).distinct()
-
-    def _par_annee(self, qs, champ):
-        return qs.filter(**{champ: self.annee}) if self.annee else qs
-
-    def _par_dates(self, qs, champ):
-        if not self.annee:
-            return qs
-        return qs.filter(**{f"{champ}__gte": self.annee.date_debut, f"{champ}__lte": self.annee.date_fin})
-
     def _admin_dashboard(self, user):
         ecole_id = user.ecole_id
-        eleves_ecole = self._eleves_annee(ecole_id)
+        eleves_ecole = EleveProfile.objects.filter(user__ecole_id=ecole_id, actif=True)
         total_eleves = eleves_ecole.count()
         eleves_filles = eleves_ecole.filter(user__sexe="F").count()
         eleves_garcons = eleves_ecole.filter(user__sexe="M").count()
@@ -84,13 +64,13 @@ class DashboardView(APIView):
         enseignants_femmes = enseignants_ecole.filter(user__sexe="F").count()
         enseignants_hommes = enseignants_ecole.filter(user__sexe="M").count()
 
-        classes_ecole = self._par_annee(Classe.objects.filter(annee_scolaire__ecole_id=ecole_id), "annee_scolaire")
+        classes_ecole = Classe.objects.filter(annee_scolaire__ecole_id=ecole_id)
         total_classes = classes_ecole.count()
         classes_par_niveau = list(
             classes_ecole.values("niveau").annotate(nb=Count("id")).order_by("niveau")
         )
 
-        presence_totals = self._par_dates(Presence.objects.filter(eleve__user__ecole_id=ecole_id), "date").aggregate(
+        presence_totals = Presence.objects.filter(eleve__user__ecole_id=ecole_id).aggregate(
             total=Count("id"),
             presents=Count("id", filter=Q(statut=Presence.Statut.PRESENT)),
         )
@@ -99,18 +79,11 @@ class DashboardView(APIView):
             if presence_totals["total"] else None
         )
 
-        total_attendu = self._par_annee(
-            Frais.objects.filter(eleve__user__ecole_id=ecole_id), "annee_scolaire",
-        ).aggregate(t=Sum("montant"))["t"] or Decimal("0")
-        total_encaisse = self._par_annee(
-            Paiement.objects.filter(frais__eleve__user__ecole_id=ecole_id), "frais__annee_scolaire",
-        ).aggregate(t=Sum("montant"))["t"] or Decimal("0")
+        total_attendu = Frais.objects.filter(eleve__user__ecole_id=ecole_id).aggregate(t=Sum("montant"))["t"] or Decimal("0")
+        total_encaisse = Paiement.objects.filter(frais__eleve__user__ecole_id=ecole_id).aggregate(t=Sum("montant"))["t"] or Decimal("0")
 
-        # Année passée : effectifs d'après l'historique des classes (les élèves ont changé de
-        # classe depuis).
-        relation_eleves = "eleves" if self.annee is None or self.annee.active else "historique_eleves"
         eleves_par_classe = list(
-            classes_ecole.annotate(nb_eleves=Count(relation_eleves, distinct=True)).values("nom", "nb_eleves").order_by("nom")
+            classes_ecole.annotate(nb_eleves=Count("eleves")).values("nom", "nb_eleves").order_by("nom")
         )
 
         dernieres_annonces = list(
@@ -176,10 +149,10 @@ class DashboardView(APIView):
             return {}
         # On privilégie la dernière période où l'élève a effectivement des notes ;
         # à défaut (ex: tout début d'année) on retombe sur la période la plus récente.
+        periodes_annee = Periode.objects.filter(annee_scolaire__active=True, annee_scolaire__ecole_id=user.ecole_id)
         periode = (
-            Periode.objects.filter(annee_scolaire=self.annee, notes__eleve=eleve)
-            .order_by("-date_debut").distinct().first()
-            or Periode.objects.filter(annee_scolaire=self.annee).order_by("-date_debut").first()
+            periodes_annee.filter(notes__eleve=eleve).order_by("-date_debut").distinct().first()
+            or periodes_annee.order_by("-date_debut").first()
         )
         moyenne_generale = None
         if periode:
@@ -198,7 +171,7 @@ class DashboardView(APIView):
                 if coeffs:
                     moyenne_generale = round(total / coeffs, 2)
 
-        presence_totals = self._par_dates(Presence.objects.filter(eleve=eleve), "date").aggregate(
+        presence_totals = Presence.objects.filter(eleve=eleve).aggregate(
             total=Count("id"), presents=Count("id", filter=Q(statut=Presence.Statut.PRESENT))
         )
         taux_presence = (
@@ -208,12 +181,9 @@ class DashboardView(APIView):
 
         # Montant DÛ (réductions : Fondation, fidélité, fratrie...), pas le tarif plein.
         solde_frais = sum(
-            (f.montant_du for f in self._par_annee(Frais.objects.filter(eleve=eleve), "annee_scolaire").select_related("eleve", "type_frais")),
-            Decimal("0"),
+            (f.montant_du for f in Frais.objects.filter(eleve=eleve).select_related("eleve", "type_frais")), Decimal("0"),
         )
-        paye_frais = self._par_annee(
-            Paiement.objects.filter(frais__eleve=eleve), "frais__annee_scolaire",
-        ).aggregate(t=Sum("montant"))["t"] or Decimal("0")
+        paye_frais = Paiement.objects.filter(frais__eleve=eleve).aggregate(t=Sum("montant"))["t"] or Decimal("0")
 
         prochains_creneaux = []
         if eleve.classe:
@@ -238,7 +208,7 @@ class DashboardView(APIView):
         enfants = EleveProfile.objects.filter(parent=user).select_related("user", "classe")
         resultats = []
         for enfant in enfants:
-            presence_totals = self._par_dates(Presence.objects.filter(eleve=enfant), "date").aggregate(
+            presence_totals = Presence.objects.filter(eleve=enfant).aggregate(
                 total=Count("id"), presents=Count("id", filter=Q(statut=Presence.Statut.PRESENT))
             )
             taux_presence = (
@@ -247,12 +217,9 @@ class DashboardView(APIView):
             )
             # Montant DÛ (réductions : Fondation, fidélité, fratrie...), pas le tarif plein.
             solde_frais = sum(
-                (f.montant_du for f in self._par_annee(Frais.objects.filter(eleve=enfant), "annee_scolaire").select_related("eleve", "type_frais")),
-                Decimal("0"),
+                (f.montant_du for f in Frais.objects.filter(eleve=enfant).select_related("eleve", "type_frais")), Decimal("0"),
             )
-            paye_frais = self._par_annee(
-                Paiement.objects.filter(frais__eleve=enfant), "frais__annee_scolaire",
-            ).aggregate(t=Sum("montant"))["t"] or Decimal("0")
+            paye_frais = Paiement.objects.filter(frais__eleve=enfant).aggregate(t=Sum("montant"))["t"] or Decimal("0")
             resultats.append({
                 "id": enfant.id,
                 "nom_complet": enfant.user.get_full_name(),
@@ -265,22 +232,17 @@ class DashboardView(APIView):
 
     def _comptabilite_dashboard(self, user):
         ecole_id = user.ecole_id
-        paiements_annee = self._par_annee(
-            Paiement.objects.filter(frais__eleve__user__ecole_id=ecole_id), "frais__annee_scolaire",
-        )
-        total_attendu = self._par_annee(
-            Frais.objects.filter(eleve__user__ecole_id=ecole_id), "annee_scolaire",
-        ).aggregate(t=Sum("montant"))["t"] or Decimal("0")
-        total_encaisse = paiements_annee.aggregate(t=Sum("montant"))["t"] or Decimal("0")
+        total_attendu = Frais.objects.filter(eleve__user__ecole_id=ecole_id).aggregate(t=Sum("montant"))["t"] or Decimal("0")
+        total_encaisse = Paiement.objects.filter(frais__eleve__user__ecole_id=ecole_id).aggregate(t=Sum("montant"))["t"] or Decimal("0")
 
         # On évite d'agréger frais et paiements en une seule requête jointe (les jointures
         # multiples sur deux relations inverses gonflent les sommes en cas de lignes multiples) :
         # on calcule le solde élève par élève, comme dans FraisViewSet.summary.
-        frais_qs = self._par_annee(Frais.objects.filter(eleve__user__ecole_id=ecole_id, eleve__actif=True), "annee_scolaire")
+        frais_qs = Frais.objects.filter(eleve__user__ecole_id=ecole_id, eleve__actif=True)
         nb_impayes = 0
         for eleve_id in frais_qs.values_list("eleve_id", flat=True).distinct():
             du = frais_qs.filter(eleve_id=eleve_id).aggregate(t=Sum("montant"))["t"] or Decimal("0")
-            paye = paiements_annee.filter(frais__eleve_id=eleve_id).aggregate(t=Sum("montant"))["t"] or Decimal("0")
+            paye = Paiement.objects.filter(frais__eleve_id=eleve_id, frais__eleve__user__ecole_id=ecole_id).aggregate(t=Sum("montant"))["t"] or Decimal("0")
             if paye < du:
                 nb_impayes += 1
 
@@ -289,7 +251,7 @@ class DashboardView(APIView):
         ).count()
 
         derniers_paiements = list(
-            paiements_annee
+            Paiement.objects.filter(frais__eleve__user__ecole_id=ecole_id)
             .select_related("frais__eleve__user")
             .order_by("-date_paiement")[:5]
             .values("id", "montant", "date_paiement", "frais__eleve__user__first_name", "frais__eleve__user__last_name")
@@ -311,7 +273,7 @@ class DashboardView(APIView):
         ecole_id = user.ecole_id
         today = date.today()
 
-        presence_totals = self._par_dates(Presence.objects.filter(eleve__user__ecole_id=ecole_id), "date").aggregate(
+        presence_totals = Presence.objects.filter(eleve__user__ecole_id=ecole_id).aggregate(
             total=Count("id"), presents=Count("id", filter=Q(statut=Presence.Statut.PRESENT)),
         )
         taux_presence = (
@@ -329,7 +291,7 @@ class DashboardView(APIView):
             .values("id", "type", "message", "cree_le", "eleve__user__first_name", "eleve__user__last_name")
         )
 
-        total_eleves = self._eleves_annee(ecole_id).count()
+        total_eleves = EleveProfile.objects.filter(user__ecole_id=ecole_id, actif=True).count()
 
         return {
             "total_eleves": total_eleves,

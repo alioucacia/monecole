@@ -6,6 +6,7 @@ import { extractBlobErrorMessage, extractErrorMessage } from "../api/client";
 import { Badge, Button, EmptyState, PageHeader, Select, Spinner, Table } from "../components/ui";
 import { CycleSelect } from "../components/CycleSelect";
 import { ExonereFratrieBadge } from "../components/StatutMensualite";
+import { useAnnee } from "../context/AnneeContext";
 import type { Classe, Cycle, SuiviMensuelClasse, SuiviMensuelInscription, SuiviMensuelMois } from "../types";
 
 const STATUT_BADGE: Record<string, { label: string; color: "green" | "amber" | "rose" }> = {
@@ -64,6 +65,7 @@ function CelluleStatut({ ligne, note }: { ligne: SuiviMensuelMois | SuiviMensuel
 }
 
 export default function SuiviMensuelPage() {
+  const { anneeId } = useAnnee();
   const [classes, setClasses] = useState<Classe[]>([]);
   const [cycleFiltre, setCycleFiltre] = useState<Cycle | "">("");
   // "" (par défaut) = toutes les classes — du cycle choisi, ou de toute l'école.
@@ -78,7 +80,8 @@ export default function SuiviMensuelPage() {
   const [impression, setImpression] = useState(false);
 
   useEffect(() => {
-    classesApi.list({ page_size: 200 }).then(({ data }) => setClasses(unwrapList(data)));
+    // Classes de l'année affichée (sélecteur du haut).
+    classesApi.list({ page_size: 200, annee_scolaire: anneeId ?? undefined }).then(({ data }) => setClasses(unwrapList(data)));
   }, []);
 
   // Par défaut (aucun filtre) : tous les élèves de l'année active.

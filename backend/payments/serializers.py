@@ -5,7 +5,7 @@ from rest_framework import serializers
 
 from core.validators import EXTENSIONS_DOCUMENT, TAILLE_MAX_DOCUMENT, valider_taille_fichier
 
-from .models import FORMULES_SCOLARITE, MESSAGE_MOIS_HORS_MENSUALITE, MOIS_MENSUALITE, PERIODICITES_SCOLARITE, USAGES_INSCRIPTION, CategorieDepense, Depense, Frais, Paiement, TarifClasse, TypeFrais
+from .models import FORMULES_SCOLARITE, MESSAGE_ELEVE_BONUS, MESSAGE_MOIS_HORS_MENSUALITE, MOIS_MENSUALITE, est_scolarite, PERIODICITES_SCOLARITE, USAGES_INSCRIPTION, CategorieDepense, Depense, Frais, Paiement, TarifClasse, TypeFrais
 
 
 MOIS_FR = [
@@ -102,6 +102,9 @@ class PaiementSerializer(serializers.ModelSerializer):
         frais = attrs.get("frais", getattr(self.instance, "frais", None))
         if not frais:
             return attrs
+        if frais.eleve.exonere_fratrie and est_scolarite(frais.type_frais):
+            # « Élève Bonus » (voir people/fratrie.py) : aucune scolarité à encaisser.
+            raise serializers.ValidationError({"frais": MESSAGE_ELEVE_BONUS})
         mois = attrs.get("mois", getattr(self.instance, "mois", None))
         periode = attrs.get("periode", getattr(self.instance, "periode", None))
         montant = attrs.get("montant", getattr(self.instance, "montant", None))
@@ -268,6 +271,8 @@ class FraisSerializer(serializers.ModelSerializer):
             attrs.get("mois") or getattr(self.instance, "mois", None)
             or attrs.get("date_echeance", getattr(self.instance, "date_echeance", None))
         )
+        if self.instance is None and eleve and type_frais and eleve.exonere_fratrie and est_scolarite(type_frais):
+            raise serializers.ValidationError({"eleve": MESSAGE_ELEVE_BONUS})
         if self.instance is None and eleve and type_frais and annee:
             verifier_formule_scolarite(eleve.id, annee.id, type_frais, "type_frais")
         if type_frais and type_frais.est_mensuel and echeance and echeance.month not in MOIS_MENSUALITE:

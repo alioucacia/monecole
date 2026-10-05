@@ -184,8 +184,11 @@ export default function PaymentsPage() {
   const [fraisEleveCycle, setFraisEleveCycle] = useState<Cycle | "">("");
   const [fraisEleveClasse, setFraisEleveClasse] = useState("");
   const classesDuCycleFrais = fraisEleveCycle ? classes.filter((c) => c.cycle === fraisEleveCycle) : classes;
+  // Les « Élèves Bonus » (ne paient pas la scolarité — voir StatutMensualite) n'apparaissent pas
+  // dans « Nouveau frais » ; le serveur refuse de toute façon de leur créer une scolarité.
   const elevesFiltres = eleves.filter((el) =>
-    (!fraisEleveCycle || el.classe_cycle === fraisEleveCycle) && (!fraisEleveClasse || String(el.classe) === fraisEleveClasse)
+    !el.exonere_fratrie
+    && (!fraisEleveCycle || el.classe_cycle === fraisEleveCycle) && (!fraisEleveClasse || String(el.classe) === fraisEleveClasse)
   );
   // Trimestres (Periode) de l'année scolaire choisie dans "Nouveau frais" — ne sert que pour la
   // liste déroulante "Trimestre d'échéance" d'un type de frais Trimestriel (voir périodicité).
@@ -324,7 +327,8 @@ export default function PaymentsPage() {
     if (peutGerer) {
       anneesApi.list().then(({ data }) => setAnnees(unwrapList(data)));
       elevesApi.list({ page_size: 500 }).then(({ data }) => setEleves(unwrapList(data)));
-      classesApi.list({ page_size: 200 }).then(({ data }) => setClasses(unwrapList(data)));
+      // Classes de l'année affichée (filtres Cycle/Classe de la liste).
+      classesApi.list({ page_size: 200, annee_scolaire: anneeVueId ?? undefined }).then(({ data }) => setClasses(unwrapList(data)));
       loadSummary();
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps

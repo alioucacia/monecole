@@ -5,6 +5,7 @@ import { extractErrorMessage } from "../api/client";
 import { Badge, Button, DeleteButton, EditButton, EmptyState, Input, Modal, PageHeader, RowActions, Select, Spinner, Table } from "../components/ui";
 import { baremeDuCycle } from "../bareme";
 import { CycleSelect } from "../components/CycleSelect";
+import { useAnnee } from "../context/AnneeContext";
 import { useAuth } from "../context/AuthContext";
 import { useConfirm } from "../context/ConfirmContext";
 import { usePaginated } from "../hooks/usePaginated";
@@ -20,6 +21,7 @@ const emptyForm = {
 };
 
 export default function GradesPage() {
+  const { anneeId } = useAnnee();
   const { user } = useAuth();
   const confirmer = useConfirm();
   const canEdit = user?.role === "admin" || user?.role === "teacher";
@@ -51,7 +53,8 @@ export default function GradesPage() {
   useEffect(() => {
     periodesApi.list().then(({ data }) => setPeriodes(unwrapList(data)));
     if (canEdit) {
-      classesApi.list().then(({ data }) => setClasses(unwrapList(data)));
+      // Classes de l'année affichée (sélecteur du haut).
+      classesApi.list({ annee_scolaire: anneeId ?? undefined }).then(({ data }) => setClasses(unwrapList(data)));
       enseignementsApi.list().then(({ data }) => setEnseignements(unwrapList(data)));
     }
   }, [canEdit]);

@@ -114,6 +114,14 @@ FORMULES_SCOLARITE = {
     TypeFrais.Periodicite.ANNUEL: "à l'année",
 }
 
+MESSAGE_ELEVE_BONUS = "Élève Bonus : cet élève ne paie pas la scolarité (mensualités, tranches ou annuel)."
+
+
+def est_scolarite(type_frais) -> bool:
+    """Frais de scolarité (mensuel, tranche ou annuel), hors inscription/réinscription — ceux
+    dont un « Élève Bonus » est exonéré. Cantine, transport, inscription... restent dus."""
+    return type_frais.periodicite in PERIODICITES_SCOLARITE and type_frais.usage not in USAGES_INSCRIPTION
+
 
 class TarifClasse(models.Model):
     """Montant spécifique d'un type de frais pour une classe donnée, sur une année scolaire —
@@ -229,6 +237,10 @@ class Frais(models.Model):
         le reste (cantine, transport, tranche, annuel, autre...), qui reste dû intégralement quelle
         que soit la catégorie de l'élève — ces frais-là n'entrent jamais dans le mécanisme de gel
         ci-dessous."""
+        if self.eleve.exonere_fratrie and est_scolarite(self.type_frais):
+            # « Élève Bonus » (voir people/fratrie.py) : scolarité gratuite, quelle que soit la
+            # formule (mensualités, tranches ou annuel).
+            return Decimal("0")
         if self.type_frais.est_mensuel:
             return self.eleve.facteur_mensualite
         if self.type_frais.usage in (TypeFrais.Usage.INSCRIPTION, TypeFrais.Usage.REINSCRIPTION):

@@ -5,6 +5,7 @@ import type { PeriodeSelection } from "../api/services";
 import { extractBlobErrorMessage, extractErrorMessage } from "../api/client";
 import { Badge, Button, EmptyState, PageHeader, Select, Spinner, StatCard, Table } from "../components/ui";
 import { CycleSelect } from "../components/CycleSelect";
+import { useAnnee } from "../context/AnneeContext";
 import { useConfirm } from "../context/ConfirmContext";
 import { useToast } from "../context/ToastContext";
 import type { Classe, Cycle, Periode, ResultatEleve, Resultats } from "../types";
@@ -30,6 +31,7 @@ const DECISION_GROUPES: { decision: ResultatEleve["decision"]; titre: string; co
 const ANNUEL_VALUE = "annuel";
 
 export default function ResultsPage() {
+  const { anneeId } = useAnnee();
   const confirmer = useConfirm();
   const toast = useToast();
   const [classes, setClasses] = useState<Classe[]>([]);
@@ -47,7 +49,8 @@ export default function ResultsPage() {
   const [rangMax, setRangMax] = useState(3);
 
   useEffect(() => {
-    classesApi.list().then(({ data }) => setClasses(unwrapList(data)));
+    // Classes de l'année affichée (sélecteur du haut).
+    classesApi.list({ annee_scolaire: anneeId ?? undefined }).then(({ data }) => setClasses(unwrapList(data)));
     periodesApi.list().then(({ data }) => setPeriodes(unwrapList(data)));
   }, []);
 

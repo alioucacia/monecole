@@ -35,7 +35,6 @@ class PresenceViewSet(viewsets.ModelViewSet):
         "statut": ["exact"],
         "creneau": ["exact"],
     }
-    annee_date_field = "date"  # listes limitées à l'année affichée (academics/annee.py)
 
     def get_queryset(self):
         qs = super().get_queryset().filter(eleve__user__ecole_id=self.request.user.ecole_id)
@@ -165,7 +164,6 @@ class JustificatifAbsenceViewSet(viewsets.ModelViewSet):
     serializer_class = JustificatifAbsenceSerializer
     permission_classes = [IsAuthenticated, fonctionnalite_requise("justificatifs")]
     filterset_fields = ["eleve", "statut", "motif"]
-    annee_date_field = "date_absence"
 
     def get_queryset(self):
         qs = super().get_queryset().filter(eleve__user__ecole_id=self.request.user.ecole_id)
