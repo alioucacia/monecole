@@ -308,6 +308,13 @@ class SauvegardeViewSet(viewsets.ReadOnlyModelViewSet):
     serializer_class = SauvegardeLogSerializer
     permission_classes = [IsSuperAdmin]
 
+    def list(self, request, *args, **kwargs):
+        # Une sauvegarde interrompue ne doit pas rester « en cours » indéfiniment (bouton bloqué).
+        from .sauvegarde import marquer_sauvegardes_interrompues
+
+        marquer_sauvegardes_interrompues()
+        return super().list(request, *args, **kwargs)
+
     @action(detail=False, methods=["post"], url_path="lancer")
     def lancer(self, request):
         """Déclenche une sauvegarde immédiate (en plus de la tâche planifiée quotidienne),

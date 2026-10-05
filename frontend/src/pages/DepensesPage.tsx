@@ -19,8 +19,14 @@ function money(value: string | number) {
   return `${Number(value).toLocaleString("fr-FR")} GNF`;
 }
 
+/** Date du jour ("AAAA-MM-JJ") en heure locale — affichage seulement : le serveur fixe la date. */
+function aujourdhuiISO(): string {
+  const d = new Date();
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+}
+
 const emptyForm = {
-  date: new Date().toISOString().slice(0, 10), categorie: "", motif: "",
+  date: "", categorie: "", motif: "",
   montant: "", mode_paiement: "especes" as Depense["mode_paiement"], reference: "", responsable: "", commentaire: "",
 };
 
@@ -64,7 +70,7 @@ export default function DepensesPage() {
 
   const openCreate = () => {
     setEditing(null);
-    setForm({ ...emptyForm, categorie: categories[0] ? String(categories[0].id) : "" });
+    setForm({ ...emptyForm, date: aujourdhuiISO(), categorie: categories[0] ? String(categories[0].id) : "" });
     setJustificatif(null);
     setError("");
     setModalOpen(true);
@@ -87,7 +93,9 @@ export default function DepensesPage() {
     setSaving(true);
     setError("");
     try {
-      const payload: Record<string, unknown> = { ...form };
+      // `date` n'est pas envoyée : le serveur enregistre la date du jour (non modifiable).
+      const { date: _date, ...champs } = form;
+      const payload: Record<string, unknown> = { ...champs };
       if (justificatif) payload.justificatif = justificatif;
       if (editing) await depensesApi.update(editing.id, payload);
       else await depensesApi.create(payload);
@@ -222,7 +230,12 @@ export default function DepensesPage() {
 
       <Modal open={modalOpen} onClose={() => setModalOpen(false)} title={editing ? "Modifier la dépense" : "Nouvelle dépense"} wide>
         <form noValidate onSubmit={handleSubmit} className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-          <Input label="Date" type="date" required value={form.date} onChange={(e) => setForm({ ...form, date: e.target.value })} />
+          {/* Date du jour à la création, non modifiable (règle de la plateforme). */}
+          <Input
+            label="Date" type="date" value={form.date} readOnly
+            title="Date du jour — non modifiable"
+            className="bg-slate-50 text-slate-600 cursor-not-allowed"
+          />
           <Select label="Catégorie" required value={form.categorie} onChange={(e) => setForm({ ...form, categorie: e.target.value })}>
             <option value="">— Sélectionner —</option>
             {categories.map((c) => <option key={c.id} value={c.id}>{c.nom}</option>)}

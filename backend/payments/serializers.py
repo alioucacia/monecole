@@ -209,7 +209,9 @@ class DepenseSerializer(serializers.ModelSerializer):
             "mode_paiement_display", "reference", "responsable", "enregistre_par", "enregistre_par_nom",
             "justificatif", "commentaire",
         ]
-        read_only_fields = ["enregistre_par"]
+        # Date d'une transaction = date du jour, fixée par le serveur à la création (jamais saisie
+        # ni modifiée ensuite) — voir DepenseViewSet.perform_create.
+        read_only_fields = ["enregistre_par", "date"]
         extra_kwargs = {"justificatif": {"required": False}}
 
     def validate_justificatif(self, fichier):

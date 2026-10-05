@@ -149,8 +149,8 @@ export default function StaffPage() {
 
   const handleTogglePayee = async (paie: PaieEnseignant) => {
     await paiesEnseignantsApi.update(paie.id, {
+      // Date de paiement fixée par le serveur (date du jour).
       payee: !paie.payee,
-      date_paiement: !paie.payee ? new Date().toISOString().slice(0, 10) : null,
     });
     loadAll();
   };

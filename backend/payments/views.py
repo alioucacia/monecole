@@ -513,7 +513,7 @@ class DepenseViewSet(viewsets.ModelViewSet):
         return super().get_queryset().filter(ecole_id=self.request.user.ecole_id)
 
     def perform_create(self, serializer):
-        serializer.save(ecole=self.request.user.ecole, enregistre_par=self.request.user)
+        serializer.save(ecole=self.request.user.ecole, enregistre_par=self.request.user, date=timezone.localdate())
 
     @action(detail=False, methods=["get"], url_path="summary")
     def summary(self, request):
@@ -845,11 +845,21 @@ class FraisViewSet(viewsets.ModelViewSet):
             if montant_verse is None:
                 continue  # ligne "frais seul", sans paiement historique à enregistrer
 
+            # Import = reprise d'historique : la date de versement du fichier est conservée (la
+            # dater du jour compterait des mois d'encaissements dans la Caisse du jour de
+            # l'import). Exceptions : jamais dans le futur, et date absente = date du jour (règle
+            # de la plateforme pour toute transaction).
             date_versement, err = parse_date(date_paiement_brute)
             if err:
                 erreurs.append({"ligne": num_ligne, "message": f"Date du paiement invalide : {err}"})
                 continue
-            date_versement = date_versement or echeance
+            if date_versement and date_versement > timezone.localdate():
+                erreurs.append({
+                    "ligne": num_ligne,
+                    "message": f"Date du paiement dans le futur ({date_versement:%d/%m/%Y}) : un paiement ne peut pas être daté après aujourd'hui.",
+                })
+                continue
+            date_versement = date_versement or timezone.localdate()
 
             mode = str(mode_paiement or "").strip().lower()
             if mode not in modes_valides:

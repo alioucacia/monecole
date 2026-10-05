@@ -107,6 +107,12 @@ if not DATABASE_URL:
 DATABASES = {
     "default": dj_database_url.parse(DATABASE_URL, conn_max_age=600)
 }
+# En production, le backend passe par PgBouncer en mode `transaction` (voir
+# docker-compose.prod.yml) : les curseurs nommés côté serveur qu'utilise `QuerySet.iterator()`
+# n'y survivent pas d'une requête à l'autre (« cursor "_django_curs_…" does not exist »). C'est
+# ce qui faisait échouer toute sauvegarde (`dumpdata`, voir core/sauvegarde.py) en production
+# alors qu'elle fonctionnait en local, sans PgBouncer. Réglage exigé par Django dans ce cas.
+DATABASES["default"]["DISABLE_SERVER_SIDE_CURSORS"] = config("DB_DISABLE_SERVER_SIDE_CURSORS", default=True, cast=bool)
 
 AUTH_USER_MODEL = "accounts.User"
 

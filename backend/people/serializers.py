@@ -434,6 +434,19 @@ class PaieEnseignantSerializer(serializers.ModelSerializer):
             "nombre_heures", "taux_horaire", "salaire_calcule", "primes", "retenues",
             "net_a_payer", "payee", "date_paiement", "commentaire",
         ]
+        # Date d'une transaction = date du jour, fixée par le serveur (jamais saisie).
+        read_only_fields = ["date_paiement"]
+
+    def validate(self, attrs):
+        from django.utils import timezone
+
+        payee = attrs.get("payee", getattr(self.instance, "payee", False))
+        deja_payee = bool(self.instance and self.instance.payee)
+        if payee and not deja_payee:
+            attrs["date_paiement"] = timezone.localdate()
+        elif not payee:
+            attrs["date_paiement"] = None
+        return attrs
 
 
 class GroupeRevisionSerializer(serializers.ModelSerializer):

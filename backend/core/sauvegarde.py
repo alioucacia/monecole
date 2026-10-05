@@ -26,8 +26,9 @@ RETENTION_JOURS = 30
 EXCLURE = ["contenttypes", "auth.permission", "sessions.session", "admin.logentry"]
 
 # Au-delà, une sauvegarde « en cours » est considérée comme interrompue (serveur redémarré
-# pendant l'exécution) et n'empêche plus d'en relancer une.
-DUREE_MAX_EN_COURS = timedelta(hours=1)
+# pendant l'exécution, ou ancienne sauvegarde coupée par le délai de 30 s quand elle s'exécutait
+# encore dans la requête) : marquée en échec, elle n'empêche plus d'en relancer une.
+DUREE_MAX_EN_COURS = timedelta(minutes=30)
 
 
 def dossier_sauvegardes() -> Path:
@@ -78,7 +79,20 @@ def purger_anciennes_sauvegardes(dossier: Path):
             fichier.unlink(missing_ok=True)
 
 
+def marquer_sauvegardes_interrompues() -> None:
+    """Passe en échec les sauvegardes restées « en cours » au-delà de DUREE_MAX_EN_COURS —
+    sans cela, elles restaient « en cours » indéfiniment et la page Sauvegardes gardait le
+    bouton « Lancer une sauvegarde » désactivé pour toujours."""
+    SauvegardeLog.objects.filter(
+        statut=SauvegardeLog.Statut.EN_COURS, date_lancement__lt=timezone.now() - DUREE_MAX_EN_COURS,
+    ).update(
+        statut=SauvegardeLog.Statut.ECHEC,
+        message="Sauvegarde interrompue (serveur redémarré ou délai dépassé pendant l'exécution).",
+    )
+
+
 def sauvegarde_en_cours() -> SauvegardeLog | None:
+    marquer_sauvegardes_interrompues()
     return SauvegardeLog.objects.filter(
         statut=SauvegardeLog.Statut.EN_COURS, date_lancement__gte=timezone.now() - DUREE_MAX_EN_COURS,
     ).first()
