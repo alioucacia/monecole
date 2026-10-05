@@ -92,6 +92,38 @@ class FratrieTests(TestCase):
         lignes = data["results"] if isinstance(data, dict) else data
         self.assertEqual([e["classe_nom"] for e in lignes if e["exonere_fratrie"]], ["3e annee"])
 
+    def test_categorie_figee_des_le_premier_paiement_de_mensualite(self):
+        from payments.models import Frais, Paiement, TypeFrais
+        from rest_framework.test import APIClient
+
+        eleve = self._enfant("9e A")
+        admin = User.objects.create_user(username="ad", password="x", role="admin", ecole=self.ecole)
+        client = APIClient()
+        client.force_authenticate(admin)
+        url = f"/api/people/eleves/{eleve.id}/categorie-paiement/"
+
+        # Avant tout paiement : modifiable.
+        r = client.patch(url, {"categorie_paiement": "fondation_50"}, format="json")
+        self.assertEqual(r.status_code, 200, r.content)
+
+        mensuel = TypeFrais.objects.create(ecole=self.ecole, nom="Scolarité", montant_standard=100000, periodicite="mensuel")
+        frais = Frais.objects.create(
+            eleve=eleve, type_frais=mensuel, annee_scolaire=self.annee, montant=100000,
+            date_echeance=date(2026, 10, 5), mois=date(2026, 10, 1),
+        )
+        Paiement.objects.create(frais=frais, montant=10000, mode_paiement="especes", mois=date(2026, 10, 1))
+
+        # Après un paiement : plus de changement de catégorie...
+        r = client.patch(url, {"categorie_paiement": "fondation_gratuit"}, format="json")
+        self.assertEqual(r.status_code, 400)
+        # ... sauf renvoyer la même (ex: case fidélité cochée) ou revenir en Standard.
+        r = client.patch(url, {"categorie_paiement": "fondation_50", "reduction_fidelite_mensualite": True}, format="json")
+        self.assertEqual(r.status_code, 200, r.content)
+        r = client.patch(url, {"categorie_paiement": "standard"}, format="json")
+        self.assertEqual(r.status_code, 200, r.content)
+        r = client.patch(url, {"categorie_paiement": "fondation_50"}, format="json")
+        self.assertEqual(r.status_code, 400)
+
     def test_eleve_bonus_ne_peut_pas_payer_la_scolarite(self):
         from payments.models import Frais, TypeFrais
         from rest_framework.test import APIClient

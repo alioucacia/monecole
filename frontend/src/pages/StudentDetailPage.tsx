@@ -276,8 +276,8 @@ export default function StudentDetailPage() {
   // côté backend) : cocher la réduction fidélité (×0,95) ne change rien (0 × 0,95 = 0). Sans ce
   // garde-fou, la case restait cliquable mais semblait « ne rien faire » — confusion signalée.
   const fideliteSansEffet = eleve.categorie_paiement === "fondation_gratuit" || eleve.categorie_paiement === "inscription_seulement";
-  // Mensualité déjà entamée sur l'année active : plus de passage en Fondation 50 %/100 % ni en
-  // « Inscription seulement » (même règle, appliquée côté backend).
+  // Mensualité déjà entamée sur l'année active : la catégorie est grisée, plus aucun changement
+  // (même règle, appliquée côté backend).
   const aCommencePaiement = frais.some(
     (f) => f.type_frais_est_mensuel && f.annee_scolaire === annees.find((a) => a.active)?.id && Number(f.montant_paye) > 0,
   );
@@ -589,20 +589,29 @@ export default function StudentDetailPage() {
               <Select
                 label="Catégorie"
                 value={eleve.categorie_paiement}
-                disabled={categorieSaving}
+                disabled={categorieSaving || aCommencePaiement}
+                title={aCommencePaiement ? "Paiement de la mensualité déjà commencé : catégorie non modifiable" : undefined}
                 onChange={(e) => handleCategorieChange(e.target.value as CategoriePaiement, eleve.reduction_fidelite_mensualite)}
-                className="max-w-xs"
+                className={`max-w-xs ${aCommencePaiement ? "bg-slate-100 text-slate-400 cursor-not-allowed" : ""}`}
               >
                 {Object.entries(CATEGORIE_LABELS).map(([value, label]) => (
-                  <option
-                    key={value}
-                    value={value}
-                    disabled={aCommencePaiement && value !== "standard" && value !== eleve.categorie_paiement}
-                  >
-                    {label}
-                  </option>
+                  <option key={value} value={value}>{label}</option>
                 ))}
               </Select>
+              {/* Catégorie grisée après un paiement : seul le retour en « Standard » reste permis. */}
+              {aCommencePaiement && eleve.categorie_paiement !== "standard" && (
+                <Button
+                  type="button"
+                  variant="secondary"
+                  disabled={categorieSaving}
+                  onClick={async () => {
+                    if (!(await confirmer("Remettre cet élève en « Standard » ? Il paiera la mensualité au tarif plein, et ce choix ne pourra plus être annulé."))) return;
+                    handleCategorieChange("standard", eleve.reduction_fidelite_mensualite);
+                  }}
+                >
+                  Remettre en Standard
+                </Button>
+              )}
               <label
                 className={`flex items-center gap-2 text-sm ${fideliteSansEffet ? "text-slate-400 cursor-not-allowed" : "text-slate-600"}`}
                 title={fideliteSansEffet ? "Sans effet pour cette catégorie : la mensualité est déjà à 0%." : undefined}
@@ -629,7 +638,8 @@ export default function StudentDetailPage() {
             )}
             {aCommencePaiement && (
               <p className="text-xs text-amber-600 mt-2">
-                ⓘ Cet élève a déjà commencé à payer sa mensualité : il ne peut plus être placé en Fondation (50 % ou 100 %) ni en « Inscription/réinscription uniquement ».
+                ⓘ Cet élève a déjà commencé à payer sa mensualité : sa catégorie de paiement ne peut plus être modifiée
+                {eleve.categorie_paiement !== "standard" && " (seul le retour en « Standard » reste possible)"}.
               </p>
             )}
             {fideliteSansEffet && (

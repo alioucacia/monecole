@@ -55,10 +55,9 @@ class CategoriePaiementSerializer(serializers.ModelSerializer):
         fields = ["categorie_paiement", "reduction_fidelite_mensualite"]
 
     def validate_categorie_paiement(self, value):
-        """Un élève qui a déjà commencé à payer sa mensualité sur l'année active ne peut plus être
-        basculé en Fondation 50 %/100 % ni en « Inscription/réinscription uniquement » : les mois
-        déjà encaissés au tarif plein deviendraient incohérents avec le nouveau montant dû.
-        Le retour en « Standard » reste toujours possible."""
+        """Dès qu'un élève a commencé à payer sa mensualité sur l'année active, sa catégorie est
+        figée (grisée sur la fiche élève) : les mois déjà encaissés deviendraient incohérents avec
+        un nouveau montant dû. Seul le retour en « Standard » reste possible."""
         eleve = self.instance
         if not eleve or value == eleve.categorie_paiement or value == EleveProfile.CategoriePaiement.STANDARD:
             return value
@@ -71,8 +70,8 @@ class CategoriePaiementSerializer(serializers.ModelSerializer):
             paiements = paiements.filter(frais__annee_scolaire=annee)
         if paiements.exists():
             raise serializers.ValidationError(
-                "Cet élève a déjà commencé à payer sa mensualité : il ne peut plus être placé en "
-                "Fondation (50 % ou 100 %) ni en « Inscription/réinscription uniquement »."
+                "Cet élève a déjà commencé à payer sa mensualité : sa catégorie de paiement ne peut "
+                "plus être modifiée (seul le retour en « Standard » reste possible)."
             )
         return value
 
