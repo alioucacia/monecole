@@ -420,7 +420,7 @@ export default function PaymentsPage() {
         ? echeanceDuMois(annee, fraisForm.mois_echeance) : null;
       await fraisApi.create({
         eleve: Number(fraisForm.eleve), type_frais: Number(fraisForm.type_frais),
-        annee_scolaire: Number(fraisForm.annee_scolaire), montant: String(montantFinal), date_echeance: fraisForm.date_echeance,
+        annee_scolaire: Number(fraisForm.annee_scolaire), montant: String(montantFinal), date_echeance: aujourdhuiISO(),
         mois,
       });
       setFraisModalOpen(false);
@@ -847,20 +847,16 @@ export default function PaymentsPage() {
               )}
             </Select>
           )}
-          {typeFraisSelectionne?.periodicite === "annuel" && (
-            <p className="text-xs text-slate-400 -mt-2">
-              Échéance fixée à la fin de l'année scolaire sélectionnée — modifiable ci-dessous si besoin.
-            </p>
-          )}
+          {/* Date d'échéance : toujours la date du jour, quel que soit le type de frais — non
+              modifiable (également imposée côté serveur, voir FraisSerializer). */}
           <Input
             label="Date d'échéance"
             type="date"
             required
-            value={fraisForm.date_echeance}
-            readOnly={typeFraisSelectionne?.periodicite === "mensuel"}
-            className={typeFraisSelectionne?.periodicite === "mensuel" ? "bg-slate-50 text-slate-600 cursor-not-allowed" : undefined}
-            title={typeFraisSelectionne?.periodicite === "mensuel" ? "Date du jour, quel que soit le mois choisi" : undefined}
-            onChange={(e) => setFraisForm({ ...fraisForm, date_echeance: e.target.value, mois_echeance: "", trimestre_echeance: "" })}
+            value={aujourdhuiISO()}
+            readOnly
+            className="bg-slate-50 text-slate-600 cursor-not-allowed"
+            title="Date du jour, quel que soit le type de frais"
           />
 
           {fraisError && <p className="text-sm text-rose-600 bg-rose-50 border border-rose-100 rounded-xl px-3.5 py-2.5">{fraisError}</p>}

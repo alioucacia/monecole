@@ -1,4 +1,4 @@
-from datetime import timedelta
+from datetime import date, timedelta
 from pathlib import Path
 from tempfile import TemporaryDirectory
 from unittest import mock
@@ -35,6 +35,26 @@ class DateTransactionTests(TestCase):
         self.assertEqual(r.json()["date"], timezone.localdate().isoformat())
         r = self.client_api.patch(f"/api/payments/depenses/{r.json()['id']}/", {"date": "2020-01-01"}, format="json")
         self.assertEqual(r.json()["date"], timezone.localdate().isoformat())
+
+    def test_nouveau_frais_echeance_date_du_jour_quel_que_soit_le_type(self):
+        from academics.models import AnneeScolaire, Classe
+        from people.models import EleveProfile
+        from payments.models import TypeFrais
+
+        annee = AnneeScolaire.objects.create(
+            ecole=self.ecole, libelle="2026-2027", date_debut=date(2026, 9, 1), date_fin=date(2027, 6, 30), active=True,
+        )
+        classe = Classe.objects.create(nom="7e A", niveau="7ème", annee_scolaire=annee)
+        u = User.objects.create_user(username="el", password="x", role="student", ecole=self.ecole)
+        eleve = EleveProfile.objects.create(user=u, matricule="M1", classe=classe)
+        for periodicite in ("annuel", "trimestriel", "autre"):
+            type_frais = TypeFrais.objects.create(ecole=self.ecole, nom=f"Frais {periodicite}", montant_standard=1000, periodicite=periodicite)
+            r = self.client_api.post("/api/payments/frais/", {
+                "eleve": eleve.id, "type_frais": type_frais.id, "annee_scolaire": annee.id,
+                "montant": "1000", "date_echeance": "2027-06-30",
+            }, format="json")
+            self.assertEqual(r.status_code, 201, (periodicite, r.content))
+            self.assertEqual(r.json()["date_echeance"], timezone.localdate().isoformat(), periodicite)
 
     def test_paie_enseignant_date_du_jour(self):
         from datetime import date

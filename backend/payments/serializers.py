@@ -1,6 +1,7 @@
 from decimal import ROUND_HALF_UP, Decimal
 
 from django.db.models import Sum
+from django.utils import timezone
 from rest_framework import serializers
 
 from core.validators import EXTENSIONS_DOCUMENT, TAILLE_MAX_DOCUMENT, valider_taille_fichier
@@ -269,6 +270,9 @@ class FraisSerializer(serializers.ModelSerializer):
         # (voir Frais.mois) — l'échéance elle-même peut être n'importe quelle date (date du jour).
         if attrs.get("mois"):
             attrs["mois"] = attrs["mois"].replace(day=1)
+        if self.instance is None:
+            # Nouveau frais : échéance = date du jour, quel que soit le type de frais.
+            attrs["date_echeance"] = timezone.localdate()
         echeance = (
             attrs.get("mois") or getattr(self.instance, "mois", None)
             or attrs.get("date_echeance", getattr(self.instance, "date_echeance", None))
