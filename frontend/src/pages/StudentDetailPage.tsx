@@ -276,11 +276,9 @@ export default function StudentDetailPage() {
   // côté backend) : cocher la réduction fidélité (×0,95) ne change rien (0 × 0,95 = 0). Sans ce
   // garde-fou, la case restait cliquable mais semblait « ne rien faire » — confusion signalée.
   const fideliteSansEffet = eleve.categorie_paiement === "fondation_gratuit" || eleve.categorie_paiement === "inscription_seulement";
-  // Mensualité déjà entamée sur l'année active : la catégorie est grisée, plus aucun changement
-  // (même règle, appliquée côté backend).
-  const aCommencePaiement = frais.some(
-    (f) => f.type_frais_est_mensuel && f.annee_scolaire === annees.find((a) => a.active)?.id && Number(f.montant_paye) > 0,
-  );
+  // Scolarité déjà entamée sur l'année active (calculé par le serveur, même règle que son
+  // blocage) : la catégorie est grisée, seul le retour en « Standard » reste possible.
+  const aCommencePaiement = !!eleve.categorie_figee;
 
   // Onglet Notes : périodes de l'année scolaire choisie, et notes filtrées en conséquence
   // (par année, puis par trimestre si un trimestre précis est sélectionné).
@@ -590,9 +588,9 @@ export default function StudentDetailPage() {
                 label="Catégorie"
                 value={eleve.categorie_paiement}
                 disabled={categorieSaving || aCommencePaiement}
-                title={aCommencePaiement ? "Paiement de la mensualité déjà commencé : catégorie non modifiable" : undefined}
+                title={aCommencePaiement ? "Paiement de la scolarité déjà commencé : catégorie non modifiable" : undefined}
                 onChange={(e) => handleCategorieChange(e.target.value as CategoriePaiement, eleve.reduction_fidelite_mensualite)}
-                className={`max-w-xs ${aCommencePaiement ? "bg-slate-100 text-slate-400 cursor-not-allowed" : ""}`}
+                className="max-w-xs"
               >
                 {Object.entries(CATEGORIE_LABELS).map(([value, label]) => (
                   <option key={value} value={value}>{label}</option>
@@ -638,7 +636,7 @@ export default function StudentDetailPage() {
             )}
             {aCommencePaiement && (
               <p className="text-xs text-amber-600 mt-2">
-                ⓘ Cet élève a déjà commencé à payer sa mensualité : sa catégorie de paiement ne peut plus être modifiée
+                ⓘ Cet élève a déjà commencé à payer sa scolarité : sa catégorie de paiement ne peut plus être modifiée
                 {eleve.categorie_paiement !== "standard" && " (seul le retour en « Standard » reste possible)"}.
               </p>
             )}

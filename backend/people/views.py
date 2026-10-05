@@ -190,7 +190,8 @@ class EleveProfileViewSet(viewsets.ModelViewSet):
         serializer = CategoriePaiementSerializer(eleve, data=request.data, partial=True)
         serializer.is_valid(raise_exception=True)
         serializer.save()
-        return Response(EleveProfileSerializer(eleve).data)
+        # Contexte de la vue : renvoie aussi `categorie_figee` (voir EleveProfileSerializer).
+        return Response(EleveProfileSerializer(eleve, context=self.get_serializer_context()).data)
 
     @action(detail=True, methods=["get"], url_path="recu-inscription")
     def recu_inscription(self, request, pk=None):

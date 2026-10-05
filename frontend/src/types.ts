@@ -443,6 +443,9 @@ export interface EleveProfile {
   /** Benjamin (classe la plus basse) d'un parent ayant au moins 6 enfants inscrits : exonéré de
    * mensualité — calculé automatiquement (backend people/fratrie.py). */
   exonere_fratrie: boolean;
+  /** Fiche élève uniquement (`null` dans les listes) : scolarité déjà entamée sur l'année
+   * active — catégorie de paiement grisée, seul le retour en « Standard » reste possible. */
+  categorie_figee?: boolean | null;
 }
 
 /** Prise en charge de la mensualité (scolarité) d'un élève — n'affecte que les frais mensuels

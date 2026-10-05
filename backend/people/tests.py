@@ -105,6 +105,8 @@ class FratrieTests(TestCase):
         # Avant tout paiement : modifiable.
         r = client.patch(url, {"categorie_paiement": "fondation_50"}, format="json")
         self.assertEqual(r.status_code, 200, r.content)
+        self.assertIs(r.json()["categorie_figee"], False)
+        self.assertIs(client.get(f"/api/people/eleves/{eleve.id}/").json()["categorie_figee"], False)
 
         mensuel = TypeFrais.objects.create(ecole=self.ecole, nom="Scolarité", montant_standard=100000, periodicite="mensuel")
         frais = Frais.objects.create(
@@ -113,7 +115,9 @@ class FratrieTests(TestCase):
         )
         Paiement.objects.create(frais=frais, montant=10000, mode_paiement="especes", mois=date(2026, 10, 1))
 
-        # Après un paiement : plus de changement de catégorie...
+        # Après un paiement : la fiche signale la catégorie figée (liste grisée)...
+        self.assertIs(client.get(f"/api/people/eleves/{eleve.id}/").json()["categorie_figee"], True)
+        # ... et plus de changement de catégorie...
         r = client.patch(url, {"categorie_paiement": "fondation_gratuit"}, format="json")
         self.assertEqual(r.status_code, 400)
         # ... sauf renvoyer la même (ex: case fidélité cochée) ou revenir en Standard.
@@ -123,6 +127,28 @@ class FratrieTests(TestCase):
         self.assertEqual(r.status_code, 200, r.content)
         r = client.patch(url, {"categorie_paiement": "fondation_50"}, format="json")
         self.assertEqual(r.status_code, 400)
+
+    def test_paiement_par_tranche_fige_aussi_la_categorie(self):
+        from payments.models import Frais, Paiement, TypeFrais
+        from rest_framework.test import APIClient
+
+        eleve = self._enfant("7e A")
+        tranche = TypeFrais.objects.create(ecole=self.ecole, nom="1ère Tranche", montant_standard=300000, periodicite="trimestriel")
+        inscription = TypeFrais.objects.create(ecole=self.ecole, nom="Inscription", montant_standard=50000, periodicite="annuel", usage="inscription")
+        admin = User.objects.create_user(username="ad", password="x", role="admin", ecole=self.ecole)
+        client = APIClient()
+        client.force_authenticate(admin)
+        fiche = f"/api/people/eleves/{eleve.id}/"
+
+        # Payer l'inscription ne fige rien.
+        f_insc = Frais.objects.create(eleve=eleve, type_frais=inscription, annee_scolaire=self.annee, montant=50000, date_echeance=date(2026, 9, 30))
+        Paiement.objects.create(frais=f_insc, montant=50000, mode_paiement="especes")
+        self.assertIs(client.get(fiche).json()["categorie_figee"], False)
+
+        # Une tranche de scolarité payée, si.
+        f_tr = Frais.objects.create(eleve=eleve, type_frais=tranche, annee_scolaire=self.annee, montant=300000, date_echeance=date(2026, 12, 31))
+        Paiement.objects.create(frais=f_tr, montant=1000, mode_paiement="especes")
+        self.assertIs(client.get(fiche).json()["categorie_figee"], True)
 
     def test_eleve_bonus_ne_peut_pas_payer_la_scolarite(self):
         from payments.models import Frais, TypeFrais

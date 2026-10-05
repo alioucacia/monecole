@@ -213,7 +213,7 @@ export function Select({
         </span>
       )}
       <select
-        className={`w-full rounded-xl border border-slate-200 bg-white px-3.5 py-2.5 text-sm text-slate-800 transition focus:outline-none focus:ring-4 focus:ring-brand-500/15 focus:border-brand-400 ${className}`}
+        className={`w-full rounded-xl border border-slate-200 bg-white px-3.5 py-2.5 text-sm text-slate-800 transition focus:outline-none focus:ring-4 focus:ring-brand-500/15 focus:border-brand-400 disabled:bg-slate-100 disabled:text-slate-400 disabled:cursor-not-allowed ${className}`}
         data-requis={required ? "" : undefined}
         {...props}
       >

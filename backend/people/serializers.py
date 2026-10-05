@@ -20,8 +20,27 @@ class MiniUserSerializer(serializers.ModelSerializer):
         fields = ["id", "first_name", "last_name", "email", "phone", "photo", "date_of_birth", "address", "sexe"]
 
 
+def a_commence_paiement_scolarite(eleve) -> bool:
+    """Au moins un paiement de scolarité (mensualité, tranche ou annuel — hors inscription) sur
+    l'année active : la catégorie de paiement de l'élève est alors figée (voir
+    `CategoriePaiementSerializer`)."""
+    from academics.models import AnneeScolaire
+    from payments.models import PERIODICITES_SCOLARITE, USAGES_INSCRIPTION, Paiement  # import différé (dépendance circulaire)
+
+    paiements = Paiement.objects.filter(
+        frais__eleve=eleve, frais__type_frais__periodicite__in=PERIODICITES_SCOLARITE,
+    ).exclude(frais__type_frais__usage__in=USAGES_INSCRIPTION)
+    annee = AnneeScolaire.objects.filter(ecole_id=eleve.user.ecole_id, active=True).first()
+    if annee:
+        paiements = paiements.filter(frais__annee_scolaire=annee)
+    return paiements.exists()
+
+
 class EleveProfileSerializer(serializers.ModelSerializer):
     user = MiniUserSerializer(read_only=True)
+    # Fiche d'un élève seulement (une requête par élève — pas calculé dans les listes) : grise la
+    # catégorie de paiement sur la fiche (StudentDetailPage).
+    categorie_figee = serializers.SerializerMethodField()
     classe_nom = serializers.CharField(source="classe.nom", read_only=True, default=None)
     classe_cycle = serializers.CharField(source="classe.cycle", read_only=True, default=None)
     classe_cycle_display = serializers.CharField(source="classe.get_cycle_display", read_only=True, default=None)
@@ -40,9 +59,15 @@ class EleveProfileSerializer(serializers.ModelSerializer):
             "date_inscription", "lieu_naissance", "nom_pere", "nom_mere", "nom_tuteur",
             "regime", "statut_inscription", "actif", "date_sortie", "motif_sortie",
             "categorie_paiement", "categorie_paiement_display", "reduction_fidelite_mensualite", "facteur_mensualite",
-            "exonere_fratrie",
+            "exonere_fratrie", "categorie_figee",
         ]
         read_only_fields = ["exonere_fratrie"]
+
+    def get_categorie_figee(self, eleve):
+        view = self.context.get("view")
+        if getattr(view, "action", None) not in ("retrieve", "categorie_paiement"):
+            return None
+        return a_commence_paiement_scolarite(eleve)
 
 
 class CategoriePaiementSerializer(serializers.ModelSerializer):
@@ -55,22 +80,15 @@ class CategoriePaiementSerializer(serializers.ModelSerializer):
         fields = ["categorie_paiement", "reduction_fidelite_mensualite"]
 
     def validate_categorie_paiement(self, value):
-        """Dès qu'un élève a commencé à payer sa mensualité sur l'année active, sa catégorie est
-        figée (grisée sur la fiche élève) : les mois déjà encaissés deviendraient incohérents avec
-        un nouveau montant dû. Seul le retour en « Standard » reste possible."""
+        """Dès qu'un élève a commencé à payer sa scolarité sur l'année active, sa catégorie est
+        figée (grisée sur la fiche élève) : les paiements déjà encaissés deviendraient incohérents
+        avec un nouveau montant dû. Seul le retour en « Standard » reste possible."""
         eleve = self.instance
         if not eleve or value == eleve.categorie_paiement or value == EleveProfile.CategoriePaiement.STANDARD:
             return value
-        from academics.models import AnneeScolaire
-        from payments.models import Paiement  # import différé pour éviter une dépendance circulaire
-
-        annee = AnneeScolaire.objects.filter(ecole_id=eleve.user.ecole_id, active=True).first()
-        paiements = Paiement.objects.filter(frais__eleve=eleve, frais__type_frais__est_mensuel=True)
-        if annee:
-            paiements = paiements.filter(frais__annee_scolaire=annee)
-        if paiements.exists():
+        if a_commence_paiement_scolarite(eleve):
             raise serializers.ValidationError(
-                "Cet élève a déjà commencé à payer sa mensualité : sa catégorie de paiement ne peut "
+                "Cet élève a déjà commencé à payer sa scolarité : sa catégorie de paiement ne peut "
                 "plus être modifiée (seul le retour en « Standard » reste possible)."
             )
         return value
