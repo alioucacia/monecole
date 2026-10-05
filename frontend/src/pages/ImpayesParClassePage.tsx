@@ -3,6 +3,7 @@ import { Link } from "react-router-dom";
 
 import { fraisApi } from "../api/services";
 import { Badge, Card, EmptyState, PageHeader, Spinner } from "../components/ui";
+import { useAutoRefresh } from "../hooks/useAutoRefresh";
 
 type FicheEleve = { eleve_id: number; matricule: string; nom_complet: string; du: string; paye: string; solde: string };
 
@@ -30,6 +31,10 @@ export default function ImpayesParClassePage() {
   useEffect(() => {
     fraisApi.impayesParClasse().then(({ data }) => setGroupes(data)).finally(() => setLoading(false));
   }, []);
+  // Actualisation silencieuse toutes les 5 s (voir useAutoRefresh).
+  useAutoRefresh(() => {
+    fraisApi.impayesParClasse().then(({ data }) => setGroupes(data)).catch(() => {});
+  });
 
   const totalGeneral = groupes.reduce((acc, g) => acc + Number(g.total_solde), 0);
   const totalImpayes = groupes.reduce((acc, g) => acc + g.nb_impayes, 0);

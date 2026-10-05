@@ -7,6 +7,7 @@ import { baremeDuCycle } from "../bareme";
 import { ExonereFratrieBadge } from "../components/StatutMensualite";
 import { Badge, Card, EmptyState, PageHeader, Spinner, StatCard } from "../components/ui";
 import { useAuth } from "../context/AuthContext";
+import { useAutoRefresh } from "../hooks/useAutoRefresh";
 
 const JOUR_LABELS: Record<string, string> = {
   lundi: "Lundi", mardi: "Mardi", mercredi: "Mercredi", jeudi: "Jeudi", vendredi: "Vendredi", samedi: "Samedi",
@@ -26,14 +27,15 @@ export default function DashboardPage() {
       setLoading(false);
       return;
     }
-    const charger = () => dashboardApi.get().then(({ data }) => setData(data));
-    charger().finally(() => setLoading(false));
-    // Auto-refresh : les chiffres (effectifs, impayés, présences du jour...) peuvent changer
-    // pendant que la page reste ouverte (accueil, salle des profs...) — revérifiés en arrière-plan
-    // sans redéclencher le spinner de chargement initial (`loading` n'est pas retouché ici).
-    const intervalId = setInterval(charger, 60_000);
-    return () => clearInterval(intervalId);
+    dashboardApi.get().then(({ data }) => setData(data)).finally(() => setLoading(false));
   }, [user]);
+
+  // Auto-refresh (toutes les 5 s, voir useAutoRefresh) : les chiffres (effectifs, impayés,
+  // présences du jour...) peuvent changer pendant que la page reste ouverte — revérifiés en
+  // arrière-plan sans redéclencher le spinner de chargement initial.
+  useAutoRefresh(() => {
+    dashboardApi.get().then(({ data }) => setData(data)).catch(() => {});
+  }, !!user && user.role !== "superadmin");
 
   if (user?.role === "superadmin") return <Navigate to="/ecoles" replace />;
   if (loading) return <div className="flex justify-center py-20"><Spinner /></div>;

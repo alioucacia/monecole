@@ -5,6 +5,7 @@ import { caisseApi } from "../api/services";
 import { extractErrorMessage } from "../api/client";
 import { Button, EmptyState, PageHeader, Spinner, StatCard, Table } from "../components/ui";
 import { useAnnee } from "../context/AnneeContext";
+import { useAutoRefresh } from "../hooks/useAutoRefresh";
 import type { CaisseRapport } from "../types";
 
 function money(value: string | number) {
@@ -73,6 +74,11 @@ export default function CaissePage() {
       .catch((err) => setError(extractErrorMessage(err)))
       .finally(() => setLoading(false));
   }, [dateDebut, dateFin]);
+
+  // Actualisation silencieuse toutes les 5 s (voir useAutoRefresh) — même période, sans spinner.
+  useAutoRefresh(() => {
+    caisseApi.get({ date_debut: dateDebut, date_fin: dateFin }).then(({ data }) => setRapport(data)).catch(() => {});
+  });
 
   const handleTelechargerPdf = () => {
     const nomFichier = dateDebut === dateFin ? `rapport_caisse_${dateDebut}.pdf` : `rapport_caisse_${dateDebut}_${dateFin}.pdf`;

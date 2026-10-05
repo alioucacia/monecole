@@ -1,3 +1,4 @@
+import os
 from datetime import date, timedelta
 from pathlib import Path
 from tempfile import TemporaryDirectory
@@ -99,7 +100,40 @@ class SauvegardeTests(TestCase):
         ancienne.refresh_from_db()
         self.assertEqual(ancienne.statut, SauvegardeLog.Statut.ECHEC)
 
-        # Le lancement n'est plus refusé (409) à cause de l'ancienne entrée bloquée.
-        with mock.patch("core.sauvegarde.threading.Thread"):
+        # Le lancement n'est plus refusé (409) à cause de l'ancienne entrée bloquée, et part dans
+        # un processus séparé (`backup_daily --log-id`), pas dans le processus web.
+        from core import sauvegarde
+
+        with TemporaryDirectory() as dossier, \
+                mock.patch.object(sauvegarde, "dossier_sauvegardes", return_value=Path(dossier)), \
+                mock.patch("core.sauvegarde.subprocess.Popen") as popen:
             r = self.client_api.post("/api/dashboard/sauvegardes/lancer/")
         self.assertEqual(r.status_code, 202, r.content)
+        commande = popen.call_args.args[0]
+        self.assertEqual(commande[-3:], ["backup_daily", "--log-id", str(r.json()["id"])])
+
+    def test_commande_complete_l_entree_lancee_depuis_la_page(self):
+        from django.core.management import call_command
+
+        from core import sauvegarde
+
+        log = SauvegardeLog.objects.create(statut=SauvegardeLog.Statut.EN_COURS, message="Sauvegarde en cours…")
+        with TemporaryDirectory() as dossier, mock.patch.object(sauvegarde, "dossier_sauvegardes", return_value=Path(dossier)):
+            call_command("backup_daily", log_id=log.pk, stdout=open(os.devnull, "w"))
+        log.refresh_from_db()
+        self.assertEqual(log.statut, SauvegardeLog.Statut.SUCCES, log.message)
+        self.assertEqual(SauvegardeLog.objects.count(), 1)  # pas de seconde entrée créée
+
+    def test_interruption_affiche_la_fin_du_journal(self):
+        from core import sauvegarde
+
+        log = SauvegardeLog.objects.create(statut=SauvegardeLog.Statut.EN_COURS, message="Sauvegarde en cours…")
+        SauvegardeLog.objects.filter(pk=log.pk).update(date_lancement=timezone.now() - timedelta(hours=2))
+        with TemporaryDirectory() as dossier, mock.patch.object(sauvegarde, "dossier_sauvegardes", return_value=Path(dossier)):
+            (Path(dossier) / "derniere_sauvegarde.log").write_text(
+                f"Sauvegarde #{log.pk} lancée le 05/10/2026 10:00:00\nTraceback...\nMemoryError\n", encoding="utf-8",
+            )
+            sauvegarde.marquer_sauvegardes_interrompues()
+        log.refresh_from_db()
+        self.assertEqual(log.statut, SauvegardeLog.Statut.ECHEC)
+        self.assertIn("MemoryError", log.message)

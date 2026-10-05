@@ -10,6 +10,7 @@ import { useAnnee } from "../context/AnneeContext";
 import { useAuth } from "../context/AuthContext";
 import { useConfirm } from "../context/ConfirmContext";
 import { useToast } from "../context/ToastContext";
+import { useAutoRefresh } from "../hooks/useAutoRefresh";
 import { usePaginated } from "../hooks/usePaginated";
 import type { AnneeScolaire, Classe, Cycle, EleveProfile, Frais, Periode, PeriodiciteFrais, TypeFrais, UsageFrais } from "../types";
 
@@ -284,6 +285,8 @@ export default function PaymentsPage() {
   };
 
   const loadSummary = () => fraisApi.summary().then(({ data }) => setSummary(data));
+  // Totaux du haut actualisés toutes les 5 s, comme la liste (voir usePaginated).
+  useAutoRefresh(() => { loadSummary().catch(() => {}); }, peutGerer);
   const loadTypes = () => typesFraisApi.list().then(({ data }) => setTypes(unwrapList(data)));
 
   const handleNotifierImpayes = async () => {

@@ -3,6 +3,7 @@ import { useEffect, useState } from "react";
 import { sauvegardesApi, unwrapList } from "../api/services";
 import { extractErrorMessage } from "../api/client";
 import { Badge, Button, EmptyState, PageHeader, Spinner, Table } from "../components/ui";
+import { useAutoRefresh } from "../hooks/useAutoRefresh";
 import type { SauvegardeLog } from "../types";
 
 const STATUT: Record<SauvegardeLog["statut"], { label: string; color: "green" | "rose" | "amber" }> = {
@@ -30,14 +31,10 @@ export default function SauvegardesPage() {
 
   useEffect(() => load(), []);
 
-  // La sauvegarde s'exécute en arrière-plan côté serveur : tant qu'une est « en cours », on
-  // recharge l'historique toutes les 3 s pour afficher son résultat dès qu'il est connu.
+  // La sauvegarde s'exécute en arrière-plan côté serveur : l'historique est rechargé toutes les
+  // 5 s (voir useAutoRefresh) pour afficher son résultat dès qu'il est connu.
   const enCours = logs.some((l) => l.statut === "en_cours");
-  useEffect(() => {
-    if (!enCours) return;
-    const id = setInterval(() => load(true), 3000);
-    return () => clearInterval(id);
-  }, [enCours]);
+  useAutoRefresh(() => load(true));
 
   const handleLancer = async () => {
     setLancement(true);

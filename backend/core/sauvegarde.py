@@ -1,19 +1,21 @@
 """Sauvegarde de toute la base (toutes écoles) au format JSON compressé — partagée par la
 commande planifiée `backup_daily` et le bouton « Lancer une sauvegarde » du Super Admin.
 
-Le bouton lance la sauvegarde en arrière-plan (`lancer_en_arriere_plan`) : exécutée dans la
-requête HTTP, elle dépassait le délai de 30 s de nginx/gunicorn dès que la base grossit (même une
-petite base locale prend déjà ~15 s), la requête était coupée et la sauvegarde ne se faisait pas."""
+Le bouton lance la sauvegarde en arrière-plan, dans un processus séparé (`lancer_en_arriere_plan`) :
+exécutée dans la requête HTTP, elle dépassait le délai de 30 s de nginx/gunicorn dès que la base
+grossit (même une petite base locale prend déjà ~15 s), la requête était coupée et la sauvegarde
+ne se faisait pas."""
 
 import gzip
-import threading
+import os
+import subprocess
+import sys
 import time
 from datetime import timedelta
 from pathlib import Path
 
 from django.conf import settings
 from django.core.management import call_command
-from django.db import close_old_connections, connection
 from django.utils import timezone
 
 from .models import SauvegardeLog
@@ -83,12 +85,28 @@ def marquer_sauvegardes_interrompues() -> None:
     """Passe en échec les sauvegardes restées « en cours » au-delà de DUREE_MAX_EN_COURS —
     sans cela, elles restaient « en cours » indéfiniment et la page Sauvegardes gardait le
     bouton « Lancer une sauvegarde » désactivé pour toujours."""
-    SauvegardeLog.objects.filter(
+    bloquees = SauvegardeLog.objects.filter(
         statut=SauvegardeLog.Statut.EN_COURS, date_lancement__lt=timezone.now() - DUREE_MAX_EN_COURS,
-    ).update(
-        statut=SauvegardeLog.Statut.ECHEC,
-        message="Sauvegarde interrompue (serveur redémarré ou délai dépassé pendant l'exécution).",
     )
+    for log in bloquees:
+        message = "Sauvegarde interrompue (serveur redémarré ou délai dépassé pendant l'exécution)."
+        detail = _fin_du_journal(log.pk)
+        if detail:
+            message = f"{message} Détail : {detail}"
+        log.statut = SauvegardeLog.Statut.ECHEC
+        log.message = message[:500]
+        log.save(update_fields=["statut", "message"])
+
+
+def _fin_du_journal(log_id: int) -> str:
+    """Dernières lignes du journal du processus de sauvegarde, s'il concerne bien `log_id`."""
+    try:
+        lignes = fichier_journal().read_text(encoding="utf-8", errors="replace").strip().splitlines()
+    except OSError:
+        return ""
+    if not lignes or not lignes[0].startswith(f"Sauvegarde #{log_id} "):
+        return ""
+    return " | ".join(lignes[1:][-4:])
 
 
 def sauvegarde_en_cours() -> SauvegardeLog | None:
@@ -98,17 +116,32 @@ def sauvegarde_en_cours() -> SauvegardeLog | None:
     ).first()
 
 
+def fichier_journal() -> Path:
+    """Sortie du dernier processus de sauvegarde lancé depuis la page Super Admin — contient
+    l'erreur exacte si le processus meurt sans pouvoir la noter dans SauvegardeLog."""
+    return dossier_sauvegardes() / "derniere_sauvegarde.log"
+
+
 def lancer_en_arriere_plan() -> SauvegardeLog:
-    """Crée l'entrée « en cours » et exécute la sauvegarde dans un thread : la requête HTTP
-    répond immédiatement, la page Sauvegardes suit l'avancement en rechargeant l'historique."""
+    """Crée l'entrée « en cours » et exécute la sauvegarde dans un PROCESSUS séparé
+    (`manage.py backup_daily --log-id`) : la requête HTTP répond immédiatement, la page
+    Sauvegardes suit l'avancement en rechargeant l'historique.
+
+    Pas un thread du processus web : un worker Gunicorn arrêté ou redémarré (déploiement,
+    recyclage) ou tué faute de mémoire pendant l'export emportait la sauvegarde avec lui, qui
+    restait « en cours » sans aucune erreur. Le processus séparé (nouvelle session) n'en dépend
+    plus, et sa sortie est écrite dans `fichier_journal()`."""
     log = SauvegardeLog.objects.create(statut=SauvegardeLog.Statut.EN_COURS, message="Sauvegarde en cours…")
-
-    def travail():
-        close_old_connections()
-        try:
-            executer_sauvegarde(log)
-        finally:
-            connection.close()  # connexion propre à ce thread
-
-    threading.Thread(target=travail, name=f"sauvegarde-{log.pk}", daemon=True).start()
+    commande = [sys.executable, str(Path(settings.BASE_DIR) / "manage.py"), "backup_daily", "--log-id", str(log.pk)]
+    options = (
+        {"creationflags": subprocess.CREATE_NEW_PROCESS_GROUP | subprocess.DETACHED_PROCESS} if os.name == "nt"
+        else {"start_new_session": True}
+    )
+    with open(fichier_journal(), "w", encoding="utf-8") as journal:
+        journal.write(f"Sauvegarde #{log.pk} lancée le {timezone.localtime():%d/%m/%Y %H:%M:%S}\n")
+        journal.flush()
+        subprocess.Popen(
+            commande, cwd=settings.BASE_DIR, stdin=subprocess.DEVNULL, stdout=journal, stderr=subprocess.STDOUT,
+            close_fds=True, **options,
+        )
     return log

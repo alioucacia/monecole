@@ -7,6 +7,7 @@ import { Badge, Button, EmptyState, PageHeader, Select, Spinner, Table } from ".
 import { CycleSelect } from "../components/CycleSelect";
 import { ExonereFratrieBadge } from "../components/StatutMensualite";
 import { useAnnee } from "../context/AnneeContext";
+import { useAutoRefresh } from "../hooks/useAutoRefresh";
 import type { Classe, Cycle, SuiviMensuelClasse, SuiviMensuelInscription, SuiviMensuelMois } from "../types";
 
 const STATUT_BADGE: Record<string, { label: string; color: "green" | "amber" | "rose" }> = {
@@ -94,6 +95,12 @@ export default function SuiviMensuelPage() {
       .catch((err) => setError(extractErrorMessage(err)))
       .finally(() => setLoading(false));
   }, [classeId, cycleFiltre]);
+
+  // Actualisation silencieuse toutes les 5 s (voir useAutoRefresh) — mêmes filtres, sans spinner.
+  useAutoRefresh(() => {
+    const params = classeId ? { classe: Number(classeId) } : { cycle: cycleFiltre || undefined };
+    fraisApi.suiviMensuelClasse(params).then(({ data }) => setSuivi(data)).catch(() => {});
+  });
 
   // Imprime la liste telle que filtrée à l'écran (cycle / classe / mois / statut) — ou, via les
   // boutons dédiés, seulement les élèves payés / non payés. PDF généré côté serveur.
