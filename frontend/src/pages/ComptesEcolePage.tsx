@@ -3,6 +3,7 @@ import { Link } from "react-router-dom";
 
 import { elevesApi, unwrapList, usersApi } from "../api/services";
 import { extractErrorMessage } from "../api/client";
+import { ExonereFratrieBadge } from "../components/StatutMensualite";
 import { Badge, Button, EmptyState, Input, Modal, PageHeader, Select, Spinner, Table } from "../components/ui";
 import { useAuth } from "../context/AuthContext";
 import { useConfirm } from "../context/ConfirmContext";
@@ -501,14 +502,30 @@ export default function ComptesEcolePage() {
             ) : enfantsListe.length === 0 ? (
               <p className="text-sm text-slate-400 py-6 text-center">Aucun élève rattaché à ce compte parent.</p>
             ) : (
+              <>
+              {enfantsListe.some((el) => el.exonere_fratrie) && (
+                <p className="text-xs text-violet-700 bg-violet-50 border border-violet-100 rounded-xl px-3 py-2">
+                  Famille d'au moins 6 enfants inscrits : l'enfant de la classe la plus basse ne paie pas la mensualité.
+                </p>
+              )}
               <ul className="divide-y divide-slate-100 -mx-1">
+                {/* L'enfant exonéré de mensualité (fratrie d'au moins 6 enfants : celui de la
+                    classe la plus basse) est mis en évidence. */}
                 {enfantsListe.map((el) => (
-                  <li key={el.id} className="flex items-center justify-between gap-3 px-1 py-2.5">
+                  <li
+                    key={el.id}
+                    className={`flex items-center justify-between gap-3 py-2.5 ${
+                      el.exonere_fratrie ? "px-2 rounded-xl bg-violet-50 border border-violet-200" : "px-1"
+                    }`}
+                  >
                     <div className="min-w-0">
-                      <p className="text-sm font-medium text-slate-700">{el.user.first_name} {el.user.last_name}</p>
+                      <p className={`text-sm font-medium ${el.exonere_fratrie ? "text-violet-800" : "text-slate-700"}`}>
+                        {el.user.first_name} {el.user.last_name}
+                      </p>
                       <p className="text-xs text-slate-400">
                         {el.matricule} · {el.classe_nom || "Classe non assignée"}
                       </p>
+                      {el.exonere_fratrie && <ExonereFratrieBadge />}
                     </div>
                     <Link to={`/eleves/${el.id}`} className="text-xs font-semibold text-brand-600 hover:underline whitespace-nowrap">
                       👁️ Fiche
@@ -516,6 +533,7 @@ export default function ComptesEcolePage() {
                   </li>
                 ))}
               </ul>
+              </>
             )}
             <div className="flex justify-end pt-2">
               <Button type="button" variant="secondary" onClick={() => setEnfantsTarget(null)}>Fermer</Button>

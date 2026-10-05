@@ -7,6 +7,7 @@ import openpyxl
 from openpyxl.utils import get_column_letter
 from django.db import transaction
 from django.db.models import ProtectedError, Sum
+from django.db.models.functions import Coalesce
 from django.http import HttpResponse
 from django.shortcuts import get_object_or_404
 from django.template.loader import render_to_string
@@ -19,6 +20,7 @@ from rest_framework.response import Response
 from rest_framework.views import APIView
 from xhtml2pdf import pisa
 
+from academics.annee import AnneeScolaireFilterBackend, annee_courante, filtre_eleves_annee
 from accounts.permissions import IsAdmin, IsAdminOrComptabilite, IsAdminOrComptabiliteOrReadOnly
 from people.views import _image_data_uri, _mm_px
 
@@ -152,16 +154,16 @@ def _calculer_suivi_mensuel(eleve, annee_scolaire, frais=None, periodes=None, ca
     for frais_du_type in par_type.values():
         par_mois_echeance = {}
         for f in frais_du_type:
-            par_mois_echeance.setdefault(f.date_echeance.replace(day=1), []).append(f)
+            par_mois_echeance.setdefault(f.mois_reference, []).append(f)
         for mois in tous_les_mois:
             if mois in par_mois_echeance:
                 du_par_mois[mois] += sum((f.montant_du for f in par_mois_echeance[mois]), Decimal("0"))
             else:
-                reference = min(frais_du_type, key=lambda f: abs((f.date_echeance.replace(day=1) - mois).days))
+                reference = min(frais_du_type, key=lambda f: abs((f.mois_reference - mois).days))
                 du_par_mois[mois] += reference.montant_du
         for f in frais_du_type:
             for p in f.paiements.all():
-                mois = p.mois or f.date_echeance.replace(day=1)
+                mois = p.mois or f.mois_reference
                 if mois in paye_par_mois:
                     paye_par_mois[mois] += p.montant
 
@@ -304,6 +306,21 @@ def _suivi_inscription(frais, eleve=None, annee_scolaire=None, cache_tarifs=None
     }
 
 
+def _situation_paiement(eleve_suivi, mois_filtre="") -> str | None:
+    """« payes » si tout ce qui est dû est réglé, « non_payes » sinon (impayé ou partiel) — sur
+    le mois filtré, ou à défaut sur l'inscription/réinscription et les mois déjà commencés (un
+    mois à venir n'est pas encore dû). `None` : rien à suivre pour cet élève."""
+    if mois_filtre:
+        colonnes = [m for m in eleve_suivi["mois"] if m["mois"] == mois_filtre]
+    else:
+        colonnes = [m for m in eleve_suivi["mois"] if not m["a_venir"]]
+        if eleve_suivi["inscription"]:
+            colonnes.append(eleve_suivi["inscription"])
+    if not colonnes:
+        return None
+    return "payes" if all(c["statut"] == "paye" for c in colonnes) else "non_payes"
+
+
 def _fiche_context(frais: Frais) -> dict:
     return {
         "eleve_nom": frais.eleve.user.get_full_name(),
@@ -415,6 +432,7 @@ class TarifClasseViewSet(viewsets.ModelViewSet):
         "classe__niveau": ["exact"],
         "type_frais": ["exact"],
     }
+    annee_scolaire_field = "annee_scolaire"  # listes limitées à l'année affichée (academics/annee.py)
 
     def get_queryset(self):
         return super().get_queryset().filter(ecole_id=self.request.user.ecole_id)
@@ -487,6 +505,7 @@ class DepenseViewSet(viewsets.ModelViewSet):
         "categorie": ["exact"],
         "mode_paiement": ["exact"],
     }
+    annee_date_field = "date"
 
     def get_queryset(self):
         return super().get_queryset().filter(ecole_id=self.request.user.ecole_id)
@@ -627,6 +646,7 @@ class FraisViewSet(viewsets.ModelViewSet):
         "eleve__classe__niveau": ["exact"],
         "eleve__classe__cycle": ["exact"],
     }
+    annee_scolaire_field = "annee_scolaire"
     # Recherche libre par nom/prénom/matricule de l'élève (onglet Paiements — filtre par
     # classe/nom/niveau demandé par l'établissement).
     search_fields = ["eleve__user__first_name", "eleve__user__last_name", "eleve__matricule"]
@@ -639,6 +659,20 @@ class FraisViewSet(viewsets.ModelViewSet):
         if user.role == "parent":
             return qs.filter(eleve__parent=user)
         return qs
+
+    def filter_queryset(self, queryset):
+        """`?masquer_payes=1` : exclut les frais au statut « Payé » (liste Paiements). Le statut
+        dépend de `montant_du` (réduction propre à l'élève), calculé en Python : total versé
+        annoté en une requête, puis tri des frais restant dus."""
+        queryset = super().filter_queryset(queryset)
+        if self.request.query_params.get("masquer_payes") not in ("1", "true"):
+            return queryset
+        annotes = (
+            queryset.select_related("eleve", "type_frais").prefetch_related(None)
+            .annotate(total_verse=Coalesce(Sum("paiements__montant"), Decimal("0")))
+        )
+        ids_dus = [f.id for f in annotes if f.montant_du > 0 and f.total_verse < f.montant_du]
+        return queryset.filter(id__in=ids_dus)
 
     def get_permissions(self):
         if self.action in ("list", "retrieve", "fiche_paiement", "suivi_mensuel", "proforma"):
@@ -882,7 +916,7 @@ class FraisViewSet(viewsets.ModelViewSet):
         if annee_id:
             annee = get_object_or_404(AnneeScolaire, pk=annee_id, ecole_id=request.user.ecole_id)
         else:
-            annee = AnneeScolaire.objects.filter(ecole_id=request.user.ecole_id, active=True).first()
+            annee = annee_courante(request)
         if not annee:
             raise ValidationError("Aucune année scolaire active pour votre établissement.")
 
@@ -890,6 +924,7 @@ class FraisViewSet(viewsets.ModelViewSet):
         return Response({
             "eleve_id": eleve.id, "eleve_nom": eleve.user.get_full_name(),
             "categorie_paiement": eleve.categorie_paiement, "categorie_paiement_display": eleve.get_categorie_paiement_display(),
+            "exonere_fratrie": eleve.exonere_fratrie,
             "annee_scolaire": annee.libelle, "mois": _calculer_suivi_mensuel(eleve, annee, frais=frais),
             "inscription": _suivi_inscription(frais, eleve, annee),
         })
@@ -913,10 +948,14 @@ class FraisViewSet(viewsets.ModelViewSet):
         else:
             # Sans classe : toutes les classes du cycle, ou par défaut tous les élèves de l'année
             # active (page ouverte sans filtre).
-            annee = AnneeScolaire.objects.filter(ecole_id=request.user.ecole_id, active=True).first()
+            annee = annee_courante(request)
             if not annee:
                 raise ValidationError("Aucune année scolaire active pour votre établissement.")
-            eleves_qs = EleveProfile.objects.filter(classe__annee_scolaire=annee, actif=True)
+            # Année passée : élèves de l'époque (historique des classes), même partis depuis.
+            eleves_qs = (
+                EleveProfile.objects.filter(classe__annee_scolaire=annee, actif=True) if annee.active
+                else EleveProfile.objects.filter(filtre_eleves_annee(annee)).distinct()
+            )
             if cycle:
                 eleves_qs = eleves_qs.filter(classe__cycle=cycle)
             libelle = f"Cycle {Classe.Cycle(cycle).label}" if cycle in Classe.Cycle.values else "Toutes les classes"
@@ -933,6 +972,7 @@ class FraisViewSet(viewsets.ModelViewSet):
                 "eleve_id": e.id, "eleve_nom": e.user.get_full_name(), "matricule": e.matricule,
                 "classe_nom": e.classe.nom if e.classe else "",
                 "categorie_paiement": e.categorie_paiement, "categorie_paiement_display": e.get_categorie_paiement_display(),
+                "exonere_fratrie": e.exonere_fratrie,
                 "mois": _calculer_suivi_mensuel(
                     e, annee, frais=frais_par_eleve[e.id], periodes=periodes, cache_tarifs=cache_tarifs,
                 ),
@@ -969,9 +1009,15 @@ class FraisViewSet(viewsets.ModelViewSet):
             annee, numero = mois.split("-")
             return f"{noms[int(numero) - 1]} {annee}"
 
+        # `statut` : « payes » / « non_payes » pour n'imprimer que les élèves à jour, ou ceux qui
+        # doivent encore quelque chose (même règle que l'écran — voir `_situation_paiement`).
+        statut_filtre = request.query_params.get("statut") or ""
+        titres_statut = {"payes": "Élèves payés", "non_payes": "Élèves non payés"}
         lignes = []
         total_paye = total_reste = Decimal("0")
         for e in grille["eleves"]:
+            if statut_filtre in titres_statut and _situation_paiement(e, mois_filtre) != statut_filtre:
+                continue
             par_mois = {m["mois"]: m for m in e["mois"]}
             # Total payé / reste sur les colonnes imprimées (inscription + mois, ou le mois filtré).
             colonnes = [par_mois[m] for m in mois_affiches if m in par_mois]
@@ -996,6 +1042,7 @@ class FraisViewSet(viewsets.ModelViewSet):
         html = render_to_string("payments/suivi_mensuel_classe_pdf.html", {
             "titre": grille["classe"], "annee_scolaire": grille["annee_scolaire"],
             "mois_filtre": libelle_mois(mois_filtre, mois_longs) if mois_filtre else "",
+            "statut_filtre": titres_statut.get(statut_filtre, ""),
             "entetes_mois": [libelle_mois(m, mois_courts) for m in mois_affiches],
             "avec_inscription": not mois_filtre,
             "lignes": lignes, "total": len(lignes), "total_paye": total_paye, "total_reste": total_reste,
@@ -1008,7 +1055,8 @@ class FraisViewSet(viewsets.ModelViewSet):
         buffer = BytesIO()
         pisa.CreatePDF(html, dest=buffer, encoding="utf-8")
         response = HttpResponse(buffer.getvalue(), content_type="application/pdf")
-        response["Content-Disposition"] = f'attachment; filename="suivi_mensuel_{grille["annee_scolaire"]}.pdf"'
+        suffixe = f"_{statut_filtre}" if statut_filtre in titres_statut else ""
+        response["Content-Disposition"] = f'attachment; filename="suivi_mensuel_{grille["annee_scolaire"]}{suffixe}.pdf"'
         return response
 
     @action(detail=False, methods=["post"], url_path="generer-pour-classe")
@@ -1065,10 +1113,7 @@ class FraisViewSet(viewsets.ModelViewSet):
         existants = set(
             existants_qs.exclude(type_frais__periodicite__in=par_mois).values_list("eleve_id", "type_frais_id")
         ) | set(
-            existants_qs.filter(
-                type_frais__periodicite__in=par_mois,
-                date_echeance__year=echeance.year, date_echeance__month=echeance.month,
-            ).values_list("eleve_id", "type_frais_id")
+            existants_qs.filter(Frais.filtre_mois(echeance), type_frais__periodicite__in=par_mois).values_list("eleve_id", "type_frais_id")
         )
         # Une seule inscription/réinscription par élève et par année, tous types confondus (voir
         # Frais.filtre_equivalents) — y compris entre deux types générés dans ce même appel.
@@ -1111,6 +1156,7 @@ class FraisViewSet(viewsets.ModelViewSet):
                 a_creer.append(Frais(
                     eleve=eleve, type_frais=type_frais, annee_scolaire=annee,
                     montant=tarifs.get(type_frais.id, type_frais.montant_standard), date_echeance=date_echeance,
+                    mois=echeance.replace(day=1) if type_frais.periodicite in par_mois else None,
                 ))
         Frais.objects.bulk_create(a_creer)
         return Response({"crees": len(a_creer), "classe": classe.nom, "eleves": len(eleves)})
@@ -1161,7 +1207,7 @@ class FraisViewSet(viewsets.ModelViewSet):
         if annee_id:
             annee = get_object_or_404(AnneeScolaire, pk=annee_id, ecole_id=request.user.ecole_id)
         else:
-            annee = AnneeScolaire.objects.filter(ecole_id=request.user.ecole_id, active=True).first()
+            annee = annee_courante(request)
         if not annee:
             raise ValidationError("Aucune année scolaire active pour votre établissement.")
 
@@ -1217,7 +1263,7 @@ class FraisViewSet(viewsets.ModelViewSet):
         if annee_id:
             annee = get_object_or_404(AnneeScolaire, pk=annee_id, ecole_id=request.user.ecole_id)
         else:
-            annee = AnneeScolaire.objects.filter(ecole_id=request.user.ecole_id, active=True).first()
+            annee = annee_courante(request)
         if not annee:
             raise ValidationError("Aucune année scolaire active pour votre établissement.")
 
@@ -1250,6 +1296,12 @@ class FraisViewSet(viewsets.ModelViewSet):
     @action(detail=False, methods=["get"], url_path="summary")
     def summary(self, request):
         qs = self.get_queryset()
+        # Totaux d'une année scolaire : `?annee_scolaire=` explicite, sinon l'année affichée
+        # (`?toutes_annees=1` : toutes années confondues).
+        if request.query_params.get("annee_scolaire"):
+            qs = qs.filter(annee_scolaire_id=request.query_params["annee_scolaire"])
+        else:
+            qs = AnneeScolaireFilterBackend().filter_queryset(request, qs, self)
         # Sum("montant") sur la requête ne peut pas tenir compte de la réduction (catégorie de
         # paiement/fidélité) : Frais.montant_du n'est pas une colonne mais calculé par élève —
         # boucle Python, comme le fait déjà impayes_par_classe() ci-dessous pour la même raison.
@@ -1343,6 +1395,7 @@ class PaiementViewSet(viewsets.ModelViewSet):
     serializer_class = PaiementSerializer
     permission_classes = [IsAdminOrComptabilite]
     filterset_fields = ["frais", "mode_paiement"]
+    annee_scolaire_field = "frais__annee_scolaire"  # voir academics/annee.py
 
     def get_queryset(self):
         qs = super().get_queryset().filter(frais__eleve__user__ecole_id=self.request.user.ecole_id)

@@ -6,6 +6,7 @@ import { extractBlobErrorMessage, extractErrorMessage } from "../api/client";
 import { Badge, Button, EmptyState, Input, Modal, PageHeader, Select, Spinner, StatCard, Table } from "../components/ui";
 import { CycleSelect } from "../components/CycleSelect";
 import { StatutMensualiteBadge } from "../components/StatutMensualite";
+import { useAnnee } from "../context/AnneeContext";
 import { useAuth } from "../context/AuthContext";
 import { useConfirm } from "../context/ConfirmContext";
 import { useToast } from "../context/ToastContext";
@@ -59,7 +60,12 @@ function echeanceDuMois(annee: AnneeScolaire, mois: string): string {
   const anneeCalendaire = Number(mois) >= moisDebut ? anneeDebut : anneeDebut + 1;
   return `${anneeCalendaire}-${mois}-01`;
 }
-const emptyPaiementForm = { montant: "", mode_paiement: "especes", reference: "", mois: "", periode: "" };
+/** Date du jour ("AAAA-MM-JJ") en heure locale — échéance d'un nouveau frais mensuel. */
+function aujourdhuiISO(): string {
+  const d = new Date();
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+}
+const emptyPaiementForm ={ montant: "", mode_paiement: "especes", reference: "", mois: "", periode: "" };
 const emptyTypeForm = { nom: "", montant_standard: "", periodicite: "autre" as PeriodiciteFrais, usage: "standard" as UsageFrais };
 
 const USAGE_LABELS: Record<UsageFrais, string> = {
@@ -161,6 +167,11 @@ export default function PaymentsPage() {
   const [search, setSearch] = useState("");
   const [cycleFiltre, setCycleFiltre] = useState<Cycle | "">("");
   const [classeFiltre, setClasseFiltre] = useState("");
+  // Liste et totaux : année affichée dans toute l'application (sélecteur du haut, appliqué
+  // côté serveur) — voir context/AnneeContext.tsx.
+  const { anneeId: anneeVueId } = useAnnee();
+  // Frais « Payé » masqués par défaut : la liste ne montre que ce qui reste à encaisser.
+  const [afficherPayes, setAfficherPayes] = useState(false);
   const classesDuCycle = cycleFiltre ? classes.filter((c) => c.cycle === cycleFiltre) : classes;
 
   const [fraisModalOpen, setFraisModalOpen] = useState(false);
@@ -220,8 +231,9 @@ export default function PaymentsPage() {
       search: searchDebounced || undefined,
       eleve__classe: classeFiltre || undefined,
       eleve__classe__cycle: classeFiltre ? undefined : cycleFiltre || undefined,
+      masquer_payes: peutGerer && !afficherPayes ? 1 : undefined,
     }),
-    [searchDebounced, cycleFiltre, classeFiltre]
+    [searchDebounced, cycleFiltre, classeFiltre, afficherPayes]
   );
 
   const handleExport = async () => {
@@ -315,6 +327,7 @@ export default function PaymentsPage() {
       classesApi.list({ page_size: 200 }).then(({ data }) => setClasses(unwrapList(data)));
       loadSummary();
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [peutGerer]);
 
   // Si le cycle change, la classe sélectionnée peut ne plus lui appartenir — on la réinitialise
@@ -327,7 +340,10 @@ export default function PaymentsPage() {
   }, [cycleFiltre]);
 
   const openFraisModal = () => {
-    setFraisForm({ ...emptyFraisForm, annee_scolaire: annees.find((a) => a.active)?.id.toString() || "" });
+    setFraisForm({
+      ...emptyFraisForm, date_echeance: aujourdhuiISO(),
+      annee_scolaire: anneeVueId?.toString() || annees.find((a) => a.active)?.id.toString() || "",
+    });
     setFraisError("");
     setFraisEleveCycle("");
     setFraisEleveClasse("");
@@ -394,9 +410,14 @@ export default function PaymentsPage() {
       const montantFinal = fraisForm.remise5 && typeFraisSelectionne?.periodicite === "annuel"
         ? Math.round(montantSaisi * 0.95)
         : montantSaisi;
+      // Mensuel : le mois choisi est envoyé à part (`mois`) — l'échéance reste la date du jour.
+      const annee = annees.find((a) => a.id === Number(fraisForm.annee_scolaire));
+      const mois = typeFraisSelectionne?.periodicite === "mensuel" && annee && fraisForm.mois_echeance
+        ? echeanceDuMois(annee, fraisForm.mois_echeance) : null;
       await fraisApi.create({
         eleve: Number(fraisForm.eleve), type_frais: Number(fraisForm.type_frais),
         annee_scolaire: Number(fraisForm.annee_scolaire), montant: String(montantFinal), date_echeance: fraisForm.date_echeance,
+        mois,
       });
       setFraisModalOpen(false);
       reload();
@@ -610,6 +631,13 @@ export default function PaymentsPage() {
             <option value="">Toutes les classes</option>
             {classesDuCycle.map((c) => <option key={c.id} value={c.id}>{c.nom}</option>)}
           </Select>
+          <label className="flex items-center gap-2 text-sm text-slate-600 cursor-pointer mb-2.5">
+            <input
+              type="checkbox" checked={afficherPayes} className="h-4 w-4 rounded border-slate-300 accent-brand-600"
+              onChange={(e) => setAfficherPayes(e.target.checked)}
+            />
+            Afficher les frais payés
+          </label>
           {(search || cycleFiltre || classeFiltre) && (
             <button
               onClick={() => { setSearch(""); setCycleFiltre(""); setClasseFiltre(""); }}
@@ -636,10 +664,14 @@ export default function PaymentsPage() {
                 <td className="px-4 py-3 font-medium text-slate-700">
                   <span className="flex flex-col items-start">
                     {f.eleve_nom}
-                    <StatutMensualiteBadge categorie={f.eleve_categorie_paiement} />
+                    <StatutMensualiteBadge categorie={f.eleve_categorie_paiement} exonereFratrie={f.eleve_exonere_fratrie} />
                   </span>
                 </td>
-                <td className="px-4 py-3">{f.type_frais_nom}</td>
+                <td className="px-4 py-3">
+                  {f.type_frais_nom}
+                  {/* Mois couvert, distinct de l'échéance (date du jour de création). */}
+                  {f.mois && <span className="block text-[11px] text-slate-400 capitalize">{moisLabelLong(f.mois.slice(0, 7))}</span>}
+                </td>
                 <td className="px-4 py-3">
                   {money(f.montant_du)}
                   {Number(f.montant_du) !== Number(f.montant) && (
@@ -721,7 +753,10 @@ export default function PaymentsPage() {
               ...fraisForm, type_frais: e.target.value, montant: type ? type.montant_standard : fraisForm.montant,
               mois_echeance: "", trimestre_echeance: "",
               // Annuel : une seule échéance possible (fin d'année scolaire) — pas de liste à choisir.
-              date_echeance: type?.periodicite === "annuel" && annee ? annee.date_fin : fraisForm.date_echeance,
+              // Mensuel : date du jour, quel que soit le mois choisi.
+              date_echeance: type?.periodicite === "annuel" && annee ? annee.date_fin
+                : type?.periodicite === "mensuel" ? aujourdhuiISO()
+                : fraisForm.date_echeance,
             });
           }}>
             <option value="">— Sélectionner —</option>
@@ -732,8 +767,7 @@ export default function PaymentsPage() {
             setFraisForm({
               ...fraisForm, annee_scolaire: e.target.value, trimestre_echeance: "",
               date_echeance:
-                annee && fraisForm.mois_echeance ? echeanceDuMois(annee, fraisForm.mois_echeance)
-                : annee && typeFraisSelectionne?.periodicite === "annuel" ? annee.date_fin
+                annee && typeFraisSelectionne?.periodicite === "annuel" ? annee.date_fin
                 : fraisForm.date_echeance,
             });
           }}>
@@ -775,11 +809,8 @@ export default function PaymentsPage() {
               directement la date libre ci-dessous (Autre / aucun type choisi). */}
           {typeFraisSelectionne?.periodicite === "mensuel" && (
             <Select label="Mois d'échéance" required value={fraisForm.mois_echeance} onChange={(e) => {
-              const annee = annees.find((a) => a.id === Number(fraisForm.annee_scolaire));
-              setFraisForm({
-                ...fraisForm, mois_echeance: e.target.value,
-                date_echeance: annee && e.target.value ? echeanceDuMois(annee, e.target.value) : fraisForm.date_echeance,
-              });
+              // Le mois choisi ne change pas la date d'échéance : elle reste la date du jour.
+              setFraisForm({ ...fraisForm, mois_echeance: e.target.value, date_echeance: aujourdhuiISO() });
             }}>
               <option value="">— Choisir un mois —</option>
               {/* Octobre → Juin seulement (voir MOIS_MENSUALITE). */}
@@ -822,6 +853,9 @@ export default function PaymentsPage() {
             type="date"
             required
             value={fraisForm.date_echeance}
+            readOnly={typeFraisSelectionne?.periodicite === "mensuel"}
+            className={typeFraisSelectionne?.periodicite === "mensuel" ? "bg-slate-50 text-slate-600 cursor-not-allowed" : undefined}
+            title={typeFraisSelectionne?.periodicite === "mensuel" ? "Date du jour, quel que soit le mois choisi" : undefined}
             onChange={(e) => setFraisForm({ ...fraisForm, date_echeance: e.target.value, mois_echeance: "", trimestre_echeance: "" })}
           />
 

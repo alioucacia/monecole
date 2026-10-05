@@ -440,6 +440,9 @@ export interface EleveProfile {
   categorie_paiement_display: string;
   reduction_fidelite_mensualite: boolean;
   facteur_mensualite: string;
+  /** Benjamin (classe la plus basse) d'un parent ayant au moins 6 enfants inscrits : exonéré de
+   * mensualité — calculé automatiquement (backend people/fratrie.py). */
+  exonere_fratrie: boolean;
 }
 
 /** Prise en charge de la mensualité (scolarité) d'un élève — n'affecte que les frais mensuels
@@ -804,6 +807,7 @@ export interface SuiviMensuelEleve {
   eleve_nom: string;
   categorie_paiement: CategoriePaiement;
   categorie_paiement_display: string;
+  exonere_fratrie: boolean;
   annee_scolaire: string;
   mois: SuiviMensuelMois[];
   inscription: SuiviMensuelInscription | null;
@@ -816,6 +820,7 @@ export interface SuiviMensuelClasseEleve {
   classe_nom: string;
   categorie_paiement: CategoriePaiement;
   categorie_paiement_display: string;
+  exonere_fratrie: boolean;
   mois: SuiviMensuelMois[];
   inscription: SuiviMensuelInscription | null;
 }
@@ -833,6 +838,7 @@ export interface Frais {
   eleve: number;
   eleve_nom: string;
   eleve_categorie_paiement: CategoriePaiement;
+  eleve_exonere_fratrie: boolean;
   type_frais: number;
   type_frais_nom: string;
   type_frais_est_mensuel: boolean;
@@ -846,6 +852,9 @@ export interface Frais {
   // reste le tarif standard. Identique à `montant` pour un frais non mensuel ou un élève standard.
   montant_du: string;
   date_echeance: string;
+  /** Mois couvert ("AAAA-MM-01") d'un frais Mensuel/Autre — `null` pour les frais plus anciens
+   * (le mois se déduit alors de `date_echeance`). */
+  mois?: string | null;
   montant_paye: string;
   solde: string;
   statut: "impaye" | "partiel" | "paye";

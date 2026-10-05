@@ -40,7 +40,9 @@ class EleveProfileSerializer(serializers.ModelSerializer):
             "date_inscription", "lieu_naissance", "nom_pere", "nom_mere", "nom_tuteur",
             "regime", "statut_inscription", "actif", "date_sortie", "motif_sortie",
             "categorie_paiement", "categorie_paiement_display", "reduction_fidelite_mensualite", "facteur_mensualite",
+            "exonere_fratrie",
         ]
+        read_only_fields = ["exonere_fratrie"]
 
 
 class CategoriePaiementSerializer(serializers.ModelSerializer):
@@ -51,6 +53,28 @@ class CategoriePaiementSerializer(serializers.ModelSerializer):
     class Meta:
         model = EleveProfile
         fields = ["categorie_paiement", "reduction_fidelite_mensualite"]
+
+    def validate_categorie_paiement(self, value):
+        """Un élève qui a déjà commencé à payer sa mensualité sur l'année active ne peut plus être
+        basculé en Fondation 50 %/100 % ni en « Inscription/réinscription uniquement » : les mois
+        déjà encaissés au tarif plein deviendraient incohérents avec le nouveau montant dû.
+        Le retour en « Standard » reste toujours possible."""
+        eleve = self.instance
+        if not eleve or value == eleve.categorie_paiement or value == EleveProfile.CategoriePaiement.STANDARD:
+            return value
+        from academics.models import AnneeScolaire
+        from payments.models import Paiement  # import différé pour éviter une dépendance circulaire
+
+        annee = AnneeScolaire.objects.filter(ecole_id=eleve.user.ecole_id, active=True).first()
+        paiements = Paiement.objects.filter(frais__eleve=eleve, frais__type_frais__est_mensuel=True)
+        if annee:
+            paiements = paiements.filter(frais__annee_scolaire=annee)
+        if paiements.exists():
+            raise serializers.ValidationError(
+                "Cet élève a déjà commencé à payer sa mensualité : il ne peut plus être placé en "
+                "Fondation (50 % ou 100 %) ni en « Inscription/réinscription uniquement »."
+            )
+        return value
 
 
 class EleveProfileWriteSerializer(serializers.ModelSerializer):

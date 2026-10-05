@@ -5,6 +5,7 @@ import { classesApi, fraisApi, unwrapList } from "../api/services";
 import { extractBlobErrorMessage, extractErrorMessage } from "../api/client";
 import { Badge, Button, EmptyState, PageHeader, Select, Spinner, Table } from "../components/ui";
 import { CycleSelect } from "../components/CycleSelect";
+import { ExonereFratrieBadge } from "../components/StatutMensualite";
 import type { Classe, Cycle, SuiviMensuelClasse, SuiviMensuelInscription, SuiviMensuelMois } from "../types";
 
 const STATUT_BADGE: Record<string, { label: string; color: "green" | "amber" | "rose" }> = {
@@ -33,6 +34,19 @@ function moisLabelLong(mois: string) {
   return new Date(Number(annee), Number(m) - 1, 1).toLocaleDateString("fr-FR", { month: "long", year: "numeric" });
 }
 
+type StatutFiltre = "" | "payes" | "non_payes";
+
+/** « payes » si tout ce qui est dû est réglé, « non_payes » sinon (impayé ou partiel) — sur le
+ * mois filtré, ou à défaut sur l'inscription et les mois déjà commencés. `null` : rien à suivre.
+ * Même règle que `_situation_paiement` côté backend (PDF). */
+function situationPaiement(e: SuiviMensuelClasse["eleves"][number], moisFiltre: string): StatutFiltre | null {
+  const colonnes: (SuiviMensuelMois | SuiviMensuelInscription)[] = moisFiltre
+    ? e.mois.filter((m) => m.mois === moisFiltre)
+    : [...e.mois.filter((m) => !m.a_venir), ...(e.inscription ? [e.inscription] : [])];
+  if (colonnes.length === 0) return null;
+  return colonnes.every((c) => c.statut === "paye") ? "payes" : "non_payes";
+}
+
 /** Cellule payé / partiel / non payé, commune aux mois et à l'inscription. */
 function CelluleStatut({ ligne, note }: { ligne: SuiviMensuelMois | SuiviMensuelInscription; note?: string }) {
   return (
@@ -56,6 +70,8 @@ export default function SuiviMensuelPage() {
   const [classeId, setClasseId] = useState<string>("");
   // "" = tous les mois (avec la colonne Inscription / Réinscription), sinon "AAAA-MM".
   const [moisFiltre, setMoisFiltre] = useState("");
+  // "" = tous les élèves, sinon seulement les élèves payés / non payés (écran et impression).
+  const [statutFiltre, setStatutFiltre] = useState<StatutFiltre>("");
   const [suivi, setSuivi] = useState<SuiviMensuelClasse | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
@@ -76,8 +92,9 @@ export default function SuiviMensuelPage() {
       .finally(() => setLoading(false));
   }, [classeId, cycleFiltre]);
 
-  // Imprime la liste telle que filtrée à l'écran (cycle / classe / mois) — PDF généré côté serveur.
-  const handleImprimer = async () => {
+  // Imprime la liste telle que filtrée à l'écran (cycle / classe / mois / statut) — ou, via les
+  // boutons dédiés, seulement les élèves payés / non payés. PDF généré côté serveur.
+  const handleImprimer = async (statut: StatutFiltre = statutFiltre) => {
     setImpression(true);
     setError("");
     try {
@@ -85,8 +102,9 @@ export default function SuiviMensuelPage() {
         {
           ...(classeId ? { classe: Number(classeId) } : { cycle: cycleFiltre || undefined }),
           mois: moisFiltre || undefined,
+          statut: statut || undefined,
         },
-        `suivi_mensuel${moisFiltre ? `_${moisFiltre}` : ""}.pdf`,
+        `suivi_mensuel${moisFiltre ? `_${moisFiltre}` : ""}${statut ? `_${statut}` : ""}.pdf`,
       );
     } catch (err) {
       setError(await extractBlobErrorMessage(err));
@@ -124,7 +142,10 @@ export default function SuiviMensuelPage() {
       reste: lignes.reduce((total, l) => total + Number(l.reste), 0),
     };
   };
-  const totauxGeneraux = (suivi?.eleves ?? []).reduce(
+  const elevesAffiches = (suivi?.eleves ?? []).filter(
+    (e) => !statutFiltre || situationPaiement(e, moisFiltre) === statutFiltre,
+  );
+  const totauxGeneraux = elevesAffiches.reduce(
     (acc, e) => {
       const t = totauxEleve(e);
       return { paye: acc.paye + t.paye, reste: acc.reste + t.reste };
@@ -140,8 +161,14 @@ export default function SuiviMensuelPage() {
         description="Inscription / réinscription puis mensualités d'Octobre à Juin — statut payé / partiel / non payé, mois par mois, par élève (paiements mensuels, annuels ou par tranches)."
         actions={
           <div className="flex flex-wrap items-center gap-3">
-            <Button variant="secondary" onClick={handleImprimer} disabled={impression || loading || !suivi || suivi.eleves.length === 0}>
+            <Button variant="secondary" onClick={() => handleImprimer()} disabled={impression || loading || !suivi || suivi.eleves.length === 0}>
               {impression ? "Préparation…" : "🖨️ Imprimer la liste"}
+            </Button>
+            <Button variant="secondary" onClick={() => handleImprimer("non_payes")} disabled={impression || loading || !suivi || suivi.eleves.length === 0}>
+              🖨️ Non payés
+            </Button>
+            <Button variant="secondary" onClick={() => handleImprimer("payes")} disabled={impression || loading || !suivi || suivi.eleves.length === 0}>
+              🖨️ Payés
             </Button>
             <Link to="/paiements" className="text-sm text-brand-600 font-medium hover:underline">← Retour aux paiements</Link>
           </div>
@@ -166,6 +193,11 @@ export default function SuiviMensuelPage() {
           <option value="">— Tous les mois —</option>
           {tousLesMois.map((m) => <option key={m} value={m} className="capitalize">{moisLabelLong(m)}</option>)}
         </Select>
+        <Select label="Statut" value={statutFiltre} onChange={(e) => setStatutFiltre(e.target.value as StatutFiltre)} className="max-w-xs">
+          <option value="">— Tous les élèves —</option>
+          <option value="payes">Élèves payés</option>
+          <option value="non_payes">Élèves non payés</option>
+        </Select>
       </div>
 
       {loading ? (
@@ -182,7 +214,8 @@ export default function SuiviMensuelPage() {
       ) : (
         <>
           <p className="text-sm text-slate-500 mb-4">
-            Année scolaire <span className="font-semibold text-ink-900">{suivi.annee_scolaire}</span> — {suivi.classe} — {suivi.eleves.length} élève(s).
+            Année scolaire <span className="font-semibold text-ink-900">{suivi.annee_scolaire}</span> — {suivi.classe} — {elevesAffiches.length} élève(s)
+            {statutFiltre && ` ${statutFiltre === "payes" ? "payé(s)" : "non payé(s)"} sur ${suivi.eleves.length}`}.
           </p>
           <div className="overflow-x-auto">
             <Table headers={[
@@ -194,7 +227,7 @@ export default function SuiviMensuelPage() {
               // Après le dernier mois (Juin).
               "Total payé", "Reste",
             ]}>
-              {suivi.eleves.map((e) => {
+              {elevesAffiches.map((e) => {
                 const parMois = new Map(e.mois.map((m) => [m.mois, m]));
                 // « À jour » seulement si TOUT est réglé : un mois non payé, même pas encore échu,
                 // ou une inscription non soldée empêche l'indice « à jour ». Les mois échus non
@@ -216,6 +249,7 @@ export default function SuiviMensuelPage() {
                       >
                         📄
                       </button>
+                      {e.exonere_fratrie && <div><ExonereFratrieBadge /></div>}
                     </td>
                     <td className="px-4 py-2.5 whitespace-nowrap">
                       {aJour ? (
@@ -254,7 +288,7 @@ export default function SuiviMensuelPage() {
                 );
               })}
               <tr className="bg-slate-50 font-bold border-t-2 border-slate-200">
-                <td className="px-4 py-3 text-ink-900 whitespace-nowrap">Total ({suivi.eleves.length} élève{suivi.eleves.length > 1 ? "s" : ""})</td>
+                <td className="px-4 py-3 text-ink-900 whitespace-nowrap">Total ({elevesAffiches.length} élève{elevesAffiches.length > 1 ? "s" : ""})</td>
                 <td className="px-4 py-3" colSpan={1 + (avecInscription ? 1 : 0) + moisAffiches.length} />
                 <td className="px-4 py-3 whitespace-nowrap text-emerald-700">{money(totauxGeneraux.paye)}</td>
                 <td className="px-4 py-3 whitespace-nowrap text-rose-600">{money(totauxGeneraux.reste)}</td>

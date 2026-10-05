@@ -4,6 +4,7 @@ import { Link, Navigate } from "react-router-dom";
 
 import { dashboardApi } from "../api/services";
 import { baremeDuCycle } from "../bareme";
+import { ExonereFratrieBadge } from "../components/StatutMensualite";
 import { Badge, Card, EmptyState, PageHeader, Spinner, StatCard } from "../components/ui";
 import { useAuth } from "../context/AuthContext";
 
@@ -341,9 +342,13 @@ function ParentDashboard({ data }: { data: Record<string, any> }) {
   return (
     <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
       {data.enfants.map((enfant: any) => (
-        <Card key={enfant.id}>
+        <Card key={enfant.id} className={enfant.exonere_fratrie ? "ring-2 ring-violet-300" : ""}>
           <h3 className="font-bold text-ink-900">{enfant.nom_complet}</h3>
-          <p className="text-sm text-slate-500 mb-4">{enfant.classe ?? "Classe non assignée"}</p>
+          <p className="text-sm text-slate-500 mb-4">
+            {enfant.classe ?? "Classe non assignée"}
+            {/* Benjamin d'une famille d'au moins 6 enfants : ne paie pas la mensualité. */}
+            {enfant.exonere_fratrie && <span className="block"><ExonereFratrieBadge /></span>}
+          </p>
           <div className="space-y-2 text-sm">
             <div className="flex justify-between"><span className="text-slate-500">Taux de présence</span><span className="font-medium">{enfant.taux_presence !== null ? `${enfant.taux_presence}%` : "—"}</span></div>
             <div className="flex justify-between">

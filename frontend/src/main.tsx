@@ -3,6 +3,7 @@ import ReactDOM from "react-dom/client";
 import { BrowserRouter } from "react-router-dom";
 
 import App from "./App";
+import { AnneeProvider } from "./context/AnneeContext";
 import { AuthProvider } from "./context/AuthContext";
 import { ConfirmProvider } from "./context/ConfirmContext";
 import { ThemeProvider } from "./context/ThemeContext";
@@ -23,7 +24,9 @@ ReactDOM.createRoot(document.getElementById("root")!).render(
         <ToastProvider>
           <ConfirmProvider>
             <AuthProvider>
-              <App />
+              <AnneeProvider>
+                <App />
+              </AnneeProvider>
             </AuthProvider>
           </ConfirmProvider>
         </ToastProvider>

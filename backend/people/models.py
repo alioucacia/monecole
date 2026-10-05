@@ -114,6 +114,12 @@ class EleveProfile(models.Model):
             "(ex: Fondation 50% + fidélité = 47,5% du tarif standard)."
         ),
     )
+    # Réduction « fratrie » (voir people/fratrie.py) : calculée automatiquement, jamais saisie.
+    exonere_fratrie = models.BooleanField(
+        default=False, editable=False,
+        help_text="Enfant de la classe la plus basse d'un parent qui a au moins 6 enfants inscrits : "
+                  "exonéré de mensualité.",
+    )
 
     class Meta:
         ordering = ["user__last_name", "user__first_name"]
@@ -127,7 +133,10 @@ class EleveProfile(models.Model):
     def facteur_mensualite(self) -> Decimal:
         """Fraction du tarif standard de mensualité effectivement due par cet élève, compte tenu
         de sa catégorie de paiement et d'une éventuelle réduction fidélité (les deux se cumulent).
-        0 = aucune mensualité due (Fondation gratuite, ou élève qui ne paie que l'inscription)."""
+        0 = aucune mensualité due (Fondation gratuite, élève qui ne paie que l'inscription, ou
+        benjamin exonéré au titre de la fratrie — voir people/fratrie.py)."""
+        if self.exonere_fratrie:
+            return Decimal("0")
         if self.categorie_paiement in (self.CategoriePaiement.FONDATION_GRATUIT, self.CategoriePaiement.INSCRIPTION_SEULEMENT):
             return Decimal("0")
         facteur = Decimal("0.5") if self.categorie_paiement == self.CategoriePaiement.FONDATION_50 else Decimal("1")

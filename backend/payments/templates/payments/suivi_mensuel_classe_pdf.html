@@ -34,7 +34,7 @@
     <div class="header">
         {% if ecole_logo_data_uri %}<img class="logo" src="{{ ecole_logo_data_uri }}" /><br/>{% endif %}
         <h1>{{ ecole_nom }}</h1>
-        <h2>Suivi mensuel des paiements — {{ titre }}{% if mois_filtre %} — {{ mois_filtre }}{% endif %}</h2>
+        <h2>Suivi mensuel des paiements — {{ titre }}{% if mois_filtre %} — {{ mois_filtre }}{% endif %}{% if statut_filtre %} — {{ statut_filtre }}{% endif %}</h2>
         <p>Année scolaire {{ annee_scolaire }} — {{ total }} élève{{ total|pluralize }}</p>
     </div>
     <hr class="separateur" />

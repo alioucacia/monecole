@@ -57,6 +57,9 @@ class AffectationTransportViewSet(viewsets.ModelViewSet):
     serializer_class = AffectationTransportSerializer
     permission_classes = [IsAdminOrReadOnly, fonctionnalite_requise("transport")]
     filterset_fields = ["trajet", "eleve"]
+    # Affectations des élèves de l'année affichée (academics/annee.py).
+    annee_eleve_prefix = "eleve__"
+    annee_params_explicites = ("eleve",)
 
     def get_queryset(self):
         qs = super().get_queryset().filter(trajet__ecole_id=self.request.user.ecole_id)
@@ -75,6 +78,7 @@ class TicketBusViewSet(viewsets.ModelViewSet):
     serializer_class = TicketBusSerializer
     permission_classes = [IsAdminOrComptabiliteOrReadOnly, fonctionnalite_requise("transport")]
     filterset_fields = ["affectation", "paye"]
+    annee_date_field = "mois"  # tickets des mois de l'année affichée (academics/annee.py)
 
     def get_queryset(self):
         qs = super().get_queryset().filter(affectation__trajet__ecole_id=self.request.user.ecole_id)

@@ -3,6 +3,7 @@ import { useEffect, useState } from "react";
 import { anneesApi, evaluationEnseignantsApi, unwrapList, type EvaluationEnseignant } from "../api/services";
 import { extractErrorMessage } from "../api/client";
 import { EmptyState, Modal, PageHeader, Select, Spinner, Table } from "../components/ui";
+import { useAnnee } from "../context/AnneeContext";
 import type { AnneeScolaire } from "../types";
 
 /** Pourcentage coloré : vert ≥ seuil haut, orange ≥ seuil bas, rouge en dessous. */
@@ -23,6 +24,7 @@ function Moyenne({ valeur }: { valeur: string | number | null | undefined }) {
  * programmes, résultats des classes, volume de cours et évaluations données — pour une année
  * scolaire, avec l'historique annuel de chaque enseignant. */
 export default function EvaluationEnseignantsPage() {
+  const { anneeId: anneeVueId } = useAnnee();
   const [annees, setAnnees] = useState<AnneeScolaire[]>([]);
   const [anneeId, setAnneeId] = useState("");
   const [lignes, setLignes] = useState<EvaluationEnseignant[]>([]);
@@ -37,10 +39,11 @@ export default function EvaluationEnseignantsPage() {
     anneesApi.list().then(({ data }) => {
       const liste = unwrapList(data);
       setAnnees(liste);
-      const active = liste.find((a) => a.active);
+      // Par défaut : l'année affichée dans toute l'application (sélecteur du haut).
+      const active = liste.find((a) => a.id === anneeVueId) ?? liste.find((a) => a.active);
       setAnneeId(active ? String(active.id) : liste[0] ? String(liste[0].id) : "");
     });
-  }, []);
+  }, [anneeVueId]);
 
   useEffect(() => {
     if (!anneeId) return;

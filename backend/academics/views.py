@@ -46,6 +46,7 @@ class ClasseViewSet(viewsets.ModelViewSet):
     serializer_class = ClasseSerializer
     permission_classes = [IsAdminOrSurveillanceReadWriteNoDelete]
     filterset_fields = ["annee_scolaire", "niveau", "cycle"]
+    annee_scolaire_field = "annee_scolaire"  # listes limitées à l'année affichée (academics/annee.py)
     search_fields = ["nom", "niveau"]
 
     def get_queryset(self):
@@ -92,6 +93,7 @@ class EnseignementViewSet(viewsets.ModelViewSet):
     # ClassDetailModal, section "Enseignements affectés").
     permission_classes = [IsAdminOrSurveillanceReadWriteNoDelete]
     filterset_fields = ["classe", "matiere", "enseignant"]
+    annee_scolaire_field = "classe__annee_scolaire"
 
     def get_queryset(self):
         qs = super().get_queryset().filter(classe__annee_scolaire__ecole_id=self.request.user.ecole_id)
@@ -106,6 +108,7 @@ class CreneauViewSet(viewsets.ModelViewSet):
     serializer_class = CreneauSerializer
     permission_classes = [IsAdminOrTeacherOrReadOnly]
     filterset_fields = ["classe", "jour", "enseignement"]
+    annee_scolaire_field = "classe__annee_scolaire"
 
     def get_queryset(self):
         qs = super().get_queryset().filter(classe__annee_scolaire__ecole_id=self.request.user.ecole_id)
@@ -128,6 +131,7 @@ class ChapitreProgrammeViewSet(viewsets.ModelViewSet):
 
     serializer_class = ChapitreProgrammeSerializer
     filterset_fields = ["classe", "matiere", "statut"]
+    annee_scolaire_field = "classe__annee_scolaire"
 
     def get_queryset(self):
         return ChapitreProgramme.objects.select_related("classe", "matiere", "realise_par").filter(
@@ -189,9 +193,11 @@ class ChapitreProgrammeViewSet(viewsets.ModelViewSet):
         `classe`. Pourcentage = chapitres terminés / chapitres prévus."""
         from django.db.models import Count
 
+        from .annee import annee_courante
+
         annee_id = request.query_params.get("annee_scolaire")
         annees = AnneeScolaire.objects.filter(ecole_id=request.user.ecole_id)
-        annee = annees.filter(pk=annee_id).first() if annee_id else annees.filter(active=True).first()
+        annee = annees.filter(pk=annee_id).first() if annee_id else annee_courante(request)
         if not annee:
             return Response({"annee_scolaire": None, "annee_scolaire_id": None, "classes": []})
 

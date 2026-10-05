@@ -29,6 +29,8 @@ class EmpruntViewSet(viewsets.ModelViewSet):
     serializer_class = EmpruntSerializer
     permission_classes = [IsAdminOrTeacherOrReadOnly, fonctionnalite_requise("bibliotheque")]
     filterset_fields = ["livre", "eleve", "date_retour_effective"]
+    # Emprunts de l'année affichée (academics/annee.py) — le catalogue (Livre) reste commun.
+    annee_date_field = "date_emprunt"
 
     def get_queryset(self):
         qs = super().get_queryset().filter(livre__ecole_id=self.request.user.ecole_id)

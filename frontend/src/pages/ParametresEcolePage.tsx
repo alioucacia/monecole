@@ -3,6 +3,7 @@ import { useEffect, useState, type FormEvent } from "react";
 import { abonnementDjomyApi, anneesApi, modelesMessageApi, parametresEcoleApi, periodesApi, unwrapList } from "../api/services";
 import { extractErrorMessage } from "../api/client";
 import { Badge, Button, Card, Input, Modal, PageHeader, Select, Spinner } from "../components/ui";
+import { useAnnee } from "../context/AnneeContext";
 import { useAuth } from "../context/AuthContext";
 import { useConfirm } from "../context/ConfirmContext";
 import { useToast } from "../context/ToastContext";
@@ -421,6 +422,8 @@ export default function ParametresEcolePage() {
     heure_limite_ponctualite: "08:15", message_bienvenue: "", reglement_interieur: "",
   });
 
+  // Sélecteur d'année du haut (voir AnneeContext) : à recharger quand les années changent.
+  const { recharger: rechargerAnnees } = useAnnee();
   const [anneeForm, setAnneeForm] = useState({ libelle: "", date_debut: "", date_fin: "" });
   const [anneeSaving, setAnneeSaving] = useState(false);
   const [anneeError, setAnneeError] = useState("");
@@ -543,6 +546,7 @@ export default function ParametresEcolePage() {
     if (!(await confirmer(`Définir "${annee.libelle}" comme année scolaire active ? Toute la plateforme basculera sur cette année.`))) return;
     await anneesApi.update(annee.id, { active: true });
     load();
+    rechargerAnnees();
   };
 
   const handleCreerAnnee = async (e: FormEvent) => {
@@ -553,6 +557,7 @@ export default function ParametresEcolePage() {
       await anneesApi.create(anneeForm);
       setAnneeForm({ libelle: "", date_debut: "", date_fin: "" });
       load();
+      rechargerAnnees();
     } catch (err) {
       setAnneeError(extractErrorMessage(err));
     } finally {

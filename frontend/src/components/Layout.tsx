@@ -1,7 +1,8 @@
 import { useEffect, useState, type ReactNode } from "react";
 import { Navigate, NavLink, Outlet, useLocation, useNavigate } from "react-router-dom";
 
-import { anneesApi, justificatifsApi, parametresEcoleApi, plateformeBrandingApi, supportApi, unwrapList } from "../api/services";
+import { justificatifsApi, parametresEcoleApi, plateformeBrandingApi, supportApi, unwrapList } from "../api/services";
+import { useAnnee } from "../context/AnneeContext";
 import { useAuth } from "../context/AuthContext";
 import { useTheme } from "../context/ThemeContext";
 import { useInactivityLogout } from "../hooks/useInactivityLogout";
@@ -268,24 +269,6 @@ function useSupportBadge(actif: boolean) {
   return nombre;
 }
 
-/** Liste des années scolaires de l'établissement, pour la sous-liste déroulante du topbar
- * (non applicable au Super Admin, qui n'est rattaché à aucun établissement). */
-function useAnneesScolaires(actif: boolean) {
-  const [annees, setAnnees] = useState<AnneeScolaire[]>([]);
-  const [anneeId, setAnneeId] = useState<number | null>(null);
-
-  useEffect(() => {
-    if (!actif) return;
-    anneesApi.list().then(({ data }) => {
-      const liste = unwrapList(data);
-      setAnnees(liste);
-      const active = liste.find((a) => a.active);
-      setAnneeId(active?.id ?? liste[0]?.id ?? null);
-    }).catch(() => {});
-  }, [actif]);
-
-  return { annees, anneeId, setAnneeId };
-}
 
 /** Statut d'abonnement de l'établissement, pour le compte à rebours affiché à son
  * Administrateur dans le topbar (non applicable aux autres rôles). Se rafraîchit toutes
@@ -407,7 +390,7 @@ export function AppLayout() {
   const badges: Record<string, number> = {};
   if (justificatifsEnAttente > 0) badges["/justificatifs"] = justificatifsEnAttente;
   if (ticketsActifs > 0) badges["/support"] = ticketsActifs;
-  const { annees, anneeId, setAnneeId } = useAnneesScolaires(!!user && user.role !== "superadmin");
+  const { annees, annee, anneeId, setAnneeId, peutChanger } = useAnnee();
   const ecoleAbonnement = useAbonnementEcole(!!user && user.role === "admin");
   const [nomPlateforme, setNomPlateforme] = useState<string | null>(null);
   const [logoPlateforme, setLogoPlateforme] = useState<string | null>(null);
@@ -607,17 +590,29 @@ export function AppLayout() {
               </svg>
             </button>
             <p className="text-sm text-slate-400 font-medium hidden sm:block shrink-0">Bonjour 👋</p>
-            {annees.length > 0 && (
+            {/* Année scolaire affichée dans toute l'application : modifiable par l'administrateur
+                seulement — les autres rôles restent sur l'année active (simple étiquette). */}
+            {annees.length > 0 && peutChanger && (
               <select
                 value={anneeId ?? ""}
                 onChange={(e) => setAnneeId(Number(e.target.value))}
-                title="Année scolaire de la session"
-                className="text-sm font-semibold text-slate-600 bg-slate-100 border-none rounded-full pl-3 pr-7 py-1 cursor-pointer focus:outline-none focus:ring-2 focus:ring-brand-500/20"
+                title="Année scolaire affichée dans toute l'application"
+                className={`text-sm font-semibold border-none rounded-full pl-3 pr-7 py-1 cursor-pointer focus:outline-none focus:ring-2 focus:ring-brand-500/20 ${
+                  annee && !annee.active ? "bg-amber-100 text-amber-800" : "bg-slate-100 text-slate-600"
+                }`}
               >
                 {annees.map((a) => (
-                  <option key={a.id} value={a.id}>{a.libelle}</option>
+                  <option key={a.id} value={a.id}>{a.libelle}{a.active ? " (active)" : ""}</option>
                 ))}
               </select>
+            )}
+            {annee && !peutChanger && (
+              <span title="Année scolaire affichée" className="text-sm font-semibold text-slate-600 bg-slate-100 rounded-full px-3 py-1">
+                {annee.libelle}
+              </span>
+            )}
+            {annee && !annee.active && (
+              <span className="hidden sm:inline text-xs font-semibold text-amber-700">Consultation d'une année passée</span>
             )}
           </div>
           <div className="flex items-center gap-1 sm:gap-2 shrink-0">
@@ -636,7 +631,8 @@ export function AppLayout() {
           </div>
         </header>
         <main className="flex-1 overflow-y-auto p-3 sm:p-6">
-          <Outlet />
+          {/* Changement d'année : la page est remontée pour recharger ses données. */}
+          <Outlet key={anneeId ?? "aucune"} />
         </main>
       </div>
       </div>

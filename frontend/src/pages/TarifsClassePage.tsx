@@ -4,6 +4,7 @@ import { Link } from "react-router-dom";
 import { anneesApi, classesApi, fraisApi, tarifsClasseApi, typesFraisApi, unwrapList } from "../api/services";
 import { extractErrorMessage } from "../api/client";
 import { Button, EmptyState, Input, Modal, PageHeader, Select, Spinner } from "../components/ui";
+import { useAnnee } from "../context/AnneeContext";
 import { useToast } from "../context/ToastContext";
 import type { AnneeScolaire, Classe, TarifClasse, TypeFrais } from "../types";
 
@@ -13,6 +14,7 @@ function money(value: number | string) {
 
 export default function TarifsClassePage() {
   const toast = useToast();
+  const { anneeId: anneeVueId } = useAnnee();
   const [annees, setAnnees] = useState<AnneeScolaire[]>([]);
   const [anneeId, setAnneeId] = useState("");
   const [classes, setClasses] = useState<Classe[]>([]);
@@ -30,10 +32,11 @@ export default function TarifsClassePage() {
     anneesApi.list().then(({ data }) => {
       const liste = unwrapList(data);
       setAnnees(liste);
-      setAnneeId((liste.find((a) => a.active) || liste[0])?.id.toString() || "");
+      // Par défaut : l'année affichée dans toute l'application (sélecteur du haut).
+      setAnneeId((liste.find((a) => a.id === anneeVueId) || liste.find((a) => a.active) || liste[0])?.id.toString() || "");
     });
     typesFraisApi.list().then(({ data }) => setTypes(unwrapList(data)));
-  }, []);
+  }, [anneeVueId]);
 
   useEffect(() => {
     if (!anneeId) return;

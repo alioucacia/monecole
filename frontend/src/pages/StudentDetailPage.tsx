@@ -7,7 +7,9 @@ import {
 } from "../api/services";
 import { extractBlobErrorMessage, extractErrorMessage } from "../api/client";
 import { PdfPreviewModal } from "../components/PdfPreviewModal";
+import { ExonereFratrieBadge } from "../components/StatutMensualite";
 import { Badge, Button, Card, EmptyState, PageHeader, Select, Spinner, StatCard, Table } from "../components/ui";
+import { useAnnee } from "../context/AnneeContext";
 import { useAuth } from "../context/AuthContext";
 import { useConfirm, usePrompt } from "../context/ConfirmContext";
 import { useToast } from "../context/ToastContext";
@@ -80,6 +82,7 @@ export default function StudentDetailPage() {
   const eleveId = Number(id);
   const navigate = useNavigate();
   const { user } = useAuth();
+  const { anneeId: anneeVueId } = useAnnee();
   const isAdmin = user?.role === "admin";
   const estComptabilite = user?.role === "comptabilite";
   const peutVoirPaiements = isAdmin || estComptabilite;
@@ -140,7 +143,8 @@ export default function StudentDetailPage() {
 
   useEffect(() => {
     if (!eleve) return;
-    notesApi.list({ eleve: eleve.id, page_size: 200 }).then(({ data }) => setNotes(unwrapList(data))).catch(() => {});
+    // Notes et périodes de toutes les années : l'onglet Notes a son propre filtre d'année.
+    notesApi.list({ eleve: eleve.id, page_size: 200, toutes_annees: 1 }).then(({ data }) => setNotes(unwrapList(data))).catch(() => {});
     presencesApi.list({ eleve: eleve.id, page_size: 200 }).then(({ data }) => setPresences(unwrapList(data))).catch(() => {});
     presencesApi.stats({ eleve: eleve.id }).then(({ data }) => setPresenceStats(data)).catch(() => {});
     empruntsApi.list({ eleve: eleve.id, page_size: 100 }).then(({ data }) => setEmprunts(unwrapList(data))).catch(() => {});
@@ -149,11 +153,12 @@ export default function StudentDetailPage() {
     if (peutVoirPaiements) {
       fraisApi.list({ eleve: eleve.id, page_size: 200 }).then(({ data }) => setFrais(unwrapList(data))).catch(() => {});
     }
-    periodesApi.list().then(({ data }) => setPeriodes(unwrapList(data))).catch(() => {});
+    periodesApi.list({ toutes_annees: 1 }).then(({ data }) => setPeriodes(unwrapList(data))).catch(() => {});
     anneesApi.list().then(({ data }) => {
       const liste = unwrapList(data);
       setAnnees(liste);
-      const active = liste.find((a) => a.active);
+      // Année affichée dans toute l'application (sélecteur du haut), l'année active par défaut.
+      const active = liste.find((a) => a.id === anneeVueId) ?? liste.find((a) => a.active);
       if (!active) return;
       setAnneeActiveId(active.id);
       setAnneeNotesFilter((prev) => (prev === "" ? active.id : prev));
@@ -271,6 +276,11 @@ export default function StudentDetailPage() {
   // côté backend) : cocher la réduction fidélité (×0,95) ne change rien (0 × 0,95 = 0). Sans ce
   // garde-fou, la case restait cliquable mais semblait « ne rien faire » — confusion signalée.
   const fideliteSansEffet = eleve.categorie_paiement === "fondation_gratuit" || eleve.categorie_paiement === "inscription_seulement";
+  // Mensualité déjà entamée sur l'année active : plus de passage en Fondation 50 %/100 % ni en
+  // « Inscription seulement » (même règle, appliquée côté backend).
+  const aCommencePaiement = frais.some(
+    (f) => f.type_frais_est_mensuel && f.annee_scolaire === annees.find((a) => a.active)?.id && Number(f.montant_paye) > 0,
+  );
 
   // Onglet Notes : périodes de l'année scolaire choisie, et notes filtrées en conséquence
   // (par année, puis par trimestre si un trimestre précis est sélectionné).
@@ -584,7 +594,13 @@ export default function StudentDetailPage() {
                 className="max-w-xs"
               >
                 {Object.entries(CATEGORIE_LABELS).map(([value, label]) => (
-                  <option key={value} value={value}>{label}</option>
+                  <option
+                    key={value}
+                    value={value}
+                    disabled={aCommencePaiement && value !== "standard" && value !== eleve.categorie_paiement}
+                  >
+                    {label}
+                  </option>
                 ))}
               </Select>
               <label
@@ -601,6 +617,20 @@ export default function StudentDetailPage() {
                 Réduction fidélité (5%, paie tous les mois)
               </label>
             </div>
+            {eleve.exonere_fratrie && (
+              <div className="mt-3 flex flex-wrap items-center gap-2 text-xs text-violet-700 bg-violet-50 border border-violet-200 rounded-xl px-3 py-2">
+                <ExonereFratrieBadge />
+                <span>
+                  Classe la plus basse d'une famille d'au moins 6 enfants inscrits : cet élève ne paie pas la
+                  mensualité (calculé automatiquement, quelle que soit la catégorie ci-dessus).
+                </span>
+              </div>
+            )}
+            {aCommencePaiement && (
+              <p className="text-xs text-amber-600 mt-2">
+                ⓘ Cet élève a déjà commencé à payer sa mensualité : il ne peut plus être placé en Fondation (50 % ou 100 %) ni en « Inscription/réinscription uniquement ».
+              </p>
+            )}
             {fideliteSansEffet && (
               <p className="text-xs text-amber-600 mt-2">
                 ⓘ Sans effet pour « {CATEGORIE_LABELS[eleve.categorie_paiement]} » : la mensualité due est déjà à 0%, une réduction supplémentaire ne change rien.

@@ -143,6 +143,10 @@ class Frais(models.Model):
     annee_scolaire = models.ForeignKey(AnneeScolaire, on_delete=models.CASCADE, related_name="frais")
     montant = models.DecimalField(max_digits=10, decimal_places=2)
     date_echeance = models.DateField()
+    # Mois couvert (1er du mois) par un frais Mensuel/Autre — distinct de `date_echeance`, qui est
+    # désormais la date du jour de création (« Nouveau frais »). `None` pour les frais antérieurs
+    # à ce champ : le mois se déduit alors de `date_echeance` (voir `mois_reference`).
+    mois = models.DateField(null=True, blank=True)
     # Figé au premier paiement encaissé sur ce frais (voir PaiementViewSet.perform_create), à la
     # valeur de `eleve.facteur_mensualite` à cet instant — reste `None` tant qu'aucun paiement n'a
     # été fait (le frais suit alors la réduction courante, toujours modifiable). Une fois figé, un
@@ -178,11 +182,22 @@ class Frais(models.Model):
         if type_frais.periodicite not in (TypeFrais.Periodicite.AUTRE, TypeFrais.Periodicite.MENSUEL):
             return base & models.Q(type_frais=type_frais)
         if date_echeance:
-            return base & models.Q(
-                type_frais=type_frais,
-                date_echeance__year=date_echeance.year, date_echeance__month=date_echeance.month,
-            )
+            return base & models.Q(type_frais=type_frais) & Frais.filtre_mois(date_echeance)
         return None
+
+    @staticmethod
+    def filtre_mois(mois, prefixe="") -> models.Q:
+        """Frais dont le mois couvert est `mois` : champ `mois` s'il est renseigné, sinon mois de
+        `date_echeance` (frais créés avant l'ajout de `mois`)."""
+        return models.Q(**{f"{prefixe}mois__year": mois.year, f"{prefixe}mois__month": mois.month}) | models.Q(**{
+            f"{prefixe}mois__isnull": True,
+            f"{prefixe}date_echeance__year": mois.year, f"{prefixe}date_echeance__month": mois.month,
+        })
+
+    @property
+    def mois_reference(self):
+        """Mois couvert par ce frais (1er du mois) — voir `mois`."""
+        return (self.mois or self.date_echeance).replace(day=1)
 
     @staticmethod
     def formule_scolarite(eleve_id, annee_scolaire_id) -> str | None:
@@ -204,7 +219,7 @@ class Frais(models.Model):
     def equivalents(self):
         """Ce frais et ses éventuels doublons (données antérieures au blocage des doublons) —
         voir `filtre_equivalents`."""
-        filtre = self.filtre_equivalents(self.eleve, self.type_frais, self.annee_scolaire, self.date_echeance)
+        filtre = self.filtre_equivalents(self.eleve, self.type_frais, self.annee_scolaire, self.mois_reference)
         return Frais.objects.filter(filtre) if filtre is not None else Frais.objects.filter(pk=self.pk)
 
     def _facteur_reduction_courant(self) -> Decimal | None:

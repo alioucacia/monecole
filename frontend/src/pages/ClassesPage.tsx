@@ -3,6 +3,7 @@ import { useEffect, useState, type FormEvent } from "react";
 import { anneesApi, classesApi, elevesApi, enseignantsApi, enseignementsApi, matieresApi, unwrapList } from "../api/services";
 import { extractErrorMessage } from "../api/client";
 import { Badge, Button, DeleteButton, EditButton, EmptyState, Input, Modal, PageHeader, RowActions, Select, Spinner, Table } from "../components/ui";
+import { useAnnee } from "../context/AnneeContext";
 import { useAuth } from "../context/AuthContext";
 import { useConfirm } from "../context/ConfirmContext";
 import { useToast } from "../context/ToastContext";
@@ -32,6 +33,7 @@ function effectifColor(effectif: number, capacite: number): "green" | "amber" | 
 
 export default function ClassesPage() {
   const { user } = useAuth();
+  const { anneeId: anneeVueId } = useAnnee();
   const toast = useToast();
   const confirmer = useConfirm();
   const isAdmin = user?.role === "admin";
@@ -82,7 +84,8 @@ export default function ClassesPage() {
 
   const openCreate = () => {
     setEditing(null);
-    setForm({ ...emptyForm, annee_scolaire: annees.find((a) => a.active)?.id.toString() || "" });
+    // Année affichée (sélecteur du haut) : la nouvelle classe apparaît ainsi dans la liste.
+    setForm({ ...emptyForm, annee_scolaire: anneeVueId?.toString() || annees.find((a) => a.active)?.id.toString() || "" });
     setError("");
     setModalOpen(true);
   };

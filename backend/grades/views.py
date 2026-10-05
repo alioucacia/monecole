@@ -37,6 +37,7 @@ class PeriodeViewSet(viewsets.ModelViewSet):
     serializer_class = PeriodeSerializer
     permission_classes = [IsAdminOrTeacherOrReadOnly]
     filterset_fields = ["annee_scolaire"]
+    annee_scolaire_field = "annee_scolaire"  # listes limitées à l'année affichée (academics/annee.py)
 
     def get_queryset(self):
         return super().get_queryset().filter(annee_scolaire__ecole_id=self.request.user.ecole_id)
@@ -75,6 +76,8 @@ class NoteViewSet(viewsets.ModelViewSet):
         "periode": ["exact"],
         "type_evaluation": ["exact"],
     }
+    annee_scolaire_field = "periode__annee_scolaire"
+    annee_params_explicites = ("periode",)
 
     def get_queryset(self):
         qs = super().get_queryset().filter(eleve__user__ecole_id=self.request.user.ecole_id)

@@ -41,6 +41,8 @@ def _notifier_par_sms(message: Message) -> None:
 class MessageViewSet(viewsets.ModelViewSet):
     serializer_class = MessageSerializer
     permission_classes = [IsAuthenticated, fonctionnalite_requise("messagerie")]
+    # Messages envoyés pendant l'année affichée (academics/annee.py).
+    annee_date_field = "date_envoi__date"
 
     def get_queryset(self):
         user = self.request.user

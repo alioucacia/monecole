@@ -56,6 +56,9 @@ class InscriptionCantineViewSet(viewsets.ModelViewSet):
     serializer_class = InscriptionCantineSerializer
     permission_classes = [IsAdminOrReadOnly, fonctionnalite_requise("cantine")]
     filterset_fields = ["formule", "eleve"]
+    # Inscriptions des élèves de l'année affichée (academics/annee.py).
+    annee_eleve_prefix = "eleve__"
+    annee_params_explicites = ("eleve",)
 
     def get_queryset(self):
         qs = super().get_queryset().filter(formule__ecole_id=self.request.user.ecole_id)
@@ -74,6 +77,7 @@ class TicketCantineViewSet(viewsets.ModelViewSet):
     serializer_class = TicketCantineSerializer
     permission_classes = [IsAdminOrComptabiliteOrReadOnly, fonctionnalite_requise("cantine")]
     filterset_fields = ["inscription", "paye"]
+    annee_date_field = "mois"  # tickets des mois de l'année affichée (academics/annee.py)
 
     def get_queryset(self):
         qs = super().get_queryset().filter(inscription__formule__ecole_id=self.request.user.ecole_id)

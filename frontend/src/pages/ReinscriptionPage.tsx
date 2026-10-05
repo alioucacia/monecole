@@ -56,7 +56,9 @@ export default function ReinscriptionPage() {
   const [error, setError] = useState("");
 
   useEffect(() => {
-    classesApi.list({ page_size: 100 }).then(({ data }) => setClasses(unwrapList(data)));
+    // Classes de toutes les années : la réinscription passe d'une classe de l'année précédente
+    // à une classe de la nouvelle année.
+    classesApi.list({ page_size: 200, toutes_annees: 1 }).then(({ data }) => setClasses(unwrapList(data)));
   }, []);
 
   useEffect(() => {

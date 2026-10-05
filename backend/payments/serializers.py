@@ -183,7 +183,7 @@ class PaiementSerializer(serializers.ModelSerializer):
         if restant <= 0:
             if frais.montant_paye < frais.montant_du and frais.type_frais.periodicite == TypeFrais.Periodicite.AUTRE:
                 raise serializers.ValidationError({
-                    "montant": f"Le mois {frais.date_echeance.strftime('%m/%Y')} est déjà payé pour "
+                    "montant": f"Le mois {frais.mois_reference.strftime('%m/%Y')} est déjà payé pour "
                                f"« {frais.type_frais.nom} » (via un autre frais de cet élève)."
                 })
             raise serializers.ValidationError({"montant": "Ce frais est déjà intégralement payé."})
@@ -224,6 +224,7 @@ class FraisSerializer(serializers.ModelSerializer):
     # Étiquette « Statut de paiement (mensualité) » sous le nom de l'élève (PaymentsPage) —
     # distingue les élèves pris en charge par la Fondation.
     eleve_categorie_paiement = serializers.CharField(source="eleve.categorie_paiement", read_only=True)
+    eleve_exonere_fratrie = serializers.BooleanField(source="eleve.exonere_fratrie", read_only=True)
     type_frais_nom = serializers.CharField(source="type_frais.nom", read_only=True)
     type_frais_est_mensuel = serializers.BooleanField(source="type_frais.est_mensuel", read_only=True)
     type_frais_periodicite = serializers.CharField(source="type_frais.periodicite", read_only=True)
@@ -239,9 +240,9 @@ class FraisSerializer(serializers.ModelSerializer):
     class Meta:
         model = Frais
         fields = [
-            "id", "eleve", "eleve_nom", "eleve_categorie_paiement", "type_frais", "type_frais_nom", "type_frais_est_mensuel",
+            "id", "eleve", "eleve_nom", "eleve_categorie_paiement", "eleve_exonere_fratrie", "type_frais", "type_frais_nom", "type_frais_est_mensuel",
             "type_frais_periodicite", "type_frais_numero_tranche", "annee_scolaire",
-            "montant", "montant_du", "date_echeance", "montant_paye", "solde", "statut", "paiements",
+            "montant", "montant_du", "date_echeance", "mois", "montant_paye", "solde", "statut", "paiements",
         ]
 
     @staticmethod
@@ -259,11 +260,18 @@ class FraisSerializer(serializers.ModelSerializer):
         eleve = attrs.get("eleve", getattr(self.instance, "eleve", None))
         type_frais = attrs.get("type_frais", getattr(self.instance, "type_frais", None))
         annee = attrs.get("annee_scolaire", getattr(self.instance, "annee_scolaire", None))
-        echeance = attrs.get("date_echeance", getattr(self.instance, "date_echeance", None))
+        # Mois couvert (Mensuel/Autre) : champ `mois` s'il est fourni, sinon celui de l'échéance
+        # (voir Frais.mois) — l'échéance elle-même peut être n'importe quelle date (date du jour).
+        if attrs.get("mois"):
+            attrs["mois"] = attrs["mois"].replace(day=1)
+        echeance = (
+            attrs.get("mois") or getattr(self.instance, "mois", None)
+            or attrs.get("date_echeance", getattr(self.instance, "date_echeance", None))
+        )
         if self.instance is None and eleve and type_frais and annee:
             verifier_formule_scolarite(eleve.id, annee.id, type_frais, "type_frais")
         if type_frais and type_frais.est_mensuel and echeance and echeance.month not in MOIS_MENSUALITE:
-            raise serializers.ValidationError({"date_echeance": MESSAGE_MOIS_HORS_MENSUALITE})
+            raise serializers.ValidationError({"mois" if attrs.get("mois") else "date_echeance": MESSAGE_MOIS_HORS_MENSUALITE})
         # Montant non modifiable : celui paramétré (tarif de la classe, sinon montant standard) —
         # seule la remise fidélité de 5 % d'un frais Annuel (voir PaymentsPage) peut le réduire.
         montant = attrs.get("montant")

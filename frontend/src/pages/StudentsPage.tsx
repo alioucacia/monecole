@@ -467,7 +467,7 @@ export default function StudentsPage() {
                         {eleve.user.first_name} {eleve.user.last_name}
                         {eleve.user.sexe && <span className="ml-1.5 text-xs text-slate-400">{eleve.user.sexe === "F" ? "♀" : "♂"}</span>}
                       </span>
-                      <StatutMensualiteBadge categorie={eleve.categorie_paiement} />
+                      <StatutMensualiteBadge categorie={eleve.categorie_paiement} exonereFratrie={eleve.exonere_fratrie} />
                     </span>
                   </Link>
                 </td>

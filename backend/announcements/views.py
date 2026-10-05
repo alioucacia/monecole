@@ -29,6 +29,8 @@ class AnnonceViewSet(_RapporteResultatEnvoiMixin, viewsets.ModelViewSet):
     serializer_class = AnnonceSerializer
     permission_classes = [IsAdminOrTeacherOrReadOnly, fonctionnalite_requise("annonces")]
     filterset_fields = ["cible_role", "classe"]
+    # Annonces publiées pendant l'année affichée (academics/annee.py).
+    annee_date_field = "date_publication__date"
     search_fields = ["titre", "contenu"]
 
     def get_queryset(self):

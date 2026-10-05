@@ -185,6 +185,9 @@ REST_FRAMEWORK = {
         "django_filters.rest_framework.DjangoFilterBackend",
         "rest_framework.filters.SearchFilter",
         "rest_framework.filters.OrderingFilter",
+        # Listes restreintes à l'année scolaire affichée (voir academics/annee.py) — sans effet
+        # sur les vues qui ne déclarent pas de champ d'année.
+        "academics.annee.AnneeScolaireFilterBackend",
     ),
     "DEFAULT_PAGINATION_CLASS": "core.pagination.DefaultPagination",
     "PAGE_SIZE": 20,

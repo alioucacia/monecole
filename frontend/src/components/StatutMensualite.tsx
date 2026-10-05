@@ -10,8 +10,10 @@ const STATUTS: Record<CategoriePaiement, { label: string; className: string }> =
 };
 
 /** Étiquette « Statut de paiement (mensualité) » — distingue d'un coup d'œil les élèves pris en
- * charge par la Fondation des élèves au tarif standard. */
-export function StatutMensualiteBadge({ categorie }: { categorie?: CategoriePaiement | null }) {
+ * charge par la Fondation des élèves au tarif standard. `exonereFratrie` (benjamin d'une famille
+ * d'au moins 6 enfants) prime : l'élève ne paie pas la mensualité, quelle que soit sa catégorie. */
+export function StatutMensualiteBadge({ categorie, exonereFratrie }: { categorie?: CategoriePaiement | null; exonereFratrie?: boolean }) {
+  if (exonereFratrie) return <ExonereFratrieBadge />;
   const statut = STATUTS[categorie ?? "standard"] ?? STATUTS.standard;
   return (
     <span
@@ -19,6 +21,18 @@ export function StatutMensualiteBadge({ categorie }: { categorie?: CategoriePaie
       className={`mt-1 inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-semibold ${statut.className}`}
     >
       {statut.label}
+    </span>
+  );
+}
+
+/** Distinction de l'enfant exonéré de mensualité au titre de la fratrie. */
+export function ExonereFratrieBadge() {
+  return (
+    <span
+      title="Classe la plus basse d'une famille d'au moins 6 enfants inscrits : ne paie pas la mensualité"
+      className="mt-1 inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-violet-100 text-violet-700 ring-1 ring-violet-300"
+    >
+      ★ Exonéré — Fratrie
     </span>
   );
 }

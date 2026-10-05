@@ -74,10 +74,22 @@ export const tokenStorage = {
 
 export const api = axios.create({ baseURL: BASE_URL });
 
+/** Année scolaire consultée par l'administrateur, si ce n'est pas l'année active (voir
+ * context/AnneeContext.tsx) — `null` : le serveur prend l'année active. */
+let anneeVue: number | null = null;
+export function definirAnneeVue(id: number | null) {
+  anneeVue = id;
+}
+
 api.interceptors.request.use((config) => {
   const token = tokenStorage.getAccess();
   if (token && config.headers) {
     config.headers.Authorization = `Bearer ${token}`;
+  }
+  // En paramètre d'URL plutôt qu'en en-tête : le cache hors-ligne (clé = URL) distingue ainsi
+  // les années, et aucun réglage CORS n'est nécessaire. Ignoré par le serveur hors administrateur.
+  if (anneeVue) {
+    config.params = { annee_vue: anneeVue, ...(config.params || {}) };
   }
   return config;
 });

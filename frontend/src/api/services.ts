@@ -603,7 +603,9 @@ export const fraisApi = {
   }>("/payments/frais/notifier-impayes/"),
   /** Rapport de suivi des paiements de scolarité (PDF), mois par mois — un élève à la fois. */
   /** Version imprimable (PDF) du suivi mensuel, avec les filtres de l'écran (classe ou cycle, mois). */
-  suiviMensuelClassePdf: (params: { classe?: number; cycle?: string; mois?: string }, filename: string) =>
+  suiviMensuelClassePdf: (
+    params: { classe?: number; cycle?: string; mois?: string; statut?: "payes" | "non_payes" }, filename: string,
+  ) =>
     downloadFile("/payments/frais/suivi-mensuel-classe-pdf/", params, filename),
   suiviMensuelPdf: (eleveId: number, filename: string, anneeScolaireId?: number) =>
     downloadFile("/payments/frais/suivi-mensuel-pdf/", { eleve: eleveId, annee_scolaire: anneeScolaireId }, filename),
