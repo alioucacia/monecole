@@ -1349,10 +1349,20 @@ class FraisViewSet(viewsets.ModelViewSet):
                 })
         if suivi:
             du = sum((m["montant_du"] for m in suivi), Decimal("0"))
+            # Statut d'après les mois (comme la situation mensuelle ci-dessous) : tous les mois
+            # payés = « Payé ». Comparer `du` à `paye_scolarite` affichait « Partiel » à tort — `du`
+            # est reconstitué à partir des parts mensuelles arrondies au centime (tranche/annuel
+            # répartis sur leurs mois) et peut dépasser de quelques centimes le montant réellement dû.
+            if all(m["statut"] == "paye" for m in suivi):
+                statut_scolarite = "paye"
+            elif paye_scolarite > 0:
+                statut_scolarite = "partiel"
+            else:
+                statut_scolarite = "non_paye"
             recap.insert(0, {
                 "type_frais": "Scolarité", "echeance": "Octobre → Juin",
                 "montant_du": du, "montant_paye": paye_scolarite,
-                "reste": sum((m["reste"] for m in suivi), Decimal("0")), "statut": _statut(du, paye_scolarite),
+                "reste": sum((m["reste"] for m in suivi), Decimal("0")), "statut": statut_scolarite,
             })
         versements.sort(key=lambda v: (v["date"], v["id"]))
         for numero, v in enumerate(versements, start=1):
