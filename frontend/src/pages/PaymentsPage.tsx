@@ -332,13 +332,33 @@ export default function PaymentsPage() {
     loadTypes();
     if (peutGerer) {
       anneesApi.list().then(({ data }) => setAnnees(unwrapList(data)));
-      elevesApi.list({ page_size: 500 }).then(({ data }) => setEleves(unwrapList(data)));
-      // Classes de l'année affichée (filtres Cycle/Classe de la liste).
-      classesApi.list({ page_size: 200, annee_scolaire: anneeVueId ?? undefined }).then(({ data }) => setClasses(unwrapList(data)));
       loadSummary();
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [peutGerer]);
+
+  // Classes de l'année affichée (filtres Cycle/Classe de la liste et de « Nouveau frais »).
+  // Rechargées quand l'année est connue/change : au premier rendu `anneeVueId` est encore null
+  // (AnneeContext charge les années en asynchrone) et la liste mélangeait alors les classes de
+  // toutes les années — choisir une classe d'une année passée ne donnait aucun élève.
+  useEffect(() => {
+    if (!peutGerer || !anneeVueId) return;
+    classesApi.list({ page_size: 200, annee_scolaire: anneeVueId }).then(({ data }) => setClasses(unwrapList(data)));
+  }, [peutGerer, anneeVueId]);
+
+  // Élèves de « Nouveau frais » : filtrés côté serveur par Cycle/Classe — la liste complète est
+  // plafonnée à 500 élèves (triés par date d'inscription), les derniers inscrits n'y figuraient
+  // donc pas et le filtre côté client ne les trouvait jamais.
+  useEffect(() => {
+    if (!peutGerer || !fraisModalOpen) return;
+    let annule = false;
+    elevesApi.list({
+      page_size: 500,
+      classe: fraisEleveClasse || undefined,
+      cycle: fraisEleveClasse ? undefined : fraisEleveCycle || undefined,
+    }).then(({ data }) => { if (!annule) setEleves(unwrapList(data)); });
+    return () => { annule = true; };
+  }, [peutGerer, fraisModalOpen, fraisEleveCycle, fraisEleveClasse]);
 
   // Si le cycle change, la classe sélectionnée peut ne plus lui appartenir — on la réinitialise
   // plutôt que de garder un filtre incohérent (ex: "4ème A" sélectionnée alors qu'on filtre "Lycée").
@@ -751,9 +771,9 @@ export default function PaymentsPage() {
             <CycleSelect
               label="Cycle"
               value={fraisEleveCycle}
-              onChange={(c) => { setFraisEleveCycle(c); setFraisEleveClasse(""); }}
+              onChange={(c) => { setFraisEleveCycle(c); setFraisEleveClasse(""); setFraisForm((f) => ({ ...f, eleve: "" })); }}
             />
-            <Select label="Classe" value={fraisEleveClasse} onChange={(e) => setFraisEleveClasse(e.target.value)}>
+            <Select label="Classe" value={fraisEleveClasse} onChange={(e) => { setFraisEleveClasse(e.target.value); setFraisForm((f) => ({ ...f, eleve: "" })); }}>
               <option value="">— Toutes les classes —</option>
               {classesDuCycleFrais.map((c) => <option key={c.id} value={c.id}>{c.nom}</option>)}
             </Select>
