@@ -129,6 +129,7 @@ export default function StudentDetailPage() {
   const [certificatLoading, setCertificatLoading] = useState(false);
   const [bulletinPreviewOpen, setBulletinPreviewOpen] = useState(false);
   const [proformaPreviewOpen, setProformaPreviewOpen] = useState(false);
+  const [historiquePaiementsOpen, setHistoriquePaiementsOpen] = useState(false);
   const [categorieSaving, setCategorieSaving] = useState(false);
 
   useEffect(() => {
@@ -567,7 +568,10 @@ export default function StudentDetailPage() {
 
       {tab === "paiements" && peutVoirPaiements && (
         <div>
-          <div className="flex justify-end mb-3">
+          <div className="flex flex-wrap justify-end gap-2 mb-3">
+            <Button variant="secondary" onClick={() => setHistoriquePaiementsOpen(true)} disabled={frais.length === 0}>
+              🖨️ Historique des paiements
+            </Button>
             <Button variant="secondary" onClick={handleProformaPdf} disabled={frais.length === 0}>
               📄 Facture proforma
             </Button>
@@ -785,6 +789,14 @@ export default function StudentDetailPage() {
         onClose={() => setProformaPreviewOpen(false)}
         title={`Facture proforma — ${eleve.user.first_name} ${eleve.user.last_name}`}
         load={() => fraisApi.previewProformaPdf(eleve.id, `proforma_${eleve.matricule}.pdf`, anneeActiveId ?? undefined)}
+      />
+      <PdfPreviewModal
+        open={historiquePaiementsOpen}
+        onClose={() => setHistoriquePaiementsOpen(false)}
+        title={`Historique des paiements — ${eleve.user.first_name} ${eleve.user.last_name}`}
+        load={() => fraisApi.previewHistoriquePaiementsPdf(
+          eleve.id, `historique_paiements_${eleve.matricule}.pdf`, anneeActiveId ?? undefined,
+        )}
       />
     </div>
   );

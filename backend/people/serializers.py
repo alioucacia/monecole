@@ -36,6 +36,52 @@ def a_commence_paiement_scolarite(eleve) -> bool:
     return paiements.exists()
 
 
+def synchroniser_frais_inscription(eleve):
+    """Initie le frais d'inscription de l'élève pour l'année de sa classe — frais de
+    RÉINSCRIPTION (TypeFrais.Usage.REINSCRIPTION) s'il est enregistré au statut « Réinscription »,
+    d'inscription sinon (nouvel élève, transfert). Montant : tarif de sa classe (Paiements →
+    Tarifs par classe), sinon montant standard du type ; `Frais.montant_du` applique ensuite la
+    réduction propre à sa catégorie de paiement.
+
+    Un seul frais d'inscription/réinscription par élève et par année (voir
+    Frais.filtre_equivalents) : s'il en a déjà un d'un autre usage (statut modifié après coup),
+    ce frais est converti tant qu'aucun paiement n'y a été encaissé — jamais un frais déjà payé.
+    Sans effet si l'élève n'a pas de classe ou si l'école n'a paramétré aucun de ces types."""
+    from django.utils import timezone
+
+    from payments.models import USAGES_INSCRIPTION, Frais, TarifClasse, TypeFrais  # import différé (dépendance circulaire)
+
+    if not eleve.classe_id:
+        return None
+    reinscription = eleve.statut_inscription == EleveProfile.StatutInscription.REINSCRIPTION
+    usage = TypeFrais.Usage.REINSCRIPTION if reinscription else TypeFrais.Usage.INSCRIPTION
+    types = TypeFrais.objects.filter(ecole_id=eleve.user.ecole_id)
+    # Type de ce statut non paramétré : on se rabat sur l'autre (comme le suivi mensuel).
+    type_frais = types.filter(usage=usage).first() or types.filter(usage__in=USAGES_INSCRIPTION).first()
+    if not type_frais:
+        return None
+    annee_id = eleve.classe.annee_scolaire_id
+    tarif = TarifClasse.objects.filter(
+        type_frais=type_frais, classe_id=eleve.classe_id, annee_scolaire_id=annee_id,
+    ).values_list("montant", flat=True).first()
+    montant = tarif if tarif is not None else type_frais.montant_standard
+
+    existant = Frais.objects.filter(
+        eleve=eleve, annee_scolaire_id=annee_id, type_frais__usage__in=USAGES_INSCRIPTION,
+    ).first()
+    if existant is None:
+        return Frais.objects.create(
+            eleve=eleve, type_frais=type_frais, annee_scolaire_id=annee_id,
+            montant=montant, date_echeance=timezone.localdate(),
+        )
+    if existant.type_frais_id != type_frais.id and not existant.paiements.exists():
+        existant.type_frais = type_frais
+        existant.montant = montant
+        existant.facteur_applique = None
+        existant.save(update_fields=["type_frais", "montant", "facteur_applique"])
+    return existant
+
+
 class EleveProfileSerializer(serializers.ModelSerializer):
     user = MiniUserSerializer(read_only=True)
     # Fiche d'un élève seulement (une requête par élève — pas calculé dans les listes) : grise la
@@ -236,31 +282,12 @@ class EleveProfileWriteSerializer(serializers.ModelSerializer):
         eleve = EleveProfile.objects.create(user=user, **validated_data)
         enregistrer_historique_classe(eleve, eleve.classe)
 
-        # Frais d'inscription, créé automatiquement dès l'inscription si l'école a marqué un
-        # type de frais "usage=inscription" (voir TypeFrais.Usage) et que l'élève est affecté à
-        # une classe — même mécanisme que la réinscription (voir
-        # EleveProfileViewSet.reinscription) : `montant` reste le tarif STANDARD de la classe
-        # (réglé dans Paiements → Tarifs par classe), `Frais.montant_du` applique ensuite la
-        # réduction propre à la catégorie de paiement de l'élève. Sans ce frais créé ici, le prix
-        # de l'inscription n'apparaissait ni sur le reçu (imprimé juste après, qui ne liste que
-        # les frais DÉJÀ enregistrés) ni nulle part avant que l'admin ne le saisisse à la main
-        # plus tard dans Paiements.
-        if eleve.classe_id and ecole:
-            from datetime import date, timedelta
-
-            from payments.models import Frais, TarifClasse, TypeFrais
-
-            type_frais = TypeFrais.objects.filter(ecole=ecole, usage=TypeFrais.Usage.INSCRIPTION).first()
-            if type_frais:
-                tarif = TarifClasse.objects.filter(
-                    ecole=ecole, type_frais=type_frais,
-                    classe=eleve.classe, annee_scolaire_id=eleve.classe.annee_scolaire_id,
-                ).first()
-                montant = tarif.montant if tarif else type_frais.montant_standard
-                Frais.objects.create(
-                    eleve=eleve, type_frais=type_frais, annee_scolaire=eleve.classe.annee_scolaire,
-                    montant=montant, date_echeance=date.today() + timedelta(days=30),
-                )
+        # Frais d'inscription — ou de RÉINSCRIPTION pour un élève enregistré au statut
+        # « Réinscription » — initié automatiquement dès l'enregistrement (voir
+        # `synchroniser_frais_inscription`) : sans lui, le montant n'apparaissait ni sur le reçu
+        # (imprimé juste après) ni à l'encaissement avant une saisie manuelle dans Paiements.
+        if ecole:
+            synchroniser_frais_inscription(eleve)
 
         # Envoi automatique des identifiants par e-mail/SMS/messagerie interne — à l'élève, et
         # au parent rattaché (nouveau compte tout juste créé ci-dessus, ou parent déjà existant
@@ -291,9 +318,17 @@ class EleveProfileWriteSerializer(serializers.ModelSerializer):
                 setattr(instance.user, k, v)
             instance.user.save()
         classe_modifiee = "classe" in validated_data
+        statut_modifie = (
+            "statut_inscription" in validated_data
+            and validated_data["statut_inscription"] != instance.statut_inscription
+        )
         eleve = super().update(instance, validated_data)
         if classe_modifiee:
             enregistrer_historique_classe(eleve, eleve.classe)
+        if statut_modifie:
+            # Statut corrigé après coup (ex : enregistré « Nouvelle inscription » par erreur) :
+            # le frais d'inscription/réinscription encore impayé suit le nouveau statut.
+            synchroniser_frais_inscription(eleve)
         return eleve
 
     def to_representation(self, instance):

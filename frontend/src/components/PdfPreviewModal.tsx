@@ -21,6 +21,7 @@ export function PdfPreviewModal({
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const objectUrlRef = useRef<string | null>(null);
+  const iframeRef = useRef<HTMLIFrameElement | null>(null);
 
   useEffect(() => {
     if (!open) return;
@@ -49,6 +50,18 @@ export function PdfPreviewModal({
 
   if (!open) return null;
 
+  // Impression directe du PDF affiché (visionneuse PDF du navigateur) ; à défaut (navigateur
+  // qui bloque l'impression d'un PDF en iframe), ouverture dans un onglet pour l'imprimer de là.
+  const handlePrint = () => {
+    if (!objectUrl) return;
+    try {
+      iframeRef.current?.contentWindow?.focus();
+      iframeRef.current?.contentWindow?.print();
+    } catch {
+      window.open(objectUrl, "_blank");
+    }
+  };
+
   const handleDownload = () => {
     if (!objectUrl) return;
     const link = document.createElement("a");
@@ -69,6 +82,7 @@ export function PdfPreviewModal({
             <p className="text-xs text-slate-400">Aperçu — vérifiez le document avant de le télécharger.</p>
           </div>
           <div className="flex items-center gap-2 shrink-0">
+            <Button variant="secondary" onClick={handlePrint} disabled={!objectUrl}>🖨️ Imprimer</Button>
             <Button onClick={handleDownload} disabled={!objectUrl}>⬇️ Télécharger</Button>
             <button
               onClick={onClose}
@@ -86,7 +100,7 @@ export function PdfPreviewModal({
               <p className="text-sm text-rose-600 bg-rose-50 border border-rose-100 rounded-xl px-3.5 py-2.5">{error}</p>
             </div>
           ) : objectUrl ? (
-            <iframe src={objectUrl} title={title} className="w-full h-full border-0" />
+            <iframe ref={iframeRef} src={objectUrl} title={title} className="w-full h-full border-0" />
           ) : null}
         </div>
       </div>

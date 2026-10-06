@@ -24,7 +24,7 @@ from academics.annee import AnneeScolaireFilterBackend, annee_courante, filtre_e
 from accounts.permissions import IsAdmin, IsAdminOrComptabilite, IsAdminOrComptabiliteOrReadOnly
 from people.views import _image_data_uri, _mm_px
 
-from .models import MOIS_MENSUALITE, PERIODICITES_SCOLARITE, est_scolarite, USAGES_INSCRIPTION, CategorieDepense, Depense, Frais, Paiement, TarifClasse, TypeFrais
+from .models import MOIS_MENSUALITE, MOIS_PAR_TRANCHE, PERIODICITES_SCOLARITE, est_scolarite, tranche_du_mois, USAGES_INSCRIPTION, CategorieDepense, Depense, Frais, Paiement, TarifClasse, TypeFrais
 from .serializers import CategorieDepenseSerializer, DepenseSerializer, FraisSerializer, PaiementSerializer, TarifClasseSerializer, TypeFraisSerializer
 
 
@@ -40,9 +40,7 @@ def _mois_entre(date_debut, date_fin):
 
 # Mois de mensualité : voir payments.models.MOIS_MENSUALITE (Octobre → Juin). Dans le suivi
 # mensuel, la colonne Inscription/Réinscription remplace Septembre.
-# Mois couverts par chaque tranche de scolarité (frais de périodicité « Tranche »), dans l'ordre
-# des Periode de l'année (Trimestre 1, 2, 3) : la 1re tranche couvre aussi Juin, dernier mois.
-MOIS_PAR_TRANCHE = ((10, 11, 12, 6), (1, 2, 3), (4, 5))
+# Mois couverts par chaque tranche : voir payments.models.MOIS_PAR_TRANCHE.
 
 
 def _mois_mensualite(annee_scolaire):
@@ -118,6 +116,8 @@ def _calculer_suivi_mensuel(eleve, annee_scolaire, frais=None, periodes=None, ca
     - Tranche (hors inscription) : chaque tranche (Periode de l'année, dans l'ordre) couvre ses
       mois de MOIS_PAR_TRANCHE — la 1re tranche payée affiche Octobre, Novembre, Décembre et
       Juin payés, la 2e Janvier à Mars, la 3e Avril et Mai.
+    - Tranches complétées par des mensualités : les mois d'une tranche entamée restent à la
+      tranche, les autres sont dus (et payés) en mensualités — jamais les deux à la fois.
 
     `montant_du` tient compte de la catégorie de paiement (Fondation 50 %...) : un élève exonéré
     (Fondation gratuite, inscription seulement) n'a aucun mois à suivre. `a_venir` : mois pas
@@ -149,7 +149,9 @@ def _calculer_suivi_mensuel(eleve, annee_scolaire, frais=None, periodes=None, ca
     paye_par_mois = {mois: Decimal("0") for mois in tous_les_mois}
     couvert_par = {mois: [] for mois in tous_les_mois}
 
-    # 1) Mensuel, type de frais par type de frais.
+    # 1) Mensuel, type de frais par type de frais — dû cumulé à part (`du_mensuel`) : un mois
+    #    couvert par une tranche entamée n'est pas dû en mensualité (voir l'étape 4).
+    du_mensuel = {mois: Decimal("0") for mois in tous_les_mois}
     par_type: dict[int, list[Frais]] = {}
     for f in mensuels:
         par_type.setdefault(f.type_frais_id, []).append(f)
@@ -159,10 +161,10 @@ def _calculer_suivi_mensuel(eleve, annee_scolaire, frais=None, periodes=None, ca
             par_mois_echeance.setdefault(f.mois_reference, []).append(f)
         for mois in tous_les_mois:
             if mois in par_mois_echeance:
-                du_par_mois[mois] += sum((f.montant_du for f in par_mois_echeance[mois]), Decimal("0"))
+                du_mensuel[mois] += sum((f.montant_du for f in par_mois_echeance[mois]), Decimal("0"))
             else:
                 reference = min(frais_du_type, key=lambda f: abs((f.mois_reference - mois).days))
-                du_par_mois[mois] += reference.montant_du
+                du_mensuel[mois] += reference.montant_du
         for f in frais_du_type:
             for p in f.paiements.all():
                 mois = p.mois or f.mois_reference
@@ -184,7 +186,10 @@ def _calculer_suivi_mensuel(eleve, annee_scolaire, frais=None, periodes=None, ca
     #    les mois d'une tranche payée passent « Payé », les autres restent « Non payé » jusqu'au
     #    paiement de leur tranche. Un versement sans tranche précisée (données antérieures à
     #    l'obligation de la choisir) complète les tranches dans l'ordre : 1re, puis 2e...
+    #    Les parts de chaque tranche sont d'abord collectées (`parts_tranches`) puis réparties à
+    #    l'étape 4, une fois connu ce qui revient aux mensualités.
     non_payes_sans_tarif = set()
+    parts_tranches: list[tuple[int, list, Decimal, Decimal]] = []
     if tranches:
         if periodes is None:
             periodes = list(Periode.objects.filter(annee_scolaire=annee_scolaire).order_by("date_debut"))
@@ -197,7 +202,7 @@ def _calculer_suivi_mensuel(eleve, annee_scolaire, frais=None, periodes=None, ca
                 if numero <= len(MOIS_PAR_TRANCHE):
                     mois_tranche = [m for m in tous_les_mois if m.month in MOIS_PAR_TRANCHE[numero - 1]]
                     if mois_tranche:
-                        repartir(mois_tranche, f.montant_du, _total_paye(f), f"Tranche {numero}")
+                        parts_tranches.append((numero, mois_tranche, f.montant_du, _total_paye(f)))
                 continue
             sans_tranche = sum(
                 (p.montant for p in f.paiements.all() if p.periode_id not in {pe.id for pe in periodes_tranches}),
@@ -209,7 +214,7 @@ def _calculer_suivi_mensuel(eleve, annee_scolaire, frais=None, periodes=None, ca
                 sans_tranche -= complement
                 mois_tranche = [m for m in tous_les_mois if m.month in MOIS_PAR_TRANCHE[index]]
                 if mois_tranche:
-                    repartir(mois_tranche, f.montant_du, verse + complement, f"Tranche {index + 1}")
+                    parts_tranches.append((index + 1, mois_tranche, f.montant_du, verse + complement))
 
         # Tranches numérotées dont l'élève n'a pas encore de frais : dues à leur tarif.
         numeros_presents = {f.type_frais.numero_tranche for f in tranches if f.type_frais.numero_tranche}
@@ -228,10 +233,22 @@ def _calculer_suivi_mensuel(eleve, annee_scolaire, frais=None, periodes=None, ca
                 if not mois_tranche:
                     continue
                 if tarifs.get(numero):
-                    repartir(mois_tranche, tarifs[numero], Decimal("0"), f"Tranche {numero}")
-                else:
+                    parts_tranches.append((numero, mois_tranche, tarifs[numero], Decimal("0")))
+                elif not mensuels:
                     # Aucune « N-ième Tranche » paramétrée : montant inconnu, mais rien n'est payé.
                     non_payes_sans_tarif.update(mois_tranche)
+
+    # 4) Tranches puis mensualités (voir payments.models.formule_compatible) : chaque mois n'est
+    #    dû qu'une fois. Une tranche entamée (versement > 0) garde ses mois ; les mois des autres
+    #    tranches reviennent aux mensualités dès que l'élève a un frais mensuel.
+    entamees = {numero for numero, _, _, paye in parts_tranches if paye > 0}
+    for numero, mois_tranche, du, paye in parts_tranches:
+        if mensuels and numero not in entamees:
+            continue
+        repartir(mois_tranche, du, paye, f"Tranche {numero}")
+    for mois in tous_les_mois:
+        if not (tranches and tranche_du_mois(mois.month) in entamees):
+            du_par_mois[mois] += du_mensuel[mois]
 
     if all(du <= 0 for du in du_par_mois.values()):
         return []  # élève exonéré de mensualité : rien à suivre
@@ -677,7 +694,7 @@ class FraisViewSet(viewsets.ModelViewSet):
         return queryset.filter(id__in=ids_dus)
 
     def get_permissions(self):
-        if self.action in ("list", "retrieve", "fiche_paiement", "suivi_mensuel", "proforma"):
+        if self.action in ("list", "retrieve", "fiche_paiement", "suivi_mensuel", "proforma", "historique_paiements_pdf"):
             from rest_framework.permissions import IsAuthenticated
             return [IsAuthenticated()]
         return super().get_permissions()
@@ -1135,7 +1152,9 @@ class FraisViewSet(viewsets.ModelViewSet):
         )
 
         # Formule de scolarité déjà commencée par chaque élève (voir Frais.formule_scolarite) :
-        # aucun frais d'une autre formule ne lui est généré pour cette année.
+        # aucun frais d'une autre formule ne lui est généré pour cette année — y compris une
+        # mensualité pour un élève aux tranches : permise (voir formule_compatible), elle reste un
+        # choix individuel, créé depuis « Nouveau frais ».
         formule_par_eleve = {}
         for eleve_id, periodicite in (
             Paiement.objects.filter(
@@ -1254,6 +1273,124 @@ class FraisViewSet(viewsets.ModelViewSet):
         pisa.CreatePDF(html, dest=buffer, encoding="utf-8")
         response = HttpResponse(buffer.getvalue(), content_type="application/pdf")
         response["Content-Disposition"] = f'attachment; filename="proforma_{eleve.matricule}_{annee.libelle}.pdf"'
+        return response
+
+    @action(detail=False, methods=["get"], url_path="historique-paiements-pdf")
+    def historique_paiements_pdf(self, request):
+        """Fiche d'historique des paiements (PDF) d'un élève sur une année scolaire : synthèse
+        (dû / payé / reste), récapitulatif par frais, détail chronologique de chaque versement
+        (date, objet, mode, référence, agent) et situation mensuelle de la scolarité — document
+        officiel à remettre au parent, avec visas de la comptabilité et de la direction."""
+        from academics.models import AnneeScolaire
+        from people.models import EleveProfile
+
+        from .serializers import MOIS_FR
+
+        eleve_id = request.query_params.get("eleve")
+        if not eleve_id:
+            raise ValidationError("Le paramètre 'eleve' est requis.")
+        eleve = get_object_or_404(
+            EleveProfile.objects.select_related("user", "classe", "parent"), pk=eleve_id, user__ecole_id=request.user.ecole_id,
+        )
+        if request.user.role == "student" and getattr(request.user, "eleve_profile", None) != eleve:
+            raise ValidationError("Vous ne pouvez consulter que votre propre historique de paiement.")
+        if request.user.role == "parent" and eleve.parent_id != request.user.id:
+            raise ValidationError("Vous ne pouvez consulter que l'historique de paiement de vos enfants.")
+
+        annee_id = request.query_params.get("annee_scolaire")
+        if annee_id:
+            annee = get_object_or_404(AnneeScolaire, pk=annee_id, ecole_id=request.user.ecole_id)
+        else:
+            annee = annee_courante(request)
+        if not annee:
+            raise ValidationError("Aucune année scolaire active pour votre établissement.")
+
+        frais = _frais_suivi_par_eleve([eleve], annee)[eleve.id]
+        if not frais:
+            raise ValidationError("Aucun frais enregistré pour cet élève sur cette année scolaire.")
+
+        def libelle_mois(mois):
+            return f"{MOIS_FR[mois.month - 1].capitalize()} {mois.year}"
+
+        def echeance_frais(f):
+            if f.type_frais.usage in USAGES_INSCRIPTION or f.type_frais.periodicite == TypeFrais.Periodicite.ANNUEL:
+                return annee.libelle
+            if f.type_frais.est_mensuel or f.type_frais.periodicite == TypeFrais.Periodicite.AUTRE:
+                return libelle_mois(f.mois_reference)
+            return f"Tranche {f.type_frais.numero_tranche}" if f.type_frais.numero_tranche else "Par tranche"
+
+        suivi = _calculer_suivi_mensuel(eleve, annee, frais=frais)
+        recap, versements = [], []
+        paye_scolarite = Decimal("0")
+        for f in frais:
+            paye = _total_paye(f)
+            if suivi and est_scolarite(f.type_frais):
+                # Scolarité (mensualités, tranches, annuel) : résumée en une ligne d'après le
+                # suivi mensuel — un même frais mensuel peut régler plusieurs mois.
+                paye_scolarite += paye
+            else:
+                recap.append({
+                    "type_frais": f.type_frais.nom, "echeance": echeance_frais(f),
+                    "montant_du": f.montant_du, "montant_paye": paye,
+                    "reste": max(f.montant_du - paye, Decimal("0")), "statut": _statut(f.montant_du, paye),
+                })
+            for p in f.paiements.all():
+                if p.mois:
+                    objet = libelle_mois(p.mois)
+                elif p.periode_id:
+                    objet = p.periode.nom
+                else:
+                    objet = echeance_frais(f)
+                versements.append({
+                    "id": p.id, "date": p.date_paiement, "type_frais": f.type_frais.nom, "objet": objet,
+                    "mode": p.get_mode_paiement_display(), "reference": p.reference,
+                    "agent": p.enregistre_par.get_full_name() if p.enregistre_par else "",
+                    "montant": p.montant,
+                })
+        if suivi:
+            du = sum((m["montant_du"] for m in suivi), Decimal("0"))
+            recap.insert(0, {
+                "type_frais": "Scolarité", "echeance": "Octobre → Juin",
+                "montant_du": du, "montant_paye": paye_scolarite,
+                "reste": sum((m["reste"] for m in suivi), Decimal("0")), "statut": _statut(du, paye_scolarite),
+            })
+        versements.sort(key=lambda v: (v["date"], v["id"]))
+        for numero, v in enumerate(versements, start=1):
+            v["numero"] = numero
+
+        total_du = sum((r["montant_du"] for r in recap), Decimal("0"))
+        total_paye = sum((v["montant"] for v in versements), Decimal("0"))
+        total_reste = sum((r["reste"] for r in recap), Decimal("0"))
+        abreviations = ["Janv.", "Févr.", "Mars", "Avr.", "Mai", "Juin", "Juil.", "Août", "Sept.", "Oct.", "Nov.", "Déc."]
+        suivi = [{**m, "libelle": abreviations[int(m["mois"][5:]) - 1]} for m in suivi]
+
+        ecole = eleve.user.ecole
+        aujourd_hui = timezone.localdate()
+        html = render_to_string("payments/historique_paiements_pdf.html", {
+            "eleve": eleve,
+            "classe": getattr(
+                (eleve.historique_classes.filter(annee_scolaire=annee).select_related("classe").first() or eleve).classe, "nom", "",
+            ),
+            "parent_nom": eleve.parent.get_full_name() if eleve.parent else (eleve.nom_tuteur or eleve.nom_pere or eleve.nom_mere),
+            "parent_telephone": eleve.parent.phone if eleve.parent else "",
+            "annee_scolaire": annee.libelle,
+            "recap": recap, "versements": versements, "suivi": suivi,
+            "total_du": total_du, "total_paye": total_paye, "total_reste": total_reste,
+            "taux": min(int((total_paye * 100 / total_du).quantize(Decimal("1"))), 100) if total_du > 0 else 100,
+            "reference": f"HP-{eleve.matricule}-{aujourd_hui:%Y%m%d}",
+            "date_edition": aujourd_hui,
+            "edite_par": request.user.get_full_name() or request.user.username,
+            "ecole_nom": ecole.nom if ecole else "Taly-School",
+            "ecole_adresse": ecole.adresse if ecole else "",
+            "ecole_telephone": ecole.telephone if ecole else "",
+            "ecole_logo_data_uri": _image_data_uri(ecole.logo, _mm_px(18, 18), mode="contain") if ecole and ecole.logo else None,
+            "couleur_principale": ecole.couleur_principale if ecole else "#14304f",
+            "couleur_secondaire": ecole.couleur_secondaire if ecole else "#b8860b",
+        })
+        buffer = BytesIO()
+        pisa.CreatePDF(html, dest=buffer, encoding="utf-8")
+        response = HttpResponse(buffer.getvalue(), content_type="application/pdf")
+        response["Content-Disposition"] = f'attachment; filename="historique_paiements_{eleve.matricule}_{annee.libelle}.pdf"'
         return response
 
     @action(detail=False, methods=["get"], url_path="suivi-mensuel-pdf")

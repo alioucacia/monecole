@@ -202,6 +202,9 @@ export default function PaymentsPage() {
   // Reste à payer en mensualités sur l'année pour l'élève de la modale "Encaisser" (frais
   // mensuel uniquement) — voir openPaiementModal.
   const [resteAnnuel, setResteAnnuel] = useState<number | null>(null);
+  // Mois ("2025-10"...) déjà couverts par une tranche que l'élève a commencé à payer — une
+  // mensualité ne peut plus les régler (voir verifier_mois_hors_tranche côté serveur).
+  const [moisCouvertsTranche, setMoisCouvertsTranche] = useState<Record<string, string>>({});
   const [paiementTarget, setPaiementTarget] = useState<Frais | null>(null);
   const [paiementForm, setPaiementForm] = useState(emptyPaiementForm);
   const [paiementError, setPaiementError] = useState("");
@@ -456,11 +459,17 @@ export default function PaymentsPage() {
     setPaiementForm({ ...emptyPaiementForm, montant: frais.solde });
     setPaiementError("");
     setResteAnnuel(null);
+    setMoisCouvertsTranche({});
     // Mensualité : reste à payer sur toute l'année (somme des 9 mois du suivi mensuel) —
     // plafond annuel également imposé côté serveur (PaiementSerializer).
     if (frais.type_frais_est_mensuel) {
       fraisApi.suiviMensuel(frais.eleve, frais.annee_scolaire)
-        .then(({ data }) => setResteAnnuel(data.mois.reduce((sum, m) => sum + Number(m.reste), 0)))
+        .then(({ data }) => {
+          setResteAnnuel(data.mois.reduce((sum, m) => sum + Number(m.reste), 0));
+          setMoisCouvertsTranche(Object.fromEntries(
+            data.mois.filter((m) => m.couvert_par.includes("Tranche")).map((m) => [m.mois, m.couvert_par]),
+          ));
+        })
         .catch(() => {});
     }
     if (frais.type_frais_periodicite === "trimestriel") {
@@ -913,10 +922,12 @@ export default function PaymentsPage() {
                     if (!annee) return null;
                     return moisDeLAnnee(annee).map((mois) => {
                       const statut = statutMoisPourFrais(paiementTarget, mois);
+                      const tranche = moisCouvertsTranche[mois];
                       return (
-                        <option key={mois} value={mois} disabled={statut === "paye"}>
+                        <option key={mois} value={mois} disabled={statut === "paye" || !!tranche}>
                           {moisLabelLong(mois)}
-                          {statut === "paye" ? " — déjà payé" : statut === "partiel" ? " — partiellement payé" : ""}
+                          {tranche ? ` — couvert par la ${tranche.toLowerCase()}`
+                            : statut === "paye" ? " — déjà payé" : statut === "partiel" ? " — partiellement payé" : ""}
                         </option>
                       );
                     });

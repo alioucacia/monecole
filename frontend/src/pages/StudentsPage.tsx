@@ -73,9 +73,9 @@ export default function StudentsPage() {
   const [importError, setImportError] = useState("");
   // Lignes déjà traitées / total pendant un import par lots (voir handleImportFile).
   const [importProgression, setImportProgression] = useState<{ traitees: number; total: number } | null>(null);
-  // Frais d'inscription réglé pour la classe choisie (voir TypeFrais.usage + TarifClasse) —
-  // purement informatif ici : le frais lui-même reste créé à la main dans Paiements, comme
-  // avant, ce chiffre sert juste de repère à l'admin au moment d'inscrire l'élève.
+  // Frais d'inscription (ou de réinscription si le statut choisi est « Réinscription ») réglé
+  // pour la classe choisie (voir TypeFrais.usage + TarifClasse) — le frais correspondant est
+  // initié automatiquement à l'enregistrement de l'élève (voir synchroniser_frais_inscription).
   const [tarifInscription, setTarifInscription] = useState<{ type_frais_nom: string | null; montant: string | null } | null>(null);
 
   const { items, count, loading, hasNext, hasPrevious, goNext, goPrevious, reload } = usePaginated<EleveProfile>(
@@ -121,10 +121,11 @@ export default function StudentsPage() {
       setTarifInscription(null);
       return;
     }
-    typesFraisApi.tarifParUsage("inscription", Number(form.classe))
+    const usage = form.statut_inscription === "reinscription" ? "reinscription" : "inscription";
+    typesFraisApi.tarifParUsage(usage, Number(form.classe))
       .then(({ data }) => setTarifInscription(data))
       .catch(() => setTarifInscription(null));
-  }, [form.classe, editing]);
+  }, [form.classe, form.statut_inscription, editing]);
 
   const openCreate = () => {
     setEditing(null);
@@ -574,7 +575,7 @@ export default function StudentsPage() {
             {tarifInscription?.type_frais_nom && tarifInscription.montant !== null && (
               <p className="text-xs text-slate-500 mt-1.5">
                 {tarifInscription.type_frais_nom} pour cette classe : <span className="font-semibold text-ink-900">{money(tarifInscription.montant)}</span>
-                {" "}— à créer dans Paiements une fois l'élève inscrit.
+                {" "}— initié automatiquement dans ses paiements à l'enregistrement.
               </p>
             )}
           </div>

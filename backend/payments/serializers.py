@@ -6,7 +6,7 @@ from rest_framework import serializers
 
 from core.validators import EXTENSIONS_DOCUMENT, TAILLE_MAX_DOCUMENT, valider_taille_fichier
 
-from .models import FORMULES_SCOLARITE, MESSAGE_ELEVE_BONUS, MESSAGE_MOIS_HORS_MENSUALITE, MOIS_MENSUALITE, est_scolarite, PERIODICITES_SCOLARITE, USAGES_INSCRIPTION, CategorieDepense, Depense, Frais, Paiement, TarifClasse, TypeFrais
+from .models import FORMULES_SCOLARITE, MESSAGE_ELEVE_BONUS, MOIS_PAR_TRANCHE, formule_compatible, mois_payes_en_mensualites, tranche_du_mois, tranches_entamees, MESSAGE_MOIS_HORS_MENSUALITE, MOIS_MENSUALITE, est_scolarite, PERIODICITES_SCOLARITE, USAGES_INSCRIPTION, CategorieDepense, Depense, Frais, Paiement, TarifClasse, TypeFrais
 
 
 MOIS_FR = [
@@ -17,16 +17,46 @@ MOIS_FR = [
 
 def verifier_formule_scolarite(eleve_id, annee_scolaire_id, type_frais, champ):
     """Refuse une mensualité / tranche / scolarité annuelle d'une autre formule que celle déjà
-    commencée par l'élève cette année (voir Frais.formule_scolarite)."""
+    commencée par l'élève cette année (voir Frais.formule_scolarite) — sauf des mensualités
+    après des tranches (voir formule_compatible et verifier_mois_hors_tranche)."""
     if type_frais.usage in USAGES_INSCRIPTION or type_frais.periodicite not in PERIODICITES_SCOLARITE:
         return
     formule = Frais.formule_scolarite(eleve_id, annee_scolaire_id)
-    if formule and formule != type_frais.periodicite:
+    if not formule_compatible(formule, type_frais.periodicite):
         raise serializers.ValidationError({
             champ: (
                 f"Cet élève paie déjà sa scolarité {FORMULES_SCOLARITE[formule]} cette année : il ne peut pas "
                 f"la payer {FORMULES_SCOLARITE[type_frais.periodicite]} pour cette même année scolaire."
             )
+        })
+
+
+def verifier_mois_hors_tranche(eleve_id, annee_scolaire_id, mois, champ):
+    """Refuse une mensualité sur un mois déjà couvert par une tranche que l'élève a commencé à
+    payer (voir MOIS_PAR_TRANCHE) : ce mois se règle avec sa tranche, pas une seconde fois."""
+    numero = tranche_du_mois(mois.month)
+    if numero and numero in tranches_entamees(eleve_id, annee_scolaire_id):
+        nom_mois = MOIS_FR[mois.month - 1]
+        raise serializers.ValidationError({
+            champ: f"Le mois de {nom_mois} {mois.year} est couvert par la tranche {numero}, déjà payée (ou entamée) "
+                   f"par cet élève : il ne peut pas être payé une seconde fois en mensualité."
+        })
+
+
+def verifier_tranche_hors_mensualites(eleve_id, annee_scolaire_id, numero, champ):
+    """Pendant de `verifier_mois_hors_tranche` : une tranche dont l'un des mois a déjà été payé en
+    mensualité ne peut plus être payée (le mois serait payé deux fois)."""
+    if not numero or numero > len(MOIS_PAR_TRANCHE):
+        return
+    deja = sorted(
+        set(MOIS_PAR_TRANCHE[numero - 1]) & mois_payes_en_mensualites(eleve_id, annee_scolaire_id),
+        key=lambda m: (m < 9, m),
+    )
+    if deja:
+        noms = ", ".join(MOIS_FR[m - 1] for m in deja)
+        raise serializers.ValidationError({
+            champ: f"La tranche {numero} ne peut pas être payée : cet élève a déjà payé en mensualité "
+                   f"un mois qu'elle couvre ({noms})."
         })
 
 
@@ -128,6 +158,16 @@ class PaiementSerializer(serializers.ModelSerializer):
             raise serializers.ValidationError({"periode": "Précisez la tranche payée pour ce frais par tranche."})
         if periode and periode.annee_scolaire_id != frais.annee_scolaire_id:
             raise serializers.ValidationError({"periode": "Cette tranche n'appartient pas à l'année scolaire de ce frais."})
+        if frais.type_frais.periodicite == TypeFrais.Periodicite.TRIMESTRIEL and est_scolarite(frais.type_frais):
+            if not numero and periode:
+                from grades.models import Periode
+
+                ordre = list(
+                    Periode.objects.filter(annee_scolaire_id=frais.annee_scolaire_id)
+                    .order_by("date_debut").values_list("id", flat=True)
+                )
+                numero = ordre.index(periode.id) + 1 if periode.id in ordre else None
+            verifier_tranche_hors_mensualites(frais.eleve_id, frais.annee_scolaire_id, numero, "periode")
 
         # 1) Mensuel : un mois déjà intégralement payé pour ce frais ne peut plus recevoir de
         #    versement supplémentaire, et un versement ne peut pas dépasser ce qu'il reste à
@@ -139,6 +179,8 @@ class PaiementSerializer(serializers.ModelSerializer):
             raise serializers.ValidationError({"mois": "Précisez le mois payé pour ce frais mensuel."})
         if frais.type_frais.est_mensuel and mois.month not in MOIS_MENSUALITE:
             raise serializers.ValidationError({"mois": MESSAGE_MOIS_HORS_MENSUALITE})
+        if frais.type_frais.est_mensuel and est_scolarite(frais.type_frais):
+            verifier_mois_hors_tranche(frais.eleve_id, frais.annee_scolaire_id, mois, "mois")
         if mois and frais.type_frais.est_mensuel:
             # Tous les frais de ce type de l'élève pour l'année (un frais par mois d'échéance est
             # permis) : un mois payé sur l'un ne peut pas être repayé sur un autre.
@@ -283,6 +325,8 @@ class FraisSerializer(serializers.ModelSerializer):
             verifier_formule_scolarite(eleve.id, annee.id, type_frais, "type_frais")
         if type_frais and type_frais.est_mensuel and echeance and echeance.month not in MOIS_MENSUALITE:
             raise serializers.ValidationError({"mois" if attrs.get("mois") else "date_echeance": MESSAGE_MOIS_HORS_MENSUALITE})
+        if self.instance is None and eleve and annee and type_frais and type_frais.est_mensuel and echeance and est_scolarite(type_frais):
+            verifier_mois_hors_tranche(eleve.id, annee.id, echeance, "mois" if attrs.get("mois") else "type_frais")
         # Montant non modifiable : celui paramétré (tarif de la classe, sinon montant standard) —
         # seule la remise fidélité de 5 % d'un frais Annuel (voir PaymentsPage) peut le réduire.
         montant = attrs.get("montant")

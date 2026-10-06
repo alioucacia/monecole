@@ -114,6 +114,66 @@ FORMULES_SCOLARITE = {
     TypeFrais.Periodicite.ANNUEL: "à l'année",
 }
 
+# Mois couverts par chaque tranche de scolarité (frais de périodicité « Tranche »), dans l'ordre
+# des Periode de l'année (Trimestre 1, 2, 3) : la 1re tranche couvre aussi Juin, dernier mois.
+MOIS_PAR_TRANCHE = ((10, 11, 12, 6), (1, 2, 3), (4, 5))
+
+
+def formule_compatible(formule, periodicite) -> bool:
+    """Une scolarité de périodicité `periodicite` peut-elle être payée par un élève dont la
+    formule de l'année est `formule` (voir Frais.formule_scolarite) ? Les formules restent
+    exclusives, à une exception près : un élève qui a commencé par tranches peut aussi payer
+    par mensualités — mais jamais un mois couvert par une tranche déjà entamée (voir
+    `tranches_entamees`)."""
+    return (
+        not formule or formule == periodicite
+        or (formule == TypeFrais.Periodicite.TRIMESTRIEL and periodicite == TypeFrais.Periodicite.MENSUEL)
+    )
+
+
+def tranche_du_mois(mois_numero: int) -> int:
+    """Numéro (1, 2, 3) de la tranche qui couvre ce mois de mensualité — voir MOIS_PAR_TRANCHE."""
+    return next((i + 1 for i, mois in enumerate(MOIS_PAR_TRANCHE) if mois_numero in mois), 0)
+
+
+def tranches_entamees(eleve_id, annee_scolaire_id) -> set[int]:
+    """Numéros des tranches de scolarité sur lesquelles l'élève a déjà versé quelque chose cette
+    année : type propre à une tranche (« 2ème Tranche »), ou tranche (Periode) précisée au
+    paiement d'un type unique. Un versement ancien sans tranche précisée compte pour la 1re
+    (le suivi mensuel complète les tranches dans l'ordre)."""
+    from grades.models import Periode
+
+    paiements = list(
+        Paiement.objects.filter(
+            frais__eleve_id=eleve_id, frais__annee_scolaire_id=annee_scolaire_id,
+            frais__type_frais__periodicite=TypeFrais.Periodicite.TRIMESTRIEL, montant__gt=0,
+        ).exclude(frais__type_frais__usage__in=USAGES_INSCRIPTION).select_related("frais__type_frais")
+    )
+    if not paiements:
+        return set()
+    periodes = list(
+        Periode.objects.filter(annee_scolaire_id=annee_scolaire_id).order_by("date_debut").values_list("id", flat=True)
+    )[:len(MOIS_PAR_TRANCHE)]
+    numeros = set()
+    for p in paiements:
+        numero = p.frais.type_frais.numero_tranche
+        if not numero:
+            numero = periodes.index(p.periode_id) + 1 if p.periode_id in periodes else 1
+        numeros.add(numero)
+    return numeros
+
+
+def mois_payes_en_mensualites(eleve_id, annee_scolaire_id) -> set[int]:
+    """Numéros des mois (1-12) sur lesquels l'élève a déjà versé une mensualité cette année."""
+    mois = set()
+    for paye, frais_mois, echeance in Paiement.objects.filter(
+        frais__eleve_id=eleve_id, frais__annee_scolaire_id=annee_scolaire_id,
+        frais__type_frais__periodicite=TypeFrais.Periodicite.MENSUEL, montant__gt=0,
+    ).exclude(frais__type_frais__usage__in=USAGES_INSCRIPTION).values_list("mois", "frais__mois", "frais__date_echeance"):
+        mois.add((paye or frais_mois or echeance).month)
+    return mois
+
+
 MESSAGE_ELEVE_BONUS = "Élève Bonus : cet élève ne paie pas la scolarité (mensualités, tranches ou annuel)."
 
 
@@ -212,8 +272,10 @@ class Frais(models.Model):
         """Formule de scolarité de l'élève pour l'année (périodicité Mensuel, Tranche ou Annuel),
         fixée par son PREMIER paiement de scolarité — `None` tant qu'il n'a rien payé. Une fois
         commencée, l'année se poursuit dans cette formule : un élève qui a payé à l'année ne
-        paie plus de mensualité ni de tranche, et un élève qui a commencé par mensualités (ou
-        par tranches) ne peut plus passer à l'annuel (ni à l'autre formule)."""
+        paie plus de mensualité ni de tranche, et un élève qui a commencé par mensualités ne
+        peut plus passer à l'annuel ni aux tranches. Seule exception (voir
+        `formule_compatible`) : commencé par tranches, il peut compléter par mensualités les
+        mois qu'aucune tranche entamée ne couvre."""
         premier = (
             Paiement.objects.filter(
                 frais__eleve_id=eleve_id, frais__annee_scolaire_id=annee_scolaire_id,

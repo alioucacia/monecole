@@ -1,0 +1,238 @@
+{% load montants %}<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8" />
+<style>
+    @page {
+        size: A4; margin: 1.4cm 1.4cm 1.8cm 1.4cm;
+        @frame pied { -pdf-frame-content: pied-page; left: 1.4cm; right: 1.4cm; bottom: 0.6cm; height: 0.9cm; }
+    }
+    body { font-family: Helvetica, Arial, sans-serif; color: #1e1b2e; font-size: 10px; }
+
+    /* xhtml2pdf ignore le padding d'un <div> qui enveloppe une <table> : la mise en page repose
+       donc uniquement sur des tables (voir recu_inscription_pdf.html). */
+    table.entete { width: 100%; border-bottom: 3px solid {{ couleur_principale }}; padding-bottom: 6px; }
+    .entete td { vertical-align: middle; }
+    .entete .logo { width: 18mm; height: 18mm; }
+    .entete .nom { color: {{ couleur_principale }}; font-size: 16px; font-weight: bold; text-transform: uppercase; margin: 0; }
+    .entete .coord { color: #6b7280; font-size: 8.5px; margin: 2px 0 0 0; }
+    .entete .ref-label { font-size: 7.5px; color: #6b7280; text-transform: uppercase; text-align: right; }
+    .entete .ref-valeur { font-size: 10px; font-weight: bold; color: {{ couleur_principale }}; text-align: right; }
+
+    table.filet { width: 100%; margin-bottom: 6px; }
+    .filet td { height: 2px; background-color: {{ couleur_secondaire }}; padding: 0; }
+
+    .titre { text-align: center; font-size: 15px; font-weight: bold; letter-spacing: 1.5px; text-transform: uppercase; color: {{ couleur_principale }}; margin: 6px 0 0 0; }
+    .sous-titre { text-align: center; font-size: 10px; color: #6b7280; margin: 2px 0 8px 0; }
+
+    table.identite { width: 100%; border: 1px solid #e2e8f0; background-color: #f8fafc; margin-bottom: 8px; }
+    .identite td { padding: 4px 10px 3px 10px; vertical-align: top; }
+    .lbl { color: {{ couleur_principale }}; font-size: 7.5px; text-transform: uppercase; font-weight: bold; }
+    .val { font-size: 10.5px; font-weight: bold; color: #1e1b2e; }
+
+    table.synthese { width: 100%; margin-bottom: 10px; }
+    .synthese td { padding: 5px 8px; text-align: center; border: 1px solid #e2e8f0; }
+    .synthese .kpi-lbl { font-size: 7.5px; text-transform: uppercase; color: #6b7280; font-weight: bold; }
+    .synthese .kpi-val { font-size: 13px; font-weight: bold; margin-top: 2px; }
+    .kpi-du { color: {{ couleur_principale }}; }
+    .kpi-paye { color: #047857; }
+    .kpi-reste { color: #b91c1c; }
+    .kpi-ok { color: #047857; }
+
+    .section { -pdf-keep-with-next: true; font-size: 10.5px; font-weight: bold; color: {{ couleur_principale }}; text-transform: uppercase; letter-spacing: 0.6px; border-bottom: 1.5px solid {{ couleur_secondaire }}; padding-bottom: 2px; margin: 4px 0 6px 0; }
+
+    table.lignes { width: 100%; border-collapse: collapse; margin-bottom: 10px; }
+    table.lignes th { background-color: {{ couleur_principale }}; color: #ffffff; padding: 4px 6px; text-align: left; font-size: 7.5px; text-transform: uppercase; }
+    table.lignes td { padding: 3px 6px; font-size: 9px; border-bottom: 0.5px solid #e2e8f0; }
+    table.lignes tr.alt td { background-color: #f8fafc; }
+    table.lignes .r { text-align: right; }
+    table.lignes .c { text-align: center; }
+    table.lignes tr.total td { background-color: #eef2f7; font-weight: bold; border-top: 1.5px solid {{ couleur_principale }}; border-bottom: none; }
+    .muted { color: #6b7280; font-size: 8.5px; }
+
+    .st { font-size: 7.5px; font-weight: bold; padding: 1px 5px; }
+    .st-paye { background-color: #d1fae5; color: #065f46; }
+    .st-partiel { background-color: #fef3c7; color: #92400e; }
+    .st-non_paye { background-color: #fee2e2; color: #991b1b; }
+
+    table.mois { width: 100%; border-collapse: collapse; margin-bottom: 4px; }
+    .mois td { text-align: center; padding: 3px 1px; font-size: 8px; border: 1px solid #ffffff; }
+    .mois .nom-mois { font-weight: bold; text-transform: uppercase; font-size: 7.5px; }
+    .m-paye { background-color: #d1fae5; color: #065f46; }
+    .m-partiel { background-color: #fef3c7; color: #92400e; }
+    .m-non_paye { background-color: #fee2e2; color: #991b1b; }
+    .m-a_venir { background-color: #f1f5f9; color: #64748b; }
+    .legende { font-size: 7.5px; color: #6b7280; margin: 0 0 6px 0; }
+
+    table.visas { width: 100%; margin-top: 8px; }
+    .visas td { text-align: center; font-size: 9px; vertical-align: top; }
+    .visas .role { font-weight: bold; text-transform: uppercase; font-size: 8.5px; color: {{ couleur_principale }}; }
+    .visas .zone { height: 16mm; }
+    .visas .signature { border-top: 0.75px solid #94a3b8; font-size: 7.5px; color: #94a3b8; padding-top: 2px; }
+
+    .mention { font-size: 8px; color: #6b7280; margin-top: 10px; text-align: justify; }
+    #pied-page { font-size: 7.5px; color: #94a3b8; text-align: center; border-top: 0.5px solid #cbd5e1; padding-top: 3px; }
+</style>
+</head>
+<body>
+    <div id="pied-page">
+        {{ ecole_nom }} — Historique des paiements de {{ eleve.user.get_full_name }} ({{ eleve.matricule }}) — Réf. {{ reference }} — Page <pdf:pagenumber /> / <pdf:pagecount />
+    </div>
+
+    <table class="entete">
+        <tr>
+            {% if ecole_logo_data_uri %}<td width="22mm"><img class="logo" src="{{ ecole_logo_data_uri }}" /></td>{% endif %}
+            <td>
+                <p class="nom">{{ ecole_nom }}</p>
+                {% if ecole_adresse or ecole_telephone %}
+                <p class="coord">{{ ecole_adresse|default:"" }}{% if ecole_adresse and ecole_telephone %} · {% endif %}{% if ecole_telephone %}Tél. {{ ecole_telephone }}{% endif %}</p>
+                {% endif %}
+                <p class="coord">Service de la comptabilité</p>
+            </td>
+            <td width="48mm">
+                <div class="ref-label">Référence</div>
+                <div class="ref-valeur">{{ reference }}</div>
+                <div class="ref-label" style="margin-top: 3px;">Édité le</div>
+                <div class="ref-valeur">{{ date_edition|date:"d/m/Y" }}</div>
+            </td>
+        </tr>
+    </table>
+    <table class="filet"><tr><td></td></tr></table>
+
+    <p class="titre">Historique des paiements</p>
+    <p class="sous-titre">Année scolaire {{ annee_scolaire }}</p>
+
+    <table class="identite">
+        <tr>
+            <td width="38%"><div class="lbl">Élève</div><div class="val">{{ eleve.user.last_name|upper }} {{ eleve.user.first_name }}</div></td>
+            <td width="22%"><div class="lbl">Matricule</div><div class="val">{{ eleve.matricule }}</div></td>
+            <td width="20%"><div class="lbl">Classe</div><div class="val">{{ classe|default:"—" }}</div></td>
+            <td width="20%"><div class="lbl">Statut</div><div class="val">{{ eleve.get_statut_inscription_display }}</div></td>
+        </tr>
+        <tr>
+            <td><div class="lbl">Parent / Tuteur</div><div class="val">{{ parent_nom|default:"—" }}</div></td>
+            <td><div class="lbl">Téléphone</div><div class="val">{{ parent_telephone|default:"—" }}</div></td>
+            <td colspan="2"><div class="lbl">Catégorie de paiement</div><div class="val">{% if eleve.exonere_fratrie %}Élève Bonus (fratrie) — scolarité offerte{% else %}{{ eleve.get_categorie_paiement_display }}{% endif %}</div></td>
+        </tr>
+    </table>
+
+    <table class="synthese">
+        <tr>
+            <td width="25%"><div class="kpi-lbl">Total dû (année)</div><div class="kpi-val kpi-du">{{ total_du|montant }} GNF</div></td>
+            <td width="25%"><div class="kpi-lbl">Total payé</div><div class="kpi-val kpi-paye">{{ total_paye|montant }} GNF</div></td>
+            <td width="25%"><div class="kpi-lbl">Reste à payer</div><div class="kpi-val {% if total_reste > 0 %}kpi-reste{% else %}kpi-ok{% endif %}">{{ total_reste|montant }} GNF</div></td>
+            <td width="25%"><div class="kpi-lbl">Taux de règlement</div><div class="kpi-val {% if taux >= 100 %}kpi-ok{% else %}kpi-du{% endif %}">{{ taux }} %</div></td>
+        </tr>
+    </table>
+
+    <p class="section">1. Détail des versements</p>
+    <table class="lignes" repeat="1">
+        <thead>
+            <tr>
+                <th width="6%" class="c">N°</th>
+                <th width="11%">Date</th>
+                <th width="26%">Frais / Période</th>
+                <th width="12%">Mode</th>
+                <th width="13%">Référence</th>
+                <th width="17%">Encaissé par</th>
+                <th width="15%" class="r">Montant</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for v in versements %}
+            <tr {% if forloop.counter|divisibleby:2 %}class="alt"{% endif %}>
+                <td class="c">{{ v.numero }}</td>
+                <td>{{ v.date|date:"d/m/Y" }}</td>
+                <td><b>{{ v.type_frais }}</b><br/><span class="muted">{{ v.objet }}</span></td>
+                <td>{{ v.mode }}</td>
+                <td>{{ v.reference|default:"—" }}</td>
+                <td class="muted">{{ v.agent|default:"—" }}</td>
+                <td class="r"><b>{{ v.montant|montant }} GNF</b></td>
+            </tr>
+            {% empty %}
+            <tr><td colspan="7" class="c muted">Aucun versement enregistré sur cette année scolaire.</td></tr>
+            {% endfor %}
+            {% if versements %}
+            <tr class="total">
+                <td colspan="6">Total encaissé ({{ versements|length }} versement{{ versements|length|pluralize }})</td>
+                <td class="r">{{ total_paye|montant }} GNF</td>
+            </tr>
+            {% endif %}
+        </tbody>
+    </table>
+
+    <p class="section">2. Récapitulatif par frais</p>
+    <table class="lignes" repeat="1">
+        <thead>
+            <tr>
+                <th width="30%">Frais</th>
+                <th width="16%">Échéance</th>
+                <th width="15%" class="r">Montant dû</th>
+                <th width="15%" class="r">Payé</th>
+                <th width="13%" class="r">Reste</th>
+                <th width="11%" class="c">Statut</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for r in recap %}
+            <tr {% if forloop.counter|divisibleby:2 %}class="alt"{% endif %}>
+                <td>{{ r.type_frais }}</td>
+                <td>{{ r.echeance }}</td>
+                <td class="r">{{ r.montant_du|montant }}</td>
+                <td class="r">{{ r.montant_paye|montant }}</td>
+                <td class="r">{{ r.reste|montant }}</td>
+                <td class="c"><span class="st st-{{ r.statut }}">{% if r.statut == "paye" %}PAYÉ{% elif r.statut == "partiel" %}PARTIEL{% else %}IMPAYÉ{% endif %}</span></td>
+            </tr>
+            {% endfor %}
+            <tr class="total">
+                <td colspan="2">Total (GNF)</td>
+                <td class="r">{{ total_du|montant }}</td>
+                <td class="r">{{ total_paye|montant }}</td>
+                <td class="r">{{ total_reste|montant }}</td>
+                <td></td>
+            </tr>
+        </tbody>
+    </table>
+
+    {% if suivi %}
+    <p class="section">3. Situation mensuelle de la scolarité</p>
+    <table class="mois">
+        <tr>
+            {% for m in suivi %}
+            <td class="{% if m.statut == 'paye' %}m-paye{% elif m.statut == 'partiel' %}m-partiel{% elif m.a_venir %}m-a_venir{% else %}m-non_paye{% endif %}">
+                <div class="nom-mois">{{ m.libelle }}</div>
+                <div>{% if m.statut == "paye" %}Payé{% elif m.statut == "partiel" %}Partiel{% elif m.a_venir %}À venir{% else %}Impayé{% endif %}</div>
+                {% if m.couvert_par %}<div style="font-size: 6.5px;">{{ m.couvert_par }}</div>{% endif %}
+            </td>
+            {% endfor %}
+        </tr>
+    </table>
+    <p class="legende">Mois de mensualité d'Octobre à Juin. « Tranche N » / « Annuel » : mois réglé par une tranche ou par le paiement annuel.</p>
+    {% endif %}
+
+    <table class="visas">
+        <tr>
+            <td width="8%"></td>
+            <td width="34%"><div class="role">Le Comptable</div></td>
+            <td width="16%"></td>
+            <td width="34%"><div class="role">La Direction</div></td>
+            <td width="8%"></td>
+        </tr>
+        <tr><td colspan="5" class="zone"></td></tr>
+        <tr>
+            <td></td>
+            <td class="signature">Nom et signature</td>
+            <td></td>
+            <td class="signature">Cachet et signature</td>
+            <td></td>
+        </tr>
+    </table>
+
+    <p class="mention">
+        Ce document récapitule l'ensemble des versements enregistrés par l'établissement pour l'élève ci-dessus au titre de
+        l'année scolaire {{ annee_scolaire }}, arrêté à la date du {{ date_edition|date:"d/m/Y" }}. Les montants dus tiennent compte
+        de la catégorie de paiement de l'élève. Édité par {{ edite_par }}. Toute réclamation doit être adressée au service de
+        la comptabilité, muni des reçus correspondants.
+    </p>
+</body>
+</html>

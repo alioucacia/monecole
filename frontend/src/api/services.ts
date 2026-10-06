@@ -590,6 +590,10 @@ export const fraisApi = {
     downloadFile("/payments/frais/proforma/", { eleve: eleveId, annee_scolaire: anneeScolaireId }, filename),
   previewProformaPdf: (eleveId: number, filename: string, anneeScolaireId?: number) =>
     fetchBlob("/payments/frais/proforma/", { eleve: eleveId, annee_scolaire: anneeScolaireId }, filename),
+  /** Fiche d'historique des paiements (PDF) d'un élève sur une année scolaire : synthèse,
+   * détail de chaque versement, récapitulatif par frais et situation mensuelle. */
+  previewHistoriquePaiementsPdf: (eleveId: number, filename: string, anneeScolaireId?: number) =>
+    fetchBlob("/payments/frais/historique-paiements-pdf/", { eleve: eleveId, annee_scolaire: anneeScolaireId }, filename),
   impayesParClasse: (params?: Record<string, unknown>) =>
     api.get<{
       classe_id: number | null; classe_nom: string; nb_impayes: number; nb_a_jour: number; total_solde: string;
