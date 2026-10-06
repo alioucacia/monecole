@@ -5,7 +5,7 @@ import type {
   Emprunt, Enseignement, EnseignantProfile, Fonctionnalite, Formule, Frais, InscriptionCantine, JournalActiviteEntry, JournalUtilisateurEntry, Livre, Matiere, Message, ModeleMessage, Note, 
   Paginated,AlerteParent, AnalysePerformance, ChauffeurInfo, EleveBadge, EnseignantBadge, GroupeRevision, JustificatifAbsence, MessageIA, PaiementEcole, Paiement, PaieEnseignant,
   ParametresPlateforme, Periode, PlanAbonnement, PlateformeBranding,PointageEnseignant, Presence, RechercheGlobaleResult, Reunion, Participant, Resultats, SauvegardeLog, SuiviMensuelClasse,
-  TransactionAbonnement,
+  TransactionAbonnement, ResumeSecurite, SessionActive, AppareilConnu, EvenementSecurite,
   SuiviMensuelEleve, SupervisionData, TarifClasse, Ticket,TicketBus, TicketCantine, MessageTicket, Trajet, TypeFrais, User,
 } from "../types";
 
@@ -55,6 +55,8 @@ export const comptesSuperAdminApi = {
   create: (data: Record<string, unknown>) => api.post<User>("/auth/comptes-superadmin/", data),
   update: (id: number, data: Partial<User>) => api.patch<User>(`/auth/comptes-superadmin/${id}/`, data),
   remove: (id: number) => api.delete(`/auth/comptes-superadmin/${id}/`),
+  /** Lève le verrouillage temporaire (trop d'échecs de connexion) d'un autre Super Admin. */
+  deverrouiller: (id: number) => api.post<User>(`/auth/comptes-superadmin/${id}/deverrouiller/`),
 };
 
 export const journalActiviteApi = {
@@ -138,8 +140,15 @@ export const authApi = {
   // Second temps de la connexion quand le compte a activé la double authentification (voir
   // User.otp_actif) — appelé après un login() qui a échoué avec code "otp_requis". Même forme
   // de réponse que login().
-  verifierOtpConnexion: (identifiant: string, code: string) =>
-    api.post<{ access: string; refresh: string; user: User }>("/auth/verifier-otp-connexion/", { identifiant, code }),
+  // `ticket` : renvoyé par login() avec code="otp_requis" — obligatoire quand la méthode est
+  // « totp » (application d'authentification du Super Admin), `code` peut alors aussi être un
+  // code de secours « XXXX-XXXX ».
+  verifierOtpConnexion: (identifiant: string, code: string, ticket?: string) =>
+    api.post<{ access: string; refresh: string; user: User }>("/auth/verifier-otp-connexion/", { identifiant, code, ticket }),
+  /** Ferme la session côté serveur (Super Admin : jetons aussitôt inutilisables). */
+  // Jeton passé explicitement : l'appelant efface les jetons stockés juste après, avant que
+  // l'intercepteur de requête (asynchrone) n'ait eu le temps de les lire.
+  logout: (access: string) => api.post("/auth/logout/", null, { headers: { Authorization: `Bearer ${access}` } }),
   me: () => api.get<User>("/auth/me/"),
   updateMe: (data: Partial<User>) => api.patch<User>("/auth/me/", data),
   changePassword: (old_password: string, new_password: string) =>
@@ -1027,4 +1036,29 @@ export const accesApi = {
       "/acces/passages/resume/", { params },
     ),
   scanner: (data: { identifiant: string; equipement?: number; sens?: string }) => api.post<ResultatScan>("/acces/passages/scanner/", data),
+};
+
+// ---- Sécurité du compte Super Admin (voir SecuritePage, backend accounts/views_securite.py) ----
+export const securiteApi = {
+  resume: () => api.get<ResumeSecurite>("/auth/securite/"),
+  sessions: () => api.get<SessionActive[]>("/auth/securite/sessions/"),
+  revoquerSession: (id: number) => api.post<{ courante: boolean }>(`/auth/securite/sessions/${id}/revoquer/`),
+  /** `inclureCourante` : true = déconnexion partout, y compris de cette session. */
+  revoquerToutes: (inclureCourante = false) =>
+    api.post<{ revoquees: number }>("/auth/securite/sessions/revoquer-toutes/", { inclure_courante: inclureCourante }),
+  appareils: () => api.get<AppareilConnu[]>("/auth/securite/appareils/"),
+  retirerAppareil: (id: number) => api.post<{ courant: boolean }>(`/auth/securite/appareils/${id}/retirer/`),
+  connexions: (params?: Record<string, unknown>) =>
+    api.get<Paginated<EvenementSecurite>>("/auth/securite/connexions/", { params }),
+  journal: (params?: Record<string, unknown>) =>
+    api.get<Paginated<EvenementSecurite>>("/auth/securite/journal/", { params }),
+  marquerAlertesLues: () => api.post<{ marquees: number }>("/auth/securite/alertes/marquer-lues/"),
+  totpInitialiser: (mot_de_passe: string) =>
+    api.post<{ secret: string; uri: string; qr_code: string }>("/auth/securite/totp/initialiser/", { mot_de_passe }),
+  totpActiver: (code: string) => api.post<{ codes_secours: string[] }>("/auth/securite/totp/activer/", { code }),
+  totpDesactiver: (mot_de_passe: string, code: string) => api.post("/auth/securite/totp/desactiver/", { mot_de_passe, code }),
+  regenererCodesSecours: (mot_de_passe: string) =>
+    api.post<{ codes_secours: string[] }>("/auth/securite/codes-secours/regenerer/", { mot_de_passe }),
+  basculerOtp: (mot_de_passe: string, actif: boolean) =>
+    api.post<{ otp_actif: boolean }>("/auth/securite/otp/", { mot_de_passe, actif }),
 };

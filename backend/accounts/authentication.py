@@ -33,6 +33,12 @@ class PlateformeJWTAuthentication(JWTAuthentication):
             user.derniere_activite = maintenant
 
         if user.role == "superadmin":
+            # Session révocable (voir accounts/securite.py) : un jeton dont la session a été
+            # fermée — « déconnecter cet appareil », « toutes les sessions », mot de passe
+            # changé — est refusé immédiatement, sans attendre son expiration.
+            from .securite import session_valide
+
+            session_valide(user, token.get("sid"), request)
             return result
 
         if user.role == "admin":

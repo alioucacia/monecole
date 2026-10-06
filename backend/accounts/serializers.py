@@ -10,7 +10,19 @@ from rest_framework_simplejwt.serializers import TokenObtainPairSerializer
 
 from core.validators import EXTENSIONS_IMAGE, TAILLE_MAX_IMAGE, valider_taille_fichier
 
-from .models import JournalUtilisateur, User
+from .models import AppareilConnu, EvenementSecurite, JournalUtilisateur, SessionActive, User
+
+
+class SecondFacteurRequis(AuthenticationFailed):
+    """Mot de passe correct, mais un second facteur est exigé — intercepté par `LoginView`, qui
+    renvoie `code="otp_requis"` avec la méthode attendue (« otp » : code envoyé par e-mail/SMS,
+    « totp » : application d'authentification) et le ticket à présenter à
+    `VerifierOtpConnexionView` (voir securite.creer_ticket_2fa)."""
+
+    def __init__(self, detail, methode: str, ticket: str):
+        super().__init__(detail, code="otp_requis")
+        self.methode = methode
+        self.ticket = ticket
 
 
 class UniqueLoginFieldsMixin:
@@ -66,6 +78,7 @@ class UserSerializer(UniqueLoginFieldsMixin, serializers.ModelSerializer):
             "doit_changer_mot_de_passe", "otp_actif", "email_verifie", "telephone_verifie",
             "ecole_couleur_principale", "ecole_couleur_secondaire", "ecole_fonctionnalites_desactivees",
             "ecole_logo", "ecole_adresse", "en_ligne", "a_code_suppression",
+            "totp_actif", "verrouille_jusqu_a",
         ]
         # CRITIQUE : `role` doit rester en lecture seule ici. `UserSerializer` sert à la fois à
         # `UserViewSet` (réservé à IsAdmin — qui ne l'utilise de toute façon que pour
@@ -89,6 +102,9 @@ class UserSerializer(UniqueLoginFieldsMixin, serializers.ModelSerializer):
         read_only_fields = [
             "id", "date_joined", "last_login", "ecole", "doit_changer_mot_de_passe", "role",
             "email_verifie", "telephone_verifie",
+            # Ne s'activent/se lèvent que via les endpoints de sécurité dédiés (mot de passe +
+            # code exigés), jamais par un simple PATCH du profil.
+            "totp_actif", "verrouille_jusqu_a",
         ]
 
     def validate_photo(self, value):
@@ -166,8 +182,64 @@ class VerifierOtpConnexionSerializer(serializers.Serializer):
     le mot de passe a déjà été vérifié à l'étape précédente (`/auth/login/`), il ne reste qu'à
     confirmer le code reçu par e-mail/SMS."""
 
-    identifiant = serializers.CharField()
-    code = serializers.CharField(max_length=6, min_length=6)
+    identifiant = serializers.CharField(required=False, allow_blank=True)
+    # 6 chiffres (e-mail/SMS ou application), ou un code de secours « XXXX-XXXX ».
+    code = serializers.CharField(max_length=12, min_length=6)
+    # Renvoyé par /auth/login/ avec code="otp_requis" — obligatoire pour la méthode « totp ».
+    ticket = serializers.CharField(required=False, allow_blank=True)
+
+    def validate(self, attrs):
+        if not attrs.get("identifiant") and not attrs.get("ticket"):
+            raise serializers.ValidationError("Identifiant ou ticket de connexion requis.")
+        return attrs
+
+
+class SessionActiveSerializer(serializers.ModelSerializer):
+    courante = serializers.SerializerMethodField()
+
+    class Meta:
+        model = SessionActive
+        fields = ["id", "appareil_libelle", "adresse_ip", "cree_le", "derniere_activite", "expire_le", "courante"]
+
+    def get_courante(self, obj) -> bool:
+        return obj.sid == self.context.get("sid")
+
+
+class AppareilConnuSerializer(serializers.ModelSerializer):
+    sessions_actives = serializers.IntegerField(read_only=True)
+    courant = serializers.SerializerMethodField()
+
+    class Meta:
+        model = AppareilConnu
+        fields = ["id", "libelle", "premiere_connexion", "derniere_connexion", "derniere_ip", "sessions_actives", "courant"]
+
+    def get_courant(self, obj) -> bool:
+        return obj.pk == self.context.get("appareil_courant")
+
+
+class EvenementSecuriteSerializer(serializers.ModelSerializer):
+    type_display = serializers.CharField(source="get_type_display", read_only=True)
+    niveau_display = serializers.CharField(source="get_niveau_display", read_only=True)
+
+    class Meta:
+        model = EvenementSecurite
+        fields = ["id", "type", "type_display", "niveau", "niveau_display", "description", "adresse_ip", "appareil", "horodatage", "lu"]
+
+
+class MotDePasseSerializer(serializers.Serializer):
+    mot_de_passe = serializers.CharField(write_only=True)
+
+
+class CodeTotpSerializer(serializers.Serializer):
+    code = serializers.CharField(max_length=12, min_length=6)
+
+
+class DesactiverTotpSerializer(MotDePasseSerializer):
+    code = serializers.CharField(max_length=12, min_length=6)
+
+
+class BasculerOtpSerializer(MotDePasseSerializer):
+    actif = serializers.BooleanField()
 
 
 class PasswordResetRequestSerializer(serializers.Serializer):
@@ -231,7 +303,29 @@ class CustomTokenObtainPairSerializer(TokenObtainPairSerializer):
         return token
 
     def validate(self, attrs):
-        data = super().validate(attrs)
+        from django.db.models import Q
+
+        from . import securite
+
+        request = self.context.get("request")
+        identifiant = attrs.get(self.username_field) or ""
+        cible = (
+            User.objects.filter(Q(username__iexact=identifiant) | Q(email__iexact=identifiant) | Q(phone=identifiant))
+            .first() if identifiant else None
+        )
+        if not securite.est_protege(cible):
+            cible = None
+        if cible is not None:
+            # Limitation des tentatives (Super Admin) : verrouillé = mot de passe même pas testé.
+            securite.verifier_verrou(cible, request)
+        from rest_framework.exceptions import AuthenticationFailed as EchecAuthentification
+
+        try:
+            data = super().validate(attrs)
+        except EchecAuthentification:  # celle de DRF, que lève SimpleJWT (la nôtre en hérite)
+            if cible is not None:
+                securite.enregistrer_echec_connexion(cible, request, EvenementSecurite.Type.ECHEC_MOT_DE_PASSE)
+            raise
         user = self.user
         if user.role != User.Role.SUPERADMIN:
             from tenants.models import ParametresPlateforme
@@ -248,6 +342,14 @@ class CustomTokenObtainPairSerializer(TokenObtainPairSerializer):
                     "Contactez l'administrateur de la plateforme.",
                     code="ecole_inactive",
                 )
+
+        if securite.est_protege(user) and user.totp_actif:
+            # Application d'authentification (Super Admin) : aucun envoi, le code est généré par
+            # le téléphone — le ticket prouve à l'étape suivante que le mot de passe est correct.
+            raise SecondFacteurRequis(
+                "Saisissez le code de votre application d'authentification (ou un code de secours).",
+                methode="totp", ticket=securite.creer_ticket_2fa(user),
+            )
 
         if user.otp_actif:
             # Double authentification activée par CET utilisateur (voir User.otp_actif) : le mot
@@ -266,15 +368,14 @@ class CustomTokenObtainPairSerializer(TokenObtainPairSerializer):
             # arriver serait un verrou sans porte — on laisse passer cette fois-ci plutôt que de
             # coincer l'utilisateur hors de son propre compte.
             if not (resultat["cree"] and not (resultat["email_envoye"] or resultat["sms_envoye"])):
-                raise AuthenticationFailed(
+                raise SecondFacteurRequis(
                     "Un code de vérification a été envoyé par e-mail/SMS — saisissez-le pour terminer la connexion.",
-                    code="otp_requis",
+                    methode="otp", ticket=securite.creer_ticket_2fa(user),
                 )
 
-        from .services import journaliser
-
-        journaliser(user, JournalUtilisateur.Categorie.CONNEXION, "Connexion à la plateforme", self.context.get("request"))
-
+        data.update(securite.finaliser_connexion(
+            user, request, "Connexion à la plateforme", jetons={"access": data["access"], "refresh": data["refresh"]},
+        ))
         data["user"] = UserSerializer(user).data
         return data
 

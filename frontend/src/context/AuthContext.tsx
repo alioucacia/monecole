@@ -87,6 +87,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const logout = useCallback(() => {
+    // Ferme la session côté serveur (Super Admin : session révocable, voir accounts/securite.py)
+    // — sans attendre la réponse : la déconnexion locale ne doit jamais dépendre du réseau. Pas
+    // en mode support : la session courante est celle du compte consulté, pas du Super Admin.
+    const access = tokenStorage.getAccess();
+    if (access && !sessionStorage.getItem(RETOUR_KEY)) {
+      authApi.logout(access).catch(() => undefined);
+    }
     tokenStorage.clear();
     sessionStorage.removeItem(RETOUR_KEY);
     localStorage.removeItem(CACHED_USER_KEY);

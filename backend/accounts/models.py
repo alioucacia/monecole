@@ -91,6 +91,23 @@ class User(AbstractUser):
     # comptes. Un nouveau mot de passe (« Réinitialiser le mot de passe ») lui rend l'accès.
     acces_supprime = models.BooleanField(default=False)
 
+    # Sécurité avancée du Super Admin (voir accounts/securite.py) — sans objet pour les autres
+    # rôles. Application d'authentification (TOTP, RFC 6238) : `totp_secret` est rempli dès
+    # l'initialisation (QR code affiché), mais n'est exigé à la connexion qu'une fois
+    # `totp_actif` confirmé par un premier code valide — un secret scanné à moitié ne doit jamais
+    # pouvoir bloquer le compte. `totp_dernier_pas` empêche de rejouer un code déjà utilisé
+    # pendant sa fenêtre de validité (30 s).
+    totp_secret = models.CharField(max_length=64, blank=True, editable=False)
+    totp_actif = models.BooleanField(default=False)
+    totp_dernier_pas = models.BigIntegerField(null=True, blank=True, editable=False)
+    # Codes de secours à usage unique (empreintes HMAC, jamais en clair) — permettent de se
+    # connecter si le téléphone portant l'application d'authentification est perdu.
+    codes_secours = models.JSONField(default=list, blank=True, editable=False)
+    # Verrouillage temporaire après trop d'échecs de connexion (voir
+    # securite.enregistrer_echec_connexion) — le mot de passe n'est même plus vérifié tant que
+    # cette date n'est pas passée.
+    verrouille_jusqu_a = models.DateTimeField(null=True, blank=True, editable=False)
+
     # Une session est considérée active si une requête authentifiée a eu lieu dans ce délai —
     # au-delà, l'utilisateur est considéré hors ligne même si son jeton reste valide (JWT
     # stateless : rien ne prévient le serveur d'une fermeture d'onglet/déconnexion réseau).
@@ -235,3 +252,112 @@ class JournalUtilisateur(models.Model):
 
     def __str__(self):
         return f"{self.utilisateur} — {self.description} ({self.horodatage:%d/%m/%Y %H:%M})"
+
+
+class SessionActive(models.Model):
+    """Session ouverte par un Super Admin (une par connexion réussie) — identifiée par la
+    revendication `sid` embarquée dans ses jetons JWT (voir securite.emettre_jetons) et vérifiée
+    à chaque requête par `PlateformeJWTAuthentication` ainsi qu'au rafraîchissement du jeton.
+    Révoquer une session (`revoquee_le`) rend donc ses jetons inutilisables immédiatement, alors
+    qu'un JWT seul resterait valable jusqu'à son expiration."""
+
+    user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name="sessions_actives")
+    sid = models.CharField(max_length=64, unique=True)
+    appareil = models.ForeignKey(
+        "AppareilConnu", on_delete=models.SET_NULL, null=True, blank=True, related_name="sessions",
+    )
+    adresse_ip = models.GenericIPAddressField(null=True, blank=True)
+    appareil_libelle = models.CharField(max_length=255, blank=True)
+    user_agent = models.CharField(max_length=500, blank=True)
+    cree_le = models.DateTimeField(auto_now_add=True)
+    derniere_activite = models.DateTimeField(auto_now_add=True)
+    expire_le = models.DateTimeField()
+    revoquee_le = models.DateTimeField(null=True, blank=True)
+
+    class Meta:
+        ordering = ["-derniere_activite"]
+
+    def __str__(self):
+        return f"Session {self.user} — {self.appareil_libelle or '?'} ({self.adresse_ip or '?'})"
+
+    @property
+    def active(self) -> bool:
+        from django.utils import timezone
+        return self.revoquee_le is None and self.expire_le > timezone.now()
+
+
+class AppareilConnu(models.Model):
+    """Appareil (navigateur) depuis lequel un Super Admin s'est déjà connecté — reconnu par
+    l'empreinte de l'identifiant aléatoire que le frontend garde dans le navigateur (en-tête
+    `X-Device-Id`). Une connexion depuis un appareil absent de cette liste (ou depuis une adresse
+    IP jamais vue) déclenche une alerte de connexion inhabituelle."""
+
+    user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name="appareils_connus")
+    empreinte = models.CharField(max_length=64)
+    libelle = models.CharField(max_length=255, blank=True)
+    premiere_connexion = models.DateTimeField(auto_now_add=True)
+    derniere_connexion = models.DateTimeField(auto_now_add=True)
+    derniere_ip = models.GenericIPAddressField(null=True, blank=True)
+
+    class Meta:
+        ordering = ["-derniere_connexion"]
+        constraints = [models.UniqueConstraint(fields=["user", "empreinte"], name="appareil_unique_par_user")]
+
+    def __str__(self):
+        return f"{self.user} — {self.libelle or self.empreinte[:8]}"
+
+
+class EvenementSecurite(models.Model):
+    """Journal de sécurité du Super Admin : connexions réussies/échouées (= historique des
+    connexions), verrouillages, changements de 2FA, révocations de sessions, alertes de connexion
+    inhabituelle... Distinct de `JournalUtilisateur` (activité métier, consultable par l'admin
+    d'école) : celui-ci n'est visible que par les Super Admins."""
+
+    class Type(models.TextChoices):
+        CONNEXION_REUSSIE = "connexion_reussie", "Connexion réussie"
+        ECHEC_MOT_DE_PASSE = "echec_mot_de_passe", "Échec de connexion (mot de passe)"
+        ECHEC_2FA = "echec_2fa", "Échec de connexion (code 2FA)"
+        CONNEXION_BLOQUEE = "connexion_bloquee", "Tentative sur compte verrouillé"
+        COMPTE_VERROUILLE = "compte_verrouille", "Compte verrouillé"
+        COMPTE_DEVERROUILLE = "compte_deverrouille", "Compte déverrouillé"
+        CONNEXION_INHABITUELLE = "connexion_inhabituelle", "Connexion inhabituelle"
+        DECONNEXION = "deconnexion", "Déconnexion"
+        SESSION_REVOQUEE = "session_revoquee", "Session révoquée"
+        SESSIONS_REVOQUEES = "sessions_revoquees", "Toutes les sessions révoquées"
+        APPAREIL_RETIRE = "appareil_retire", "Appareil retiré"
+        TOTP_ACTIVE = "totp_active", "Application d'authentification activée"
+        TOTP_DESACTIVE = "totp_desactive", "Application d'authentification désactivée"
+        OTP_ACTIVE = "otp_active", "Code par e-mail/SMS activé"
+        OTP_DESACTIVE = "otp_desactive", "Code par e-mail/SMS désactivé"
+        CODES_SECOURS_REGENERES = "codes_secours_regeneres", "Codes de secours régénérés"
+        CODE_SECOURS_UTILISE = "code_secours_utilise", "Code de secours utilisé"
+        MOT_DE_PASSE_CHANGE = "mot_de_passe_change", "Mot de passe changé"
+
+    class Niveau(models.TextChoices):
+        INFO = "info", "Information"
+        AVERTISSEMENT = "avertissement", "Avertissement"
+        CRITIQUE = "critique", "Critique"
+
+    user = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name="evenements_securite",
+    )
+    type = models.CharField(max_length=30, choices=Type.choices)
+    niveau = models.CharField(max_length=15, choices=Niveau.choices, default=Niveau.INFO)
+    description = models.CharField(max_length=255)
+    adresse_ip = models.GenericIPAddressField(null=True, blank=True)
+    appareil = models.CharField(max_length=255, blank=True)
+    horodatage = models.DateTimeField(auto_now_add=True)
+    # Alertes (niveau ≠ info) à signaler tant qu'elles n'ont pas été consultées.
+    lu = models.BooleanField(default=False)
+
+    TYPES_CONNEXION = [
+        Type.CONNEXION_REUSSIE, Type.ECHEC_MOT_DE_PASSE, Type.ECHEC_2FA, Type.CONNEXION_BLOQUEE,
+    ]
+    TYPES_ECHEC = [Type.ECHEC_MOT_DE_PASSE, Type.ECHEC_2FA]
+
+    class Meta:
+        ordering = ["-horodatage"]
+        indexes = [models.Index(fields=["user", "type", "horodatage"])]
+
+    def __str__(self):
+        return f"{self.user} — {self.get_type_display()} ({self.horodatage:%d/%m/%Y %H:%M})"

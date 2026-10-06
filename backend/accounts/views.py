@@ -41,6 +41,40 @@ class LoginView(TokenObtainPairView):
     throttle_classes = [ScopedRateThrottle]
     throttle_scope = "login"
 
+    def post(self, request, *args, **kwargs):
+        from .serializers import SecondFacteurRequis
+
+        try:
+            return super().post(request, *args, **kwargs)
+        except SecondFacteurRequis as exc:
+            # Réponse dédiée plutôt que le gestionnaire d'erreurs générique : le frontend a
+            # besoin de la méthode attendue et du ticket pour l'étape suivante.
+            return Response(
+                {"detail": str(exc.detail), "message": str(exc.detail), "code": "otp_requis",
+                 "methode": exc.methode, "ticket": exc.ticket},
+                status=status.HTTP_401_UNAUTHORIZED,
+            )
+
+
+class LogoutView(APIView):
+    """Ferme la session côté serveur (Super Admin : la `SessionActive` du jeton est révoquée,
+    ses jetons deviennent aussitôt inutilisables). Sans effet pour les autres rôles, dont les
+    jetons restent sans état — le frontend les efface de toute façon."""
+
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request):
+        from . import securite
+        from .models import EvenementSecurite
+
+        sid = securite.sid_de_requete(request)
+        if securite.est_protege(request.user) and sid:
+            from django.utils import timezone
+
+            securite.sessions_actives(request.user).filter(sid=sid).update(revoquee_le=timezone.now())
+            securite.evenement(request.user, EvenementSecurite.Type.DECONNEXION, "Déconnexion", request)
+        return Response(status=status.HTTP_204_NO_CONTENT)
+
 
 class CustomTokenRefreshView(TokenRefreshView):
     """Comme `TokenRefreshView`, mais applique aussi le blocage maintenance/école suspendue.
@@ -59,7 +93,14 @@ class CustomTokenRefreshView(TokenRefreshView):
                 user = User.objects.select_related("ecole").get(pk=RefreshToken(refresh_str)["user_id"])
             except Exception:
                 user = None
-            if user and user.role != User.Role.SUPERADMIN:
+            if user and user.role == User.Role.SUPERADMIN:
+                # Une session révoquée ne doit pas pouvoir se « ressusciter » en rafraîchissant
+                # son jeton — et une session encore valide voit son expiration repoussée, comme
+                # la rotation du refresh token le fait côté SimpleJWT.
+                from .securite import session_valide
+
+                session_valide(user, RefreshToken(refresh_str).get("sid"), request, prolonger=True)
+            elif user:
                 from tenants.models import ParametresPlateforme
 
                 parametres = ParametresPlateforme.charger()
@@ -80,6 +121,10 @@ class MeView(APIView):
         return Response(UserSerializer(request.user).data)
 
     def patch(self, request):
+        if request.user.role == User.Role.SUPERADMIN and "otp_actif" in request.data:
+            # Super Admin : la double authentification se règle depuis la page Sécurité, qui
+            # exige le mot de passe — une session détournée ne doit pas pouvoir la couper.
+            raise ValidationError({"otp_actif": "Réglez la double authentification depuis la page « Sécurité du compte »."})
         serializer = UserSerializer(request.user, data=request.data, partial=True)
         serializer.is_valid(raise_exception=True)
         serializer.save()
@@ -127,6 +172,9 @@ class ChangePasswordView(APIView):
         user.set_password(serializer.validated_data["new_password"])
         user.doit_changer_mot_de_passe = False
         user.save()
+        from .securite import apres_changement_mot_de_passe, sid_de_requete
+
+        apres_changement_mot_de_passe(user, request, garder_sid=sid_de_requete(request))
         return Response({"detail": "Mot de passe mis à jour."})
 
 
@@ -205,6 +253,9 @@ class PasswordResetConfirmView(APIView):
         user.set_password(serializer.validated_data["new_password"])
         user.doit_changer_mot_de_passe = False
         user.save()
+        from .securite import apres_changement_mot_de_passe
+
+        apres_changement_mot_de_passe(user, request, reinitialisation=True)
         return Response({"detail": "Mot de passe réinitialisé avec succès."})
 
 
@@ -271,6 +322,9 @@ class PasswordResetOtpCompleteView(APIView):
         user.set_password(serializer.validated_data["new_password"])
         user.doit_changer_mot_de_passe = False
         user.save()
+        from .securite import apres_changement_mot_de_passe
+
+        apres_changement_mot_de_passe(user, request, reinitialisation=True)
         return Response({"detail": "Mot de passe réinitialisé avec succès."})
 
 
@@ -287,30 +341,54 @@ class VerifierOtpConnexionView(APIView):
     def post(self, request):
         from django.db.models import Q
 
-        from .models import CodeOTP
-        from .serializers import CustomTokenObtainPairSerializer, VerifierOtpConnexionSerializer
-        from .services import journaliser, verifier_otp
+        from . import securite
+        from .models import CodeOTP, EvenementSecurite
+        from .serializers import VerifierOtpConnexionSerializer
+        from .services import verifier_otp
+
+        # Erreurs en 400 (ValidationError) et non 401 : un 401 ferait croire à l'intercepteur du
+        # frontend (api/client.ts) à une session expirée, qui redirigerait alors vers /login au
+        # lieu d'afficher « code invalide » sur l'écran de saisie.
+        invalide = ValidationError({"code": "Code invalide ou expiré."})
 
         serializer = VerifierOtpConnexionSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
-        identifiant = serializer.validated_data["identifiant"]
+        ticket = serializer.validated_data.get("ticket")
+        code = serializer.validated_data["code"].strip()
 
-        try:
-            user = User.objects.get(
-                Q(username__iexact=identifiant) | Q(email__iexact=identifiant) | Q(phone=identifiant)
-            )
-        except (User.DoesNotExist, User.MultipleObjectsReturned):
-            raise AuthenticationFailed("Code invalide ou expiré.")
+        if ticket:
+            user = securite.lire_ticket_2fa(ticket)
+            if user is None:
+                raise ValidationError({"code": "Délai de saisie dépassé — reconnectez-vous avec votre mot de passe."})
+        else:
+            identifiant = serializer.validated_data.get("identifiant", "")
+            try:
+                user = User.objects.get(
+                    Q(username__iexact=identifiant) | Q(email__iexact=identifiant) | Q(phone=identifiant)
+                )
+            except (User.DoesNotExist, User.MultipleObjectsReturned):
+                raise invalide
 
-        if not verifier_otp(user, CodeOTP.Objectif.CONNEXION, serializer.validated_data["code"]):
-            raise AuthenticationFailed("Code invalide ou expiré.")
+        protege = securite.est_protege(user)
+        if protege:
+            try:
+                securite.verifier_verrou(user, request)
+            except AuthenticationFailed as exc:
+                raise ValidationError({"code": str(exc.detail)})
 
-        token = CustomTokenObtainPairSerializer.get_token(user)
-        journaliser(user, JournalUtilisateur.Categorie.CONNEXION, "Connexion à la plateforme (2FA)", request)
-        return Response({
-            "access": str(token.access_token), "refresh": str(token),
-            "user": UserSerializer(user).data,
-        })
+        if protege and user.totp_actif:
+            # Le ticket est obligatoire ici (voir securite.creer_ticket_2fa).
+            valide = bool(ticket) and securite.verifier_second_facteur_totp(user, code, request)
+        else:
+            valide = verifier_otp(user, CodeOTP.Objectif.CONNEXION, code)
+
+        if not valide:
+            if protege and securite.enregistrer_echec_connexion(user, request, EvenementSecurite.Type.ECHEC_2FA):
+                raise ValidationError({"code": "Trop de tentatives échouées : compte temporairement verrouillé."})
+            raise invalide
+
+        jetons = securite.finaliser_connexion(user, request, "Connexion à la plateforme (2FA)")
+        return Response({**jetons, "user": UserSerializer(user).data})
 
 
 class DemanderVerificationView(APIView):
@@ -528,3 +606,14 @@ class SuperAdminAccountViewSet(viewsets.ModelViewSet):
         if User.objects.filter(role=User.Role.SUPERADMIN).count() <= 1:
             raise ValidationError("Impossible de supprimer le dernier compte Super Admin.")
         instance.delete()
+
+    @action(detail=True, methods=["post"])
+    def deverrouiller(self, request, pk=None):
+        """Lève le verrouillage temporaire (trop d'échecs de connexion) d'un compte Super Admin —
+        sans attendre la fin du délai, par un autre Super Admin qui a vérifié que c'était bien
+        son titulaire qui s'était trompé."""
+        from .securite import deverrouiller
+
+        compte = self.get_object()
+        deverrouiller(compte, par=request.user, request=request)
+        return Response(UserSerializer(compte).data)

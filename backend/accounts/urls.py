@@ -9,6 +9,7 @@ from .views import (
     DefinirCodeSuppressionView,
     DemanderVerificationView,
     LoginView,
+    LogoutView,
     MeView,
     MonActiviteView,
     PasswordResetConfirmView,
@@ -20,13 +21,16 @@ from .views import (
     UserViewSet,
     VerifierOtpConnexionView,
 )
+from .views_securite import SecuriteViewSet
 
 router = DefaultRouter()
 router.register("users", UserViewSet, basename="user")
 router.register("comptes-superadmin", SuperAdminAccountViewSet, basename="compte-superadmin")
+router.register("securite", SecuriteViewSet, basename="securite")
 
 urlpatterns = [
     path("login/", LoginView.as_view(), name="login"),
+    path("logout/", LogoutView.as_view(), name="logout"),
     path("verifier-otp-connexion/", VerifierOtpConnexionView.as_view(), name="verifier_otp_connexion"),
     path("refresh/", CustomTokenRefreshView.as_view(), name="token_refresh"),
     path("me/", MeView.as_view(), name="me"),

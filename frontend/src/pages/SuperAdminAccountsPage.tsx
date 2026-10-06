@@ -83,6 +83,19 @@ export default function SuperAdminAccountsPage() {
     load();
   };
 
+  const estVerrouille = (u: User) => !!u.verrouille_jusqu_a && new Date(u.verrouille_jusqu_a) > new Date();
+
+  const handleDeverrouiller = async (u: User) => {
+    if (!(await confirmer(`Lever le verrouillage du compte « ${u.full_name || u.username} » ? Vérifiez d'abord que ce sont bien ses propres tentatives qui l'ont bloqué.`))) return;
+    try {
+      await comptesSuperAdminApi.deverrouiller(u.id);
+      toast.success("Compte déverrouillé.");
+      load();
+    } catch (err) {
+      toast.error(extractErrorMessage(err));
+    }
+  };
+
   const handleDelete = async (u: User) => {
     if (!(await confirmer(`Supprimer définitivement le compte « ${u.full_name || u.username} » ?`, { danger: true }))) return;
     try {
@@ -115,12 +128,21 @@ export default function SuperAdminAccountsPage() {
               <td className="px-4 py-3 text-xs font-mono text-slate-500">{u.username}</td>
               <td className="px-4 py-3 text-slate-500 text-xs">{u.email || "—"}</td>
               <td className="px-4 py-3 text-slate-500 text-xs">{u.phone || "—"}</td>
-              <td className="px-4 py-3"><Badge color={u.is_active ? "green" : "rose"}>{u.is_active ? "Actif" : "Désactivé"}</Badge></td>
+              <td className="px-4 py-3">
+                <div className="flex flex-wrap gap-1">
+                  <Badge color={u.is_active ? "green" : "rose"}>{u.is_active ? "Actif" : "Désactivé"}</Badge>
+                  {estVerrouille(u) && <Badge color="amber">🔒 Verrouillé</Badge>}
+                  {u.totp_actif && <Badge color="teal">2FA</Badge>}
+                </div>
+              </td>
               <td className="px-4 py-3">
                 <div className="flex gap-3">
                   <button onClick={() => openEdit(u)} className="text-xs font-semibold text-brand-600 hover:underline">Modifier</button>
                   {u.id !== moi?.id && (
                     <>
+                      {estVerrouille(u) && (
+                        <button onClick={() => handleDeverrouiller(u)} className="text-xs font-semibold text-amber-600 hover:underline">Déverrouiller</button>
+                      )}
                       <button onClick={() => handleToggleActif(u)} className={`text-xs font-semibold hover:underline ${u.is_active ? "text-rose-600" : "text-emerald-600"}`}>
                         {u.is_active ? "Désactiver" : "Réactiver"}
                       </button>

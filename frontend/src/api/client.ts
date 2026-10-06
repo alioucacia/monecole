@@ -81,10 +81,33 @@ export function definirAnneeVue(id: number | null) {
   anneeVue = id;
 }
 
+/** Identifiant aléatoire et stable de CE navigateur — permet au serveur de reconnaître les
+ * appareils déjà utilisés par le Super Admin et d'alerter sur une connexion depuis un nouvel
+ * appareil (voir backend accounts/securite.py). Ne contient aucune information personnelle. */
+const DEVICE_ID_KEY = "ecole_device_id";
+function deviceId(): string {
+  try {
+    let id = localStorage.getItem(DEVICE_ID_KEY);
+    if (!id) {
+      id = typeof crypto !== "undefined" && "randomUUID" in crypto
+        ? crypto.randomUUID()
+        : `${Date.now().toString(36)}-${Math.random().toString(36).slice(2)}${Math.random().toString(36).slice(2)}`;
+      localStorage.setItem(DEVICE_ID_KEY, id);
+    }
+    return id;
+  } catch {
+    return "";
+  }
+}
+
 api.interceptors.request.use((config) => {
   const token = tokenStorage.getAccess();
   if (token && config.headers) {
     config.headers.Authorization = `Bearer ${token}`;
+  }
+  const appareil = deviceId();
+  if (appareil && config.headers) {
+    config.headers["X-Device-Id"] = appareil;
   }
   // En paramètre d'URL plutôt qu'en en-tête : le cache hors-ligne (clé = URL) distingue ainsi
   // les années, et aucun réglage CORS n'est nécessaire. Ignoré par le serveur hors administrateur.
@@ -122,7 +145,9 @@ api.interceptors.response.use(
     // `extractErrorMessage`, pas besoin d'un toast en plus ni de déconnexion (il n'y a pas
     // encore de session à cette étape).
     const errorCode = (error.response?.data as { code?: string } | undefined)?.code;
-    const isLoginRequest = originalRequest?.url?.includes("/auth/login");
+    // La déconnexion aussi : sa session peut déjà avoir été fermée côté serveur (401 attendu,
+    // sans conséquence) — ni rafraîchissement, ni toast, ni redirection pour elle.
+    const isLoginRequest = originalRequest?.url?.includes("/auth/login") || originalRequest?.url?.includes("/auth/logout");
     if (error.response?.status === 401 && !isLoginRequest && (errorCode === "maintenance" || errorCode === "ecole_inactive" || errorCode === "session_expiree")) {
       tokenStorage.clear();
       // Pas de toast pour "maintenance" : LoginPage affiche déjà, au chargement, un écran de
@@ -136,7 +161,7 @@ api.interceptors.response.use(
       return Promise.reject(error);
     }
 
-    if (error.response?.status === 401 && originalRequest && !originalRequest._retry && !originalRequest.url?.includes("/auth/login")) {
+    if (error.response?.status === 401 && originalRequest && !originalRequest._retry && !isLoginRequest) {
       const refresh = tokenStorage.getRefresh();
       if (!refresh) {
         tokenStorage.clear();

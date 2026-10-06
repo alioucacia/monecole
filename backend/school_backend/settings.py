@@ -242,6 +242,12 @@ else:
     )
 CORS_ALLOW_CREDENTIALS = True
 CORS_EXPOSE_HEADERS = ["Content-Disposition"]
+# X-Device-Id : identifiant aléatoire du navigateur envoyé par le frontend (api/client.ts), qui
+# sert à reconnaître les appareils du Super Admin (alertes de connexion inhabituelle — voir
+# accounts/securite.py). En-tête non standard : à autoriser explicitement en plus des défauts.
+from corsheaders.defaults import default_headers  # noqa: E402
+
+CORS_ALLOW_HEADERS = (*default_headers, "x-device-id")
 
 # URL du frontend, utilisée pour construire le lien envoyé dans l'e-mail de réinitialisation
 # et le lien de vérification des badges (QR code).

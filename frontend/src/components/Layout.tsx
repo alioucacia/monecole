@@ -35,6 +35,7 @@ const NAV_CATEGORIES: NavCategory[] = [
       { to: "/journal-activite", label: "Journal d'activité", icon: "🕓", roles: ["superadmin"] },
       { to: "/sauvegardes", label: "Sauvegardes", icon: "🗄️", roles: ["superadmin"] },
       { to: "/comptes-superadmin", label: "Comptes Super Admin", icon: "🛡️", roles: ["superadmin"] },
+      { to: "/securite", label: "Sécurité du compte", icon: "🔐", roles: ["superadmin"] },
       { to: "/recherche-globale", label: "Recherche globale", icon: "🔎", roles: ["superadmin"] },
       { to: "/plans-abonnement", label: "Plans d'abonnement", icon: "🏷️", roles: ["superadmin"] },
       { to: "/annonces-plateforme", label: "Annonces plateforme", icon: "📢", roles: ["superadmin"] },

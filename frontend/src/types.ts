@@ -40,6 +40,56 @@ export interface User {
   // true si ce Super Admin a déjà défini un code de suppression d'école (voir
   // User.code_suppression côté backend) — le code lui-même n'est jamais renvoyé.
   a_code_suppression: boolean;
+  /** Application d'authentification (TOTP) — Super Admin uniquement, voir SecuritePage. */
+  totp_actif: boolean;
+  /** Compte verrouillé après trop d'échecs de connexion, jusqu'à cette date (Super Admin). */
+  verrouille_jusqu_a: string | null;
+}
+
+// ---- Sécurité du compte Super Admin (voir backend accounts/securite.py) ----
+export interface ResumeSecurite {
+  totp_actif: boolean;
+  otp_actif: boolean;
+  codes_secours_restants: number;
+  sessions_actives: number;
+  appareils: number;
+  alertes_non_lues: number;
+  echecs_24h: number;
+  connexion_precedente: EvenementSecurite | null;
+  politique: { max_echecs: number; fenetre_minutes: number; duree_verrouillage_minutes: number };
+}
+
+export interface SessionActive {
+  id: number;
+  appareil_libelle: string;
+  adresse_ip: string | null;
+  cree_le: string;
+  derniere_activite: string;
+  expire_le: string;
+  courante: boolean;
+}
+
+export interface AppareilConnu {
+  id: number;
+  libelle: string;
+  premiere_connexion: string;
+  derniere_connexion: string;
+  derniere_ip: string | null;
+  sessions_actives: number;
+  courant: boolean;
+}
+
+export interface EvenementSecurite {
+  id: number;
+  type: string;
+  type_display: string;
+  niveau: "info" | "avertissement" | "critique";
+  niveau_display: string;
+  description: string;
+  adresse_ip: string | null;
+  appareil: string;
+  horodatage: string;
+  lu: boolean;
 }
 
 export type StatutAbonnement = "suspendu" | "paye" | "en_attente" | "en_retard" | "bloque";

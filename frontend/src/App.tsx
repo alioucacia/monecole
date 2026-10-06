@@ -45,6 +45,7 @@ import ResultsPage from "./pages/ResultsPage";
 import SauvegardesPage from "./pages/SauvegardesPage";
 import SchedulePage from "./pages/SchedulePage";
 import SuperAdminAccountsPage from "./pages/SuperAdminAccountsPage";
+import SecuritePage from "./pages/SecuritePage";
 import SchoolLifePage from "./pages/SchoolLifePage";
 import StaffPage from "./pages/StaffPage";
 import StudentDetailPage from "./pages/StudentDetailPage";
@@ -128,6 +129,14 @@ export default function App() {
           element={
             <ProtectedRoute roles={["superadmin"]}>
               <SuperAdminAccountsPage />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/securite"
+          element={
+            <ProtectedRoute roles={["superadmin"]}>
+              <SecuritePage />
             </ProtectedRoute>
           }
         />

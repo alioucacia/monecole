@@ -78,6 +78,13 @@ export default function LoginPage() {
   // qu'à saisir le code reçu par e-mail/SMS pour obtenir le vrai accès.
   const [otpRequis, setOtpRequis] = useState(false);
   const [otpCode, setOtpCode] = useState("");
+  // « otp » : code envoyé par e-mail/SMS ; « totp » : application d'authentification (Super
+  // Admin) — rien n'est envoyé, et un code de secours « XXXX-XXXX » est accepté à la place.
+  // `otpTicket` prouve au serveur que le mot de passe vient d'être vérifié (5 min de validité).
+  const [otpMethode, setOtpMethode] = useState<"otp" | "totp">("otp");
+  const [otpTicket, setOtpTicket] = useState("");
+  const [codeSecoursMode, setCodeSecoursMode] = useState(false);
+  const [codeSecours, setCodeSecours] = useState("");
   // Renvoi du code — délai aligné sur DELAI_MIN_RENVOI_SECONDES côté backend (accounts/services.py) :
   // en dessous, generer_otp() ne fait rien de plus (le code déjà envoyé est encore valable), ce
   // ne serait donc pas un vrai renvoi. `relancer()` est appelé au premier envoi (dans handleSubmit)
@@ -184,6 +191,11 @@ export default function LoginPage() {
       await login(username, password, rememberMe);
     } catch (err) {
       if (axios.isAxiosError(err) && err.response?.data && (err.response.data as { code?: string }).code === "otp_requis") {
+        const corps = err.response.data as { methode?: "otp" | "totp"; ticket?: string };
+        setOtpMethode(corps.methode === "totp" ? "totp" : "otp");
+        setOtpTicket(corps.ticket || "");
+        setCodeSecoursMode(false);
+        setCodeSecours("");
         setOtpRequis(true);
         setFormError("");
         setLoading(false);
@@ -200,15 +212,15 @@ export default function LoginPage() {
 
   const submitOtp = async (code: string) => {
     setFormError("");
-    if (code.length !== 6) {
-      setFormError("Le code comporte 6 chiffres.");
+    if (codeSecoursMode ? code.replace(/[\s-]/g, "").length !== 8 : code.length !== 6) {
+      setFormError(codeSecoursMode ? "Un code de secours comporte 8 caractères (XXXX-XXXX)." : "Le code comporte 6 chiffres.");
       setShake(true);
       setTimeout(() => setShake(false), 500);
       return;
     }
     setLoading(true);
     try {
-      const { data } = await authApi.verifierOtpConnexion(username, code);
+      const { data } = await authApi.verifierOtpConnexion(username, code, otpTicket || undefined);
       // La redirection vers l'espace de l'utilisateur se fait ensuite automatiquement, sans
       // action supplémentaire : `completeLogin` met à jour `user` dans le contexte, ce qui fait
       // passer `if (user) return <Navigate .../>` en tête de ce composant au rendu suivant.
@@ -224,7 +236,7 @@ export default function LoginPage() {
 
   const handleSubmitOtp = (e: FormEvent) => {
     e.preventDefault();
-    submitOtp(otpCode.trim());
+    submitOtp(codeSecoursMode ? codeSecours.trim() : otpCode.trim());
   };
 
   const handleResendOtp = async () => {
@@ -240,6 +252,8 @@ export default function LoginPage() {
       completeLogin(data.access, data.refresh, data.user, rememberMe);
     } catch (err) {
       if (axios.isAxiosError(err) && err.response?.data && (err.response.data as { code?: string }).code === "otp_requis") {
+        const ticket = (err.response.data as { ticket?: string }).ticket;
+        if (ticket) setOtpTicket(ticket);
         return;
       }
       setFormError(extractErrorMessage(err) || "Impossible de renvoyer le code.");
@@ -286,26 +300,57 @@ export default function LoginPage() {
             <>
               <h2 className="text-2xl font-extrabold text-ink-900 tracking-tight mb-1 text-center">Vérification</h2>
               <p className="text-slate-500 text-sm mb-6 text-center">
-                Un code à 6 chiffres a été envoyé par e-mail/SMS au compte « {username} ». Saisissez-le ci-dessous.
+                {otpMethode === "totp"
+                  ? codeSecoursMode
+                    ? "Saisissez l'un de vos codes de secours (format XXXX-XXXX). Chaque code ne sert qu'une fois."
+                    : "Ouvrez votre application d'authentification et saisissez le code à 6 chiffres affiché pour ce compte."
+                  : `Un code à 6 chiffres a été envoyé par e-mail/SMS au compte « ${username} ». Saisissez-le ci-dessous.`}
               </p>
               <form noValidate onSubmit={handleSubmitOtp} className={`space-y-5 ${shake ? "animate-shake" : ""}`}>
-                <OtpBoxInput
-                  value={otpCode}
-                  onChange={(v) => { setOtpCode(v); if (formError) setFormError(""); }}
-                  autoFocus
-                  disabled={loading}
-                />
-                <Button type="submit" className="w-full" disabled={loading || otpCode.length !== 6}>
+                {codeSecoursMode ? (
+                  <Input
+                    label="Code de secours"
+                    value={codeSecours}
+                    onChange={(e) => { setCodeSecours(e.target.value.toUpperCase()); if (formError) setFormError(""); }}
+                    placeholder="XXXX-XXXX"
+                    autoFocus
+                    autoComplete="one-time-code"
+                    className="font-mono tracking-widest text-center"
+                    disabled={loading}
+                  />
+                ) : (
+                  <OtpBoxInput
+                    value={otpCode}
+                    onChange={(v) => { setOtpCode(v); if (formError) setFormError(""); }}
+                    autoFocus
+                    disabled={loading}
+                  />
+                )}
+                <Button
+                  type="submit"
+                  className="w-full"
+                  disabled={loading || (codeSecoursMode ? codeSecours.replace(/[\s-]/g, "").length !== 8 : otpCode.length !== 6)}
+                >
                   {loading ? "Vérification…" : "Confirmer"}
                 </Button>
-                <button
-                  type="button"
-                  onClick={handleResendOtp}
-                  disabled={!cooldownOtp.pret}
-                  className="block w-full text-center text-sm font-semibold text-brand-700 hover:text-brand-800 disabled:text-slate-400 disabled:hover:text-slate-400 disabled:cursor-not-allowed"
-                >
-                  {cooldownOtp.pret ? "Renvoyer le code" : `Renvoyer le code dans ${cooldownOtp.restant}s`}
-                </button>
+                {otpMethode === "totp" ? (
+                  <button
+                    type="button"
+                    onClick={() => { setCodeSecoursMode(!codeSecoursMode); setOtpCode(""); setCodeSecours(""); setFormError(""); }}
+                    className="block w-full text-center text-sm font-semibold text-brand-700 hover:text-brand-800"
+                  >
+                    {codeSecoursMode ? "Utiliser l'application d'authentification" : "Téléphone indisponible ? Utiliser un code de secours"}
+                  </button>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={handleResendOtp}
+                    disabled={!cooldownOtp.pret}
+                    className="block w-full text-center text-sm font-semibold text-brand-700 hover:text-brand-800 disabled:text-slate-400 disabled:hover:text-slate-400 disabled:cursor-not-allowed"
+                  >
+                    {cooldownOtp.pret ? "Renvoyer le code" : `Renvoyer le code dans ${cooldownOtp.restant}s`}
+                  </button>
+                )}
                 <button
                   type="button"
                   onClick={() => { setOtpRequis(false); setOtpCode(""); setFormError(""); }}

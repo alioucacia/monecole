@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState, type ChangeEvent, type FormEvent } from "react";
+import { Link } from "react-router-dom";
 
 import { authApi, elevesApi, unwrapList } from "../api/services";
 import { extractBlobErrorMessage, extractErrorMessage } from "../api/client";
@@ -398,6 +399,19 @@ export default function ProfilePage() {
             );
           })}
 
+          {user.role === "superadmin" ? (
+            // Super Admin : 2FA (application d'authentification, e-mail/SMS), sessions et journal
+            // se gèrent sur une page dédiée qui exige le mot de passe pour chaque changement.
+            <div className="rounded-xl border border-slate-100 px-4 py-3 flex items-center justify-between gap-3 flex-wrap">
+              <div>
+                <p className="text-sm font-semibold text-slate-700">Double authentification</p>
+                <p className="text-xs text-slate-400 mt-0.5">
+                  {user.totp_actif ? "Application d'authentification activée." : user.otp_actif ? "Code par e-mail/SMS activé." : "Désactivée."}
+                </p>
+              </div>
+              <Link to="/securite"><Button type="button" variant="secondary">Sécurité du compte →</Button></Link>
+            </div>
+          ) : (
           <div className="rounded-xl border border-slate-100 px-4 py-3 flex items-center justify-between gap-3 flex-wrap">
             <div>
               <p className="text-sm font-semibold text-slate-700">Double authentification</p>
@@ -409,6 +423,7 @@ export default function ProfilePage() {
               {otpToggling ? "…" : user.otp_actif ? "Désactiver" : "Activer"}
             </Button>
           </div>
+          )}
         </div>
       </Card>
 

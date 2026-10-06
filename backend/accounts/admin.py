@@ -1,7 +1,7 @@
 from django.contrib import admin
 from django.contrib.auth.admin import UserAdmin as BaseUserAdmin
 
-from .models import JournalUtilisateur, User
+from .models import EvenementSecurite, JournalUtilisateur, SessionActive, User
 
 
 @admin.register(User)
@@ -22,3 +22,19 @@ class JournalUtilisateurAdmin(admin.ModelAdmin):
     list_filter = ["categorie"]
     search_fields = ["utilisateur__username", "utilisateur__first_name", "utilisateur__last_name", "description"]
     date_hierarchy = "horodatage"
+
+
+@admin.register(EvenementSecurite)
+class EvenementSecuriteAdmin(admin.ModelAdmin):
+    list_display = ["user", "type", "niveau", "description", "adresse_ip", "horodatage"]
+    list_filter = ["type", "niveau"]
+    search_fields = ["user__username", "description", "adresse_ip"]
+    date_hierarchy = "horodatage"
+
+
+@admin.register(SessionActive)
+class SessionActiveAdmin(admin.ModelAdmin):
+    list_display = ["user", "appareil_libelle", "adresse_ip", "cree_le", "derniere_activite", "revoquee_le"]
+    list_filter = ["revoquee_le"]
+    search_fields = ["user__username", "adresse_ip"]
+    exclude = ["sid"]
