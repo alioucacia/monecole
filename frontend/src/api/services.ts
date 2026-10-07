@@ -294,7 +294,7 @@ export const matieresApi = {
 };
 
 export const classesApi = {
-  list: (params?: Record<string, unknown>) => api.get<Paginated<Classe> | Classe[]>("/academics/classes/", { params }),
+  list: (params?: Record<string, unknown>) => api.get<Paginated<Classe> | Classe[]>("/academics/classes/", { params: { page_size: 500, ...params } }),
   get: (id: number) => api.get<Classe>(`/academics/classes/${id}/`),
   create: (data: Partial<Classe>) => api.post<Classe>("/academics/classes/", data),
   update: (id: number, data: Partial<Classe>) => api.patch<Classe>(`/academics/classes/${id}/`, data),
