@@ -59,6 +59,8 @@ export default function StudentsPage() {
   const [modalOpen, setModalOpen] = useState(false);
   const [editing, setEditing] = useState<EleveProfile | null>(null);
   const [form, setForm] = useState(emptyForm);
+  // Cycle choisi dans le formulaire : sert uniquement à filtrer la liste des classes.
+  const [cycleForm, setCycleForm] = useState<Cycle | "">("");
   const [photoFile, setPhotoFile] = useState<File | null>(null);
   const [photoPreview, setPhotoPreview] = useState<string | null>(null);
   const [error, setError] = useState("");
@@ -131,6 +133,7 @@ export default function StudentsPage() {
   const openCreate = () => {
     setEditing(null);
     setForm(emptyForm);
+    setCycleForm("");
     setPhotoFile(null);
     setPhotoPreview(null);
     setError("");
@@ -140,6 +143,7 @@ export default function StudentsPage() {
 
   const openEdit = (eleve: EleveProfile) => {
     setEditing(eleve);
+    setCycleForm("");
     setForm({
       first_name: eleve.user.first_name, last_name: eleve.user.last_name, email: eleve.user.email,
       matricule: eleve.matricule, classe: eleve.classe ? String(eleve.classe) : "",
@@ -191,9 +195,9 @@ export default function StudentsPage() {
       if (editing) {
         await elevesApi.update(editing.id, payload);
       } else {
-        const { data: nouvelEleve } = await elevesApi.create(payload);
-        // Reçu d'inscription imprimé automatiquement dès la création du dossier de l'élève.
-        elevesApi.recuInscription(nouvelEleve.id, `recu_inscription_${nouvelEleve.matricule}.pdf`).catch(() => {});
+        // Pas de téléchargement automatique du reçu d'inscription : il reste disponible à la
+        // demande (bouton « 🧾 Reçu » de la liste).
+        await elevesApi.create(payload);
       }
       if (form.parentMode === "nouveau") {
         // Le parent tout juste créé doit apparaître dans le sélecteur "parent existant" dès la
@@ -575,9 +579,21 @@ export default function StudentsPage() {
           )}
           <Input label="Email" type="email" value={form.email} onChange={(e) => setForm({ ...form, email: e.target.value })} />
           <div>
+            <div className="mb-3">
+            <CycleSelect
+              label="Cycle"
+              value={cycleForm}
+              onChange={(cycle) => {
+                setCycleForm(cycle);
+                // La classe déjà choisie est retirée si elle n'appartient pas au nouveau cycle.
+                const classe = classes.find((c) => String(c.id) === String(form.classe));
+                if (cycle && classe && classe.cycle !== cycle) setForm({ ...form, classe: "" });
+              }}
+            />
+            </div>
             <Select label="Classe" value={form.classe} onChange={(e) => setForm({ ...form, classe: e.target.value })}>
               <option value="">— Aucune —</option>
-              <ClasseOptions classes={classes} avecPlacesDisponibles />
+              <ClasseOptions classes={classes.filter((c) => !cycleForm || c.cycle === cycleForm)} avecPlacesDisponibles />
             </Select>
             {tarifInscription?.type_frais_nom && tarifInscription.montant !== null && (
               <p className="text-xs text-slate-500 mt-1.5">
