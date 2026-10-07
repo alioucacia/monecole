@@ -13,7 +13,9 @@ from django.http import FileResponse, Http404
 from django.utils import timezone
 from rest_framework import viewsets
 from rest_framework.decorators import action
-from rest_framework.permissions import AllowAny, IsAuthenticated
+from rest_framework.exceptions import PermissionDenied, ValidationError
+from rest_framework.parsers import FormParser, JSONParser, MultiPartParser
+from rest_framework.permissions import AllowAny, BasePermission, IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
@@ -27,8 +29,8 @@ from payments.models import Frais, Paiement
 from people.models import AlerteParent, EleveProfile, EnseignantProfile, PaieEnseignant
 from tenants.models import Ecole
 
-from .models import SauvegardeLog
-from .serializers import SauvegardeLogSerializer
+from .models import OperationSauvegardeEcole, SauvegardeLog
+from .serializers import OperationSauvegardeEcoleSerializer, SauvegardeLogSerializer
 
 
 class DashboardView(APIView):
@@ -338,6 +340,107 @@ class SauvegardeViewSet(viewsets.ReadOnlyModelViewSet):
         if not chemin.exists():
             raise Http404("Le fichier de sauvegarde n'est plus disponible sur le serveur.")
         return FileResponse(open(chemin, "rb"), as_attachment=True, filename=log.fichier)
+
+
+class EstAdministrateurEcole(BasePermission):
+    """Administrateur d'une école uniquement — pas le Directeur Général (lecture seule) : une
+    archive contient toutes les données de l'école, mots de passe chiffrés compris, et la
+    restauration remplace ces données."""
+
+    def has_permission(self, request, view):
+        user = request.user
+        return bool(user and user.is_authenticated and user.role == User.Role.ADMIN and user.ecole_id)
+
+
+class SauvegardeEcoleViewSet(viewsets.ReadOnlyModelViewSet):
+    """Sauvegarde & restauration des données de l'école par son Administrateur (voir
+    core/sauvegarde_ecole.py). Sauvegardes et restaurations s'exécutent en arrière-plan : la
+    page recharge l'historique pour suivre leur avancement."""
+
+    serializer_class = OperationSauvegardeEcoleSerializer
+    permission_classes = [EstAdministrateurEcole]
+    parser_classes = [JSONParser, MultiPartParser, FormParser]
+
+    def get_queryset(self):
+        return OperationSauvegardeEcole.objects.filter(ecole_id=self.request.user.ecole_id).select_related("auteur", "source")
+
+    def list(self, request, *args, **kwargs):
+        from .sauvegarde_ecole import marquer_operations_interrompues
+
+        marquer_operations_interrompues(request.user.ecole_id)
+        return super().list(request, *args, **kwargs)
+
+    def _refuser_si_occupe(self):
+        from .sauvegarde_ecole import operation_en_cours
+
+        en_cours = operation_en_cours(self.request.user.ecole_id)
+        if en_cours:
+            raise ValidationError(
+                f"Une {en_cours.get_type_display().lower()} est déjà en cours — patientez jusqu'à la fin."
+            )
+
+    def _verifier_mot_de_passe(self):
+        if not self.request.user.check_password(self.request.data.get("mot_de_passe") or ""):
+            raise PermissionDenied("Mot de passe incorrect.")
+
+    @action(detail=False, methods=["post"], url_path="lancer")
+    def lancer(self, request):
+        from .sauvegarde_ecole import lancer_en_arriere_plan
+
+        self._refuser_si_occupe()
+        operation = OperationSauvegardeEcole.objects.create(
+            ecole_id=request.user.ecole_id, type=OperationSauvegardeEcole.Type.SAUVEGARDE,
+            origine=OperationSauvegardeEcole.Origine.MANUELLE, auteur=request.user, message="Sauvegarde en cours…",
+        )
+        lancer_en_arriere_plan(operation)
+        return Response(self.get_serializer(operation).data, status=202)
+
+    @action(detail=True, methods=["get"], url_path="telecharger")
+    def telecharger(self, request, pk=None):
+        from .sauvegarde_ecole import chemin_archive
+
+        operation = self.get_object()
+        chemin = chemin_archive(operation)
+        if chemin is None:
+            raise Http404("L'archive de cette sauvegarde n'est plus disponible sur le serveur.")
+        return FileResponse(open(chemin, "rb"), as_attachment=True, filename=chemin.name)
+
+    @action(detail=False, methods=["post"], url_path="importer")
+    def importer(self, request):
+        """Téléverse une archive téléchargeable depuis cette page (vérifiée : signature, école) —
+        elle rejoint l'historique et peut ensuite être restaurée."""
+        from .sauvegarde_ecole import ArchiveInvalide, importer_archive
+
+        self._verifier_mot_de_passe()
+        fichier = request.FILES.get("fichier")
+        if fichier is None:
+            raise ValidationError({"fichier": "Choisissez un fichier de sauvegarde (.zip)."})
+        try:
+            operation = importer_archive(fichier, request.user.ecole, request.user)
+        except ArchiveInvalide as exc:
+            raise ValidationError(str(exc)) from exc
+        return Response(self.get_serializer(operation).data, status=201)
+
+    @action(detail=True, methods=["post"], url_path="restaurer")
+    def restaurer(self, request, pk=None):
+        """Remplace les données actuelles de l'école par celles de cette sauvegarde (après une
+        sauvegarde automatique de l'état actuel). Exige le mot de passe de l'Administrateur."""
+        from .sauvegarde_ecole import chemin_archive, lancer_en_arriere_plan
+
+        source = self.get_object()
+        self._verifier_mot_de_passe()
+        if source.type != OperationSauvegardeEcole.Type.SAUVEGARDE or source.statut != OperationSauvegardeEcole.Statut.SUCCES:
+            raise ValidationError("Seule une sauvegarde réussie peut être restaurée.")
+        if chemin_archive(source) is None:
+            raise ValidationError("L'archive de cette sauvegarde n'est plus disponible sur le serveur.")
+        self._refuser_si_occupe()
+        operation = OperationSauvegardeEcole.objects.create(
+            ecole_id=request.user.ecole_id, type=OperationSauvegardeEcole.Type.RESTAURATION,
+            origine=OperationSauvegardeEcole.Origine.MANUELLE, auteur=request.user, source=source,
+            message="Restauration en cours…",
+        )
+        lancer_en_arriere_plan(operation)
+        return Response(self.get_serializer(operation).data, status=202)
 
 
 def _taille_dossier(chemin: Path) -> int:

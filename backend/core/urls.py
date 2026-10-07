@@ -1,10 +1,11 @@
 from django.urls import path
 from rest_framework.routers import DefaultRouter
 
-from .views import DashboardView, RapportAnnuelPdfView, RapportsAnnuelsView, SauvegardeViewSet, SupervisionView
+from .views import DashboardView, RapportAnnuelPdfView, RapportsAnnuelsView, SauvegardeEcoleViewSet, SauvegardeViewSet, SupervisionView
 
 router = DefaultRouter()
 router.register("sauvegardes", SauvegardeViewSet, basename="sauvegarde")
+router.register("sauvegardes-ecole", SauvegardeEcoleViewSet, basename="sauvegarde-ecole")
 
 urlpatterns = [
     path("", DashboardView.as_view(), name="dashboard"),

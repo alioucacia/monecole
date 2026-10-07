@@ -4,7 +4,7 @@ import type {
   EcoleStatsGlobales, EcoleUtilisateur, EleveProfile,
   Emprunt, Enseignement, EnseignantProfile, Fonctionnalite, Formule, Frais, InscriptionCantine, JournalActiviteEntry, JournalUtilisateurEntry, Livre, Matiere, Message, ModeleMessage, Note, 
   Paginated,AlerteParent, AnalysePerformance, ChauffeurInfo, EleveBadge, EnseignantBadge, GroupeRevision, JustificatifAbsence, MessageIA, PaiementEcole, Paiement, PaieEnseignant,
-  ParametresPlateforme, Periode, PlanAbonnement, PlateformeBranding,PointageEnseignant, Presence, RechercheGlobaleResult, Reunion, Participant, Resultats, SauvegardeLog, SuiviMensuelClasse,
+  ParametresPlateforme, Periode, PlanAbonnement, PlateformeBranding,PointageEnseignant, Presence, RechercheGlobaleResult, Reunion, Participant, Resultats, OperationSauvegardeEcole, SauvegardeLog, SuiviMensuelClasse,
   TransactionAbonnement, ResumeSecurite, SessionActive, AppareilConnu, EvenementSecurite,
   SuiviMensuelEleve, SupervisionData, TarifClasse, Ticket,TicketBus, TicketCantine, MessageTicket, Trajet, TypeFrais, User,
 } from "../types";
@@ -118,6 +118,21 @@ export const annuaireUtilisateursApi = {
   // Élèves rattachés à un compte parent (voir AnnuaireUtilisateursViewSet.enfants côté
   // backend) — recherchable par téléphone via `list({ role: "parent", search: "..." })`.
   enfants: (id: number) => api.get<EleveProfile[]>(`/tenants/annuaire-utilisateurs/${id}/enfants/`),
+};
+
+// ---- Sauvegarde & restauration des données de l'école (Administrateur) ----
+export const sauvegardesEcoleApi = {
+  list: (params?: Record<string, unknown>) =>
+    api.get<Paginated<OperationSauvegardeEcole> | OperationSauvegardeEcole[]>("/dashboard/sauvegardes-ecole/", { params }),
+  /** Lance une sauvegarde en arrière-plan — répond tout de suite avec l'opération « en cours ». */
+  lancer: () => api.post<OperationSauvegardeEcole>("/dashboard/sauvegardes-ecole/lancer/"),
+  telecharger: (id: number, filename: string) => downloadFile(`/dashboard/sauvegardes-ecole/${id}/telecharger/`, {}, filename),
+  /** Téléverse une archive (vérifiée côté serveur) : elle rejoint l'historique, restaurable ensuite. */
+  importer: (fichier: File, mot_de_passe: string) =>
+    api.post<OperationSauvegardeEcole>("/dashboard/sauvegardes-ecole/importer/", toFormData({ fichier, mot_de_passe }), multipartHeaders),
+  /** Remplace les données de l'école par celles de cette sauvegarde (en arrière-plan). */
+  restaurer: (id: number, mot_de_passe: string) =>
+    api.post<OperationSauvegardeEcole>(`/dashboard/sauvegardes-ecole/${id}/restaurer/`, { mot_de_passe }),
 };
 
 // ---- Sauvegardes (Super Admin) ----

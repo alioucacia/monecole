@@ -132,16 +132,26 @@ def lancer_en_arriere_plan() -> SauvegardeLog:
     restait « en cours » sans aucune erreur. Le processus séparé (nouvelle session) n'en dépend
     plus, et sa sortie est écrite dans `fichier_journal()`."""
     log = SauvegardeLog.objects.create(statut=SauvegardeLog.Statut.EN_COURS, message="Sauvegarde en cours…")
-    commande = [sys.executable, str(Path(settings.BASE_DIR) / "manage.py"), "backup_daily", "--log-id", str(log.pk)]
+    lancer_commande_detachee(
+        ["backup_daily", "--log-id", str(log.pk)], fichier_journal(),
+        f"Sauvegarde #{log.pk} lancée le {timezone.localtime():%d/%m/%Y %H:%M:%S}",
+    )
+    return log
+
+
+def lancer_commande_detachee(arguments: list[str], journal: Path, entete: str) -> None:
+    """Lance `manage.py <arguments>` dans un processus indépendant du worker web (nouvelle
+    session), sa sortie écrite dans `journal` après la ligne `entete`. Partagé avec la
+    sauvegarde / restauration des écoles (core/sauvegarde_ecole.py)."""
+    commande = [sys.executable, str(Path(settings.BASE_DIR) / "manage.py"), *arguments]
     options = (
         {"creationflags": subprocess.CREATE_NEW_PROCESS_GROUP | subprocess.DETACHED_PROCESS} if os.name == "nt"
         else {"start_new_session": True}
     )
-    with open(fichier_journal(), "w", encoding="utf-8") as journal:
-        journal.write(f"Sauvegarde #{log.pk} lancée le {timezone.localtime():%d/%m/%Y %H:%M:%S}\n")
-        journal.flush()
+    with open(journal, "w", encoding="utf-8") as sortie:
+        sortie.write(f"{entete}\n")
+        sortie.flush()
         subprocess.Popen(
-            commande, cwd=settings.BASE_DIR, stdin=subprocess.DEVNULL, stdout=journal, stderr=subprocess.STDOUT,
+            commande, cwd=settings.BASE_DIR, stdin=subprocess.DEVNULL, stdout=sortie, stderr=subprocess.STDOUT,
             close_fds=True, **options,
         )
-    return log

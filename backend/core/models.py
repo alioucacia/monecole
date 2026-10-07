@@ -30,6 +30,52 @@ class SauvegardeLog(models.Model):
         return f"Sauvegarde du {self.date_lancement:%d/%m/%Y %H:%M} ({self.statut})"
 
 
+class OperationSauvegardeEcole(models.Model):
+    """Sauvegarde ou restauration des données d'UNE école, lancée par son Administrateur depuis
+    la page « Sauvegarde & restauration » (voir core/sauvegarde_ecole.py) — exécutée en
+    arrière-plan, comme la sauvegarde de la plateforme. Une sauvegarde réussie garde son archive
+    dans `backups/ecoles/<id de l'école>/`, téléchargeable et restaurable."""
+
+    class Type(models.TextChoices):
+        SAUVEGARDE = "sauvegarde", "Sauvegarde"
+        RESTAURATION = "restauration", "Restauration"
+
+    class Origine(models.TextChoices):
+        MANUELLE = "manuelle", "Manuelle"
+        # Prise juste avant chaque restauration, pour pouvoir revenir en arrière.
+        AVANT_RESTAURATION = "avant_restauration", "Automatique (avant restauration)"
+        # Archive téléversée par l'Administrateur (sauvegarde téléchargée auparavant).
+        IMPORTEE = "importee", "Fichier importé"
+
+    class Statut(models.TextChoices):
+        EN_COURS = "en_cours", "En cours"
+        SUCCES = "succes", "Succès"
+        ECHEC = "echec", "Échec"
+
+    ecole = models.ForeignKey("tenants.Ecole", on_delete=models.CASCADE, related_name="operations_sauvegarde")
+    type = models.CharField(max_length=15, choices=Type.choices)
+    origine = models.CharField(max_length=20, choices=Origine.choices, default=Origine.MANUELLE)
+    statut = models.CharField(max_length=10, choices=Statut.choices, default=Statut.EN_COURS)
+    date_lancement = models.DateTimeField(auto_now_add=True)
+    auteur = models.ForeignKey("accounts.User", on_delete=models.SET_NULL, null=True, blank=True, related_name="+")
+    # Restauration : la sauvegarde restaurée.
+    source = models.ForeignKey("self", on_delete=models.SET_NULL, null=True, blank=True, related_name="restaurations")
+    fichier = models.CharField(max_length=255, blank=True, help_text="Nom de l'archive dans backups/ecoles/<école>/")
+    taille_octets = models.BigIntegerField(default=0)
+    duree_secondes = models.FloatField(default=0)
+    message = models.CharField(max_length=500, blank=True)
+    # Nombre d'éléments sauvegardés / restaurés par catégorie (élèves, notes, paiements…).
+    resume = models.JSONField(default=dict, blank=True)
+
+    class Meta:
+        ordering = ["-date_lancement", "-id"]
+        verbose_name = "Sauvegarde d'école"
+        verbose_name_plural = "Sauvegardes d'école"
+
+    def __str__(self):
+        return f"{self.get_type_display()} du {self.date_lancement:%d/%m/%Y %H:%M} — {self.ecole} ({self.statut})"
+
+
 class DocumentOfficiel(models.Model):
     """Document officiel émis par une école (bulletin, certificat de scolarité), vérifiable par
     QR code : le QR imprimé sur le PDF mène à une page publique qui affiche les informations

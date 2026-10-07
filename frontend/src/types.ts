@@ -343,6 +343,27 @@ export interface SauvegardeLog {
   message: string;
 }
 
+/** Sauvegarde ou restauration des données d'une école (page « Sauvegarde & restauration »). */
+export interface OperationSauvegardeEcole {
+  id: number;
+  type: "sauvegarde" | "restauration";
+  origine: "manuelle" | "avant_restauration" | "importee";
+  origine_display: string;
+  statut: "succes" | "echec" | "en_cours";
+  date_lancement: string;
+  auteur_nom: string;
+  /** Restauration : la sauvegarde restaurée. */
+  source: number | null;
+  source_date: string | null;
+  fichier: string;
+  taille_octets: number;
+  duree_secondes: number;
+  message: string;
+  resume: Partial<Record<"eleves" | "enseignants" | "comptes" | "classes" | "notes" | "presences" | "paiements" | "depenses", number>>;
+  /** Archive encore présente sur le serveur : téléchargeable et restaurable. */
+  disponible: boolean;
+}
+
 export type ModePaiementEcole =
   | "especes" | "virement" | "mobile_money" | "orange_money" | "mtn_money" | "moov_money"
   | "carte_bancaire" | "cheque";
