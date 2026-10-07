@@ -7,6 +7,7 @@ import { useAuth } from "../context/AuthContext";
 import { useConfirm } from "../context/ConfirmContext";
 import { usePaginated } from "../hooks/usePaginated";
 import type { EnseignantProfile } from "../types";
+import { photoTropLourde, TAILLE_MAX_PHOTO_MO } from "../validation";
 
 const emptyForm = {
   first_name: "", last_name: "", email: "", matricule: "", specialite: "", sexe: "",
@@ -60,6 +61,7 @@ export default function TeachersPage() {
   };
 
   const handlePhotoChange = (file: File | null) => {
+    if (file && photoTropLourde(file)) file = null;
     setPhotoFile(file);
     setPhotoPreview(file ? URL.createObjectURL(file) : editing?.user.photo || null);
   };
@@ -158,10 +160,15 @@ export default function TeachersPage() {
               </div>
             )}
             <label className="block">
-              <span className="block text-sm font-semibold text-slate-600 mb-1.5">Photo (optionnel)</span>
+              <span className="block text-sm font-semibold text-slate-600 mb-1.5">Photo (optionnel, {TAILLE_MAX_PHOTO_MO} Mo max)</span>
               <input
                 type="file" accept="image/*"
-                onChange={(e) => handlePhotoChange(e.target.files?.[0] || null)}
+                onChange={(e) => {
+                  const fichier = e.target.files?.[0] || null;
+                  // Photo refusée (trop lourde) : on vide le champ pour qu'il n'affiche pas son nom.
+                  if (fichier && fichier.size > TAILLE_MAX_PHOTO_MO * 1024 * 1024) e.target.value = "";
+                  handlePhotoChange(fichier);
+                }}
                 className="text-sm text-slate-500 file:mr-3 file:py-1.5 file:px-3 file:rounded-full file:border-0 file:text-xs file:font-semibold file:bg-accent-50 file:text-accent-700 hover:file:bg-accent-100"
               />
             </label>

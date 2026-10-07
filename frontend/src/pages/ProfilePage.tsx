@@ -9,6 +9,7 @@ import { useConfirm } from "../context/ConfirmContext";
 import { useToast } from "../context/ToastContext";
 import { useCooldown } from "../hooks/useCooldown";
 import type { EleveProfile, JournalUtilisateurEntry } from "../types";
+import { photoTropLourde, TAILLE_MAX_PHOTO_MO } from "../validation";
 
 const CATEGORIE_LABELS: Record<JournalUtilisateurEntry["categorie"], "brand" | "teal" | "amber" | "rose" | "slate"> = {
   connexion: "slate", compte: "rose", eleve: "amber", enseignant: "teal", note: "brand", paiement: "teal",
@@ -103,6 +104,10 @@ export default function ProfilePage() {
   const handlePhotoChange = async (e: ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
+    if (photoTropLourde(file)) {
+      e.target.value = "";
+      return;
+    }
     setUploadingPhoto(true);
     try {
       await authApi.uploadPhoto(file);
@@ -246,7 +251,7 @@ export default function ProfilePage() {
       <Card>
         <h3 className="font-bold text-ink-900 mb-4">Photo de profil</h3>
         <p className="text-sm text-slate-500 mb-4">
-          Utilisée sur votre badge (avec le code QR) et dans l'application.
+          Utilisée sur votre badge (avec le code QR) et dans l'application. Taille maximale : {TAILLE_MAX_PHOTO_MO} Mo.
         </p>
         <div className="flex items-center gap-4">
           {user.photo ? (

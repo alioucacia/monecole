@@ -97,3 +97,16 @@ export function installerValidationFormulaires() {
     true,
   );
 }
+
+/** Taille maximale d'une photo de compte (élève, enseignant, tout utilisateur) — même limite que
+ * le serveur (TAILLE_MAX_PHOTO dans backend/core/validators.py). */
+export const TAILLE_MAX_PHOTO_MO = 2;
+
+/** Refuse tout de suite une photo trop lourde, avant tout envoi : affiche le message et renvoie
+ * `true` si la photo doit être écartée. */
+export function photoTropLourde(fichier: File): boolean {
+  if (fichier.size <= TAILLE_MAX_PHOTO_MO * 1024 * 1024) return false;
+  const taille = (fichier.size / (1024 * 1024)).toFixed(1).replace(".", ",");
+  emitToast("error", `La photo pèse ${taille} Mo : la taille maximale autorisée est de ${TAILLE_MAX_PHOTO_MO} Mo.`);
+  return true;
+}

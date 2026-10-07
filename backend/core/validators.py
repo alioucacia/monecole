@@ -14,7 +14,10 @@ l'oublier) à chaque nouveau serializer. Utilisation typique dans un serializer 
 
 from rest_framework import serializers
 
-TAILLE_MAX_IMAGE = 8 * 1024 * 1024  # 8 Mo — photos (avatar, pièce jointe image)
+TAILLE_MAX_IMAGE = 8 * 1024 * 1024  # 8 Mo — images (logos, pièce jointe image)
+# 2 Mo — photo de compte (élève, enseignant, tout utilisateur) : affichée partout et intégrée aux
+# badges, bulletins et sauvegardes d'école. Même limite côté frontend (TAILLE_MAX_PHOTO_MO).
+TAILLE_MAX_PHOTO = 2 * 1024 * 1024
 TAILLE_MAX_DOCUMENT = 15 * 1024 * 1024  # 15 Mo — pièces jointes générales (justificatif, ticket, dépense)
 
 EXTENSIONS_IMAGE = ["jpg", "jpeg", "png", "webp"]

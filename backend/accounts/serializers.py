@@ -8,7 +8,7 @@ from rest_framework import serializers
 from rest_framework_simplejwt.exceptions import AuthenticationFailed
 from rest_framework_simplejwt.serializers import TokenObtainPairSerializer
 
-from core.validators import EXTENSIONS_IMAGE, TAILLE_MAX_IMAGE, valider_taille_fichier
+from core.validators import EXTENSIONS_IMAGE, TAILLE_MAX_PHOTO, valider_taille_fichier
 
 from .models import AppareilConnu, EvenementSecurite, JournalUtilisateur, SessionActive, User
 
@@ -108,7 +108,7 @@ class UserSerializer(UniqueLoginFieldsMixin, serializers.ModelSerializer):
         ]
 
     def validate_photo(self, value):
-        return valider_taille_fichier(value, TAILLE_MAX_IMAGE, EXTENSIONS_IMAGE)
+        return valider_taille_fichier(value, TAILLE_MAX_PHOTO, EXTENSIONS_IMAGE)
 
     def get_a_code_suppression(self, obj) -> bool:
         return bool(obj.code_suppression)

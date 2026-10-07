@@ -3,7 +3,7 @@ from rest_framework import serializers
 
 from accounts.models import User
 from accounts.serializers import UserSerializer
-from core.validators import EXTENSIONS_IMAGE, TAILLE_MAX_IMAGE, valider_taille_fichier
+from core.validators import EXTENSIONS_IMAGE, TAILLE_MAX_PHOTO, valider_taille_fichier
 from tenants.quotas import verifier_quota_plan
 
 from .models import (
@@ -195,7 +195,7 @@ class EleveProfileWriteSerializer(serializers.ModelSerializer):
         return value
 
     def validate_photo(self, value):
-        return valider_taille_fichier(value, TAILLE_MAX_IMAGE, EXTENSIONS_IMAGE)
+        return valider_taille_fichier(value, TAILLE_MAX_PHOTO, EXTENSIONS_IMAGE)
 
     def validate(self, attrs):
         if attrs.get("parent_creer"):
@@ -379,7 +379,7 @@ class EnseignantProfileWriteSerializer(serializers.ModelSerializer):
         extra_kwargs = {"matricule": {"required": False, "allow_blank": True}}
 
     def validate_photo(self, value):
-        return valider_taille_fichier(value, TAILLE_MAX_IMAGE, EXTENSIONS_IMAGE)
+        return valider_taille_fichier(value, TAILLE_MAX_PHOTO, EXTENSIONS_IMAGE)
 
     @transaction.atomic
     def create(self, validated_data):
