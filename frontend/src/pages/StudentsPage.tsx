@@ -52,10 +52,13 @@ export default function StudentsPage() {
   const [statutFilter, setStatutFilter] = useState<"" | "inactif" | "reinscription" | "transfert">("");
   const [classes, setClasses] = useState<Classe[]>([]);
   const [parents, setParents] = useState<User[]>([]);
-  // Filtre local (pas envoyé à l'API) pour la liste déroulante "Associer un parent existant" —
-  // un établissement avec beaucoup de parents inscrits rend un simple <select> à plat difficile
-  // à parcourir sans pouvoir d'abord taper un nom.
+  // Recherche pour la liste déroulante "Associer un parent existant", envoyée à l'API (paramètre
+  // `search` : nom, prénom, identifiant, e-mail, téléphone) pour trouver aussi les parents au-delà
+  // de la liste chargée d'office, quel que soit l'ordre des mots tapés ("Diallo Moussa").
   const [parentSearch, setParentSearch] = useState("");
+  // null = pas de recherche en cours, on affiche `parents`.
+  const [parentResults, setParentResults] = useState<User[] | null>(null);
+  const [parentSearching, setParentSearching] = useState(false);
   const [modalOpen, setModalOpen] = useState(false);
   const [editing, setEditing] = useState<EleveProfile | null>(null);
   const [form, setForm] = useState(emptyForm);
@@ -112,10 +115,34 @@ export default function StudentsPage() {
       // Sans ce catch, un échec (droits insuffisants, réseau...) laissait la liste "Parent"
       // vide sans aucune indication — voir IsAdminOrComptabiliteReadOnly côté backend pour le
       // cas qui a révélé ce silence (comptabilité sans accès à /auth/users/ jusqu'ici).
-      usersApi.list({ role: "parent" }).then(({ data }) => setParents(unwrapList(data)))
+      usersApi.list({ role: "parent", page_size: 500 }).then(({ data }) => setParents(unwrapList(data)))
         .catch((err) => toast.error(extractErrorMessage(err)));
     }
   }, [peutModifier]);
+
+  useEffect(() => {
+    const terme = parentSearch.trim();
+    if (!terme) {
+      setParentResults(null);
+      setParentSearching(false);
+      return;
+    }
+    let annule = false;
+    setParentSearching(true);
+    const timer = setTimeout(() => {
+      usersApi.list({ role: "parent", search: terme, page_size: 100 })
+        .then(({ data }) => {
+          if (annule) return;
+          const resultats = unwrapList(data);
+          setParentResults(resultats);
+          // Un seul parent trouvé : on le sélectionne directement.
+          if (resultats.length === 1) setForm((f) => ({ ...f, parent: String(resultats[0].id) }));
+        })
+        .catch((err) => { if (!annule) toast.error(extractErrorMessage(err)); })
+        .finally(() => { if (!annule) setParentSearching(false); });
+    }, 300);
+    return () => { annule = true; clearTimeout(timer); };
+  }, [parentSearch]);
 
   useEffect(() => {
     // Uniquement pour une nouvelle inscription — un élève déjà inscrit n'a pas à réafficher ce
@@ -202,7 +229,7 @@ export default function StudentsPage() {
       if (form.parentMode === "nouveau") {
         // Le parent tout juste créé doit apparaître dans le sélecteur "parent existant" dès la
         // prochaine ouverture du formulaire (ex: un autre enfant de la même famille).
-        usersApi.list({ role: "parent" }).then(({ data }) => setParents(unwrapList(data)));
+        usersApi.list({ role: "parent", page_size: 500 }).then(({ data }) => setParents(unwrapList(data)));
       }
       setModalOpen(false);
       reload();
@@ -643,14 +670,22 @@ export default function StudentsPage() {
                 value={form.parent}
                 onChange={(e) => setForm({ ...form, parent: e.target.value })}
               >
-                <option value="">— Choisir un parent —</option>
-                {parents
-                  .filter((p) => {
-                    const terme = parentSearch.trim().toLowerCase();
-                    if (!terme) return true;
-                    return [p.full_name, p.username, p.phone, p.email].some((champ) => champ?.toLowerCase().includes(terme));
-                  })
-                  .map((p) => <option key={p.id} value={p.id}>{p.full_name || p.username}{p.phone ? ` — ${p.phone}` : ""}</option>)}
+                <option value="">
+                  {parentSearching ? "Recherche en cours…"
+                    : parentResults?.length === 0 ? "— Aucun parent trouvé —"
+                    : parentResults ? `— ${parentResults.length} parent(s) trouvé(s) —`
+                    : "— Choisir un parent —"}
+                </option>
+                {(() => {
+                  const liste = parentResults ?? parents;
+                  // Le parent déjà choisi reste affiché même s'il ne correspond plus à la recherche,
+                  // sinon le <select> paraîtrait vide alors qu'un parent est bien associé.
+                  const choisi = form.parent && !liste.some((p) => String(p.id) === form.parent)
+                    ? [...parents, ...(parentResults ?? [])].find((p) => String(p.id) === form.parent)
+                    : undefined;
+                  return (choisi ? [choisi, ...liste] : liste)
+                    .map((p) => <option key={p.id} value={p.id}>{p.full_name || p.username}{p.phone ? ` — ${p.phone}` : ""}</option>);
+                })()}
               </Select>
             </>
           )}

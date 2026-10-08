@@ -461,7 +461,7 @@ class UserViewSet(viewsets.ModelViewSet):
     queryset = User.objects.all()
     permission_classes = [IsAdminOrComptabiliteReadOnly]
     filterset_fields = ["role", "is_active"]
-    search_fields = ["username", "first_name", "last_name", "email"]
+    search_fields = ["username", "first_name", "last_name", "email", "phone"]
     ordering_fields = ["last_name", "date_joined"]
 
     def get_queryset(self):
