@@ -312,12 +312,34 @@ export interface EcoleUtilisateur {
 export interface JournalUtilisateurEntry {
   id: number;
   horodatage: string;
-  categorie: "connexion" | "compte" | "eleve" | "enseignant" | "note" | "paiement";
+  categorie:
+    | "connexion" | "compte" | "eleve" | "enseignant" | "note" | "paiement" | "academique" | "presence"
+    | "communication" | "bibliotheque" | "transport" | "cantine" | "acces" | "parametres" | "autre";
   categorie_display: string;
+  action: "creation" | "modification" | "suppression" | "connexion" | "export" | "autre";
+  action_display: string;
   description: string;
+  /** Éléments touchés par l'action, avec les champs modifiés (voir backend accounts/audit.py). */
+  details: JournalElementTouche[];
   adresse_ip: string | null;
   /** Résumé lisible du navigateur/appareil (ex: "Chrome sur Windows"), vide si non détecté. */
   appareil: string;
+  methode: string;
+  chemin: string;
+  /** null si le compte a été supprimé depuis — son nom reste dans `utilisateur_nom`. */
+  utilisateur: number | null;
+  utilisateur_nom: string;
+  utilisateur_role: string;
+  utilisateur_role_display: string;
+}
+
+export interface JournalElementTouche {
+  modele: string;
+  id: number;
+  libelle: string;
+  operation: "creation" | "modification" | "suppression";
+  /** Champs sensibles (mot de passe...) : `masque`, sans valeurs. */
+  champs?: { champ: string; avant: string; apres: string; masque?: boolean }[];
 }
 
 export interface JournalActiviteEntry {

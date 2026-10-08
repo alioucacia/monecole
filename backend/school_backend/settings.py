@@ -73,6 +73,9 @@ MIDDLEWARE = [
     "django.contrib.auth.middleware.AuthenticationMiddleware",
     "django.contrib.messages.middleware.MessageMiddleware",
     "django.middleware.clickjacking.XFrameOptionsMiddleware",
+    # Journal d'audit : enregistre chaque création/modification/suppression faite via l'API
+    # (voir accounts.audit).
+    "accounts.audit.AuditMiddleware",
 ]
 
 ROOT_URLCONF = "school_backend.urls"

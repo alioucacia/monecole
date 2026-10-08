@@ -18,9 +18,9 @@ class UserAdmin(BaseUserAdmin):
 
 @admin.register(JournalUtilisateur)
 class JournalUtilisateurAdmin(admin.ModelAdmin):
-    list_display = ["utilisateur", "categorie", "description", "horodatage"]
-    list_filter = ["categorie"]
-    search_fields = ["utilisateur__username", "utilisateur__first_name", "utilisateur__last_name", "description"]
+    list_display = ["utilisateur_nom", "ecole", "action", "categorie", "description", "horodatage"]
+    list_filter = ["action", "categorie"]
+    search_fields = ["utilisateur_nom", "utilisateur__username", "description"]
     date_hierarchy = "horodatage"
 
 

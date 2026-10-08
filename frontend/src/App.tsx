@@ -44,6 +44,7 @@ import ResetPasswordPage from "./pages/ResetPasswordPage";
 import ResultsPage from "./pages/ResultsPage";
 import SauvegardesPage from "./pages/SauvegardesPage";
 import SauvegardeEcolePage from "./pages/SauvegardeEcolePage";
+import HistoriqueActionsPage from "./pages/HistoriqueActionsPage";
 import SchedulePage from "./pages/SchedulePage";
 import SuperAdminAccountsPage from "./pages/SuperAdminAccountsPage";
 import SecuritePage from "./pages/SecuritePage";
@@ -202,6 +203,14 @@ export default function App() {
           element={
             <ProtectedRoute roles={["superadmin"]}>
               <SauvegardesPage />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/historique-actions"
+          element={
+            <ProtectedRoute roles={["admin", "directeur"]}>
+              <HistoriqueActionsPage />
             </ProtectedRoute>
           }
         />

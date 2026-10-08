@@ -116,10 +116,19 @@ class UserSerializer(UniqueLoginFieldsMixin, serializers.ModelSerializer):
 
 class JournalUtilisateurSerializer(serializers.ModelSerializer):
     categorie_display = serializers.CharField(source="get_categorie_display", read_only=True)
+    action_display = serializers.CharField(source="get_action_display", read_only=True)
+    utilisateur_role_display = serializers.SerializerMethodField()
 
     class Meta:
         model = JournalUtilisateur
-        fields = ["id", "horodatage", "categorie", "categorie_display", "description", "adresse_ip", "appareil"]
+        fields = [
+            "id", "horodatage", "categorie", "categorie_display", "action", "action_display",
+            "description", "details", "adresse_ip", "appareil", "methode", "chemin",
+            "utilisateur", "utilisateur_nom", "utilisateur_role", "utilisateur_role_display",
+        ]
+
+    def get_utilisateur_role_display(self, obj) -> str:
+        return dict(User.Role.choices).get(obj.utilisateur_role, obj.utilisateur_role)
 
 
 class UserCreateSerializer(UniqueLoginFieldsMixin, serializers.ModelSerializer):

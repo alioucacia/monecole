@@ -46,17 +46,31 @@ def _resumer_appareil(user_agent: str) -> str:
     return navigateur or systeme
 
 
-def journaliser(utilisateur, categorie: str, description: str, request=None) -> None:
+def journaliser(utilisateur, categorie: str, description: str, request=None, action: str = "") -> JournalUtilisateur:
     """Ajoute une entrée à l'historique d'activité de `utilisateur` (voir `JournalUtilisateur`)
     — appelé explicitement aux points clés de chaque app (connexion, gestion de compte, élèves,
-    enseignants, notes, paiements) plutôt que par un signal générique, pour ne garder que des
-    actions significatives. `request`, quand disponible, permet d'enregistrer l'IP d'origine et
-    un résumé de l'appareil/navigateur utilisé."""
-    JournalUtilisateur.objects.create(
-        utilisateur=utilisateur, categorie=categorie, description=description,
+    enseignants, notes, paiements), pour une description plus parlante que celle générée
+    automatiquement par `accounts.audit` : pendant une requête, le middleware d'audit complète
+    alors cette entrée (détail des champs modifiés) au lieu d'en créer une seconde. `request`,
+    quand disponible, permet d'enregistrer l'IP d'origine et un résumé de l'appareil."""
+    from . import audit
+
+    if not action:
+        action = (
+            JournalUtilisateur.Action.CONNEXION if categorie == JournalUtilisateur.Categorie.CONNEXION
+            else audit.action_requete_courante()
+        )
+    entree = JournalUtilisateur.objects.create(
+        utilisateur=utilisateur, utilisateur_nom=utilisateur.get_full_name() or utilisateur.username,
+        utilisateur_role=utilisateur.role or "", ecole_id=utilisateur.ecole_id,
+        categorie=categorie, action=action, description=description[:255],
         adresse_ip=_adresse_ip(request) if request is not None else None,
         appareil=_resumer_appareil(request.META.get("HTTP_USER_AGENT", "")) if request is not None else "",
+        methode=request.method if request is not None else "",
+        chemin=request.path[:255] if request is not None else "",
     )
+    audit.enregistrer_entree_explicite(entree)
+    return entree
 
 
 def reinitialiser_mot_de_passe(utilisateur) -> dict:

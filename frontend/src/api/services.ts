@@ -219,6 +219,10 @@ export const usersApi = {
     api.post<{ nouveau_mot_de_passe: string; email_envoye: boolean }>(`/auth/users/${id}/reinitialiser-mot-de-passe/`),
   journal: (id: number, params?: Record<string, unknown>) =>
     api.get<Paginated<JournalUtilisateurEntry>>(`/auth/users/${id}/journal/`, { params }),
+  /** Historique de toutes les actions faites dans l'école (Admin / Directeur) — filtres :
+   * utilisateur, categorie, action, role, date_debut, date_fin, search. */
+  journalEcole: (params?: Record<string, unknown>) =>
+    api.get<Paginated<JournalUtilisateurEntry>>("/auth/journal-ecole/", { params }),
 };
 
 /** Suit un lien "next"/"previous" absolu renvoyé par la pagination DRF. */

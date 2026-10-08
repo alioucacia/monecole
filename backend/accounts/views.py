@@ -1,6 +1,8 @@
 from django.conf import settings
 from django.contrib.auth.tokens import default_token_generator
 from django.core.mail import send_mail
+from django.db.models import Q
+from django.utils.dateparse import parse_date
 from django.utils.encoding import force_bytes
 from django.utils.http import urlsafe_base64_encode
 from rest_framework import generics, status, viewsets
@@ -17,7 +19,7 @@ from rest_framework.exceptions import AuthenticationFailed, ValidationError
 from tenants.quotas import verifier_quota_plan
 
 from .models import JournalUtilisateur, User
-from .permissions import IsAdminOrComptabiliteReadOnly, IsSuperAdmin
+from .permissions import IsAdmin, IsAdminOrComptabiliteReadOnly, IsSuperAdmin
 from .serializers import (
     ChangePasswordSerializer,
     CustomTokenObtainPairSerializer,
@@ -142,6 +144,37 @@ class MonActiviteView(APIView):
     def get(self, request):
         entrees = request.user.journal_activite.all()[:20]
         return Response(JournalUtilisateurSerializer(entrees, many=True).data)
+
+
+class JournalEcoleView(generics.ListAPIView):
+    """Historique de TOUTES les actions faites dans l'école (qui a fait quoi, quand, depuis quel
+    appareil, et quels champs ont changé) — voir `accounts.audit`. Réservé à l'Administrateur
+    (et au Directeur Général, en lecture). Filtres : `utilisateur`, `categorie`, `action`,
+    `role`, `date_debut`/`date_fin` (AAAA-MM-JJ) et `search` (description ou nom de l'auteur)."""
+
+    permission_classes = [IsAdmin]
+    serializer_class = JournalUtilisateurSerializer
+
+    def get_queryset(self):
+        qs = JournalUtilisateur.objects.filter(ecole_id=self.request.user.ecole_id)
+        params = self.request.query_params
+        if params.get("utilisateur", "").isdigit():
+            qs = qs.filter(utilisateur_id=params["utilisateur"])
+        for champ, parametre in (("categorie", "categorie"), ("action", "action"), ("utilisateur_role", "role")):
+            if params.get(parametre):
+                qs = qs.filter(**{champ: params[parametre]})
+        try:
+            date_debut, date_fin = parse_date(params.get("date_debut", "")), parse_date(params.get("date_fin", ""))
+        except ValueError:
+            raise ValidationError("Date invalide.")
+        if date_debut:
+            qs = qs.filter(horodatage__date__gte=date_debut)
+        if date_fin:
+            qs = qs.filter(horodatage__date__lte=date_fin)
+        terme = params.get("search", "").strip()
+        if terme:
+            qs = qs.filter(Q(description__icontains=terme) | Q(utilisateur_nom__icontains=terme))
+        return qs.order_by("-horodatage")
 
 
 class SupprimerPhotoView(APIView):

@@ -216,11 +216,11 @@ class JournalUtilisateur(models.Model):
     une fiche tierce (ex: la création d'une fiche élève apparaît dans le journal de l'admin qui
     l'a créée, pas dans celui de l'élève) — c'est ce qui permet de suivre l'activité d'un membre
     du personnel (élèves créés, notes saisies, paiements enregistrés...), pas seulement ses
-    connexions. Volontairement PAS un journal exhaustif de chaque requête API
-    (voir `accounts.services.journaliser`, appelé explicitement aux points qui comptent plutôt
-    que via un signal générique). Distinct de `tenants.JournalActivite`, réservé aux actions du
-    Super Admin sur la plateforme elle-même (écoles, paiements d'abonnement...) — mauvaise
-    portée et mauvais choix d'actions pour ce besoin-ci."""
+    connexions. En plus des appels explicites à `accounts.services.journaliser` aux points clés,
+    TOUTE création/modification/suppression faite via l'API est enregistrée automatiquement
+    (voir `accounts.audit`) : qui a fait quoi, sur quel élément, et quels champs ont changé
+    (`details`). Distinct de `tenants.JournalActivite`, réservé aux actions du Super Admin sur
+    la plateforme elle-même (écoles, paiements d'abonnement...)."""
 
     class Categorie(models.TextChoices):
         CONNEXION = "connexion", "Connexion"
@@ -229,13 +229,47 @@ class JournalUtilisateur(models.Model):
         ENSEIGNANT = "enseignant", "Enseignant"
         NOTE = "note", "Notes"
         PAIEMENT = "paiement", "Paiement"
+        ACADEMIQUE = "academique", "Classes & matières"
+        PRESENCE = "presence", "Présences"
+        COMMUNICATION = "communication", "Communication"
+        BIBLIOTHEQUE = "bibliotheque", "Bibliothèque"
+        TRANSPORT = "transport", "Transport"
+        CANTINE = "cantine", "Cantine"
+        ACCES = "acces", "Contrôle d'accès"
+        PARAMETRES = "parametres", "Paramètres & données"
+        AUTRE = "autre", "Autre"
 
+    class Action(models.TextChoices):
+        CREATION = "creation", "Création"
+        MODIFICATION = "modification", "Modification"
+        SUPPRESSION = "suppression", "Suppression"
+        CONNEXION = "connexion", "Connexion"
+        EXPORT = "export", "Export"
+        AUTRE = "autre", "Autre action"
+
+    # SET_NULL (et non CASCADE) : supprimer un compte ne doit pas effacer la trace de ce qu'il a
+    # fait — son nom et son rôle restent dans `utilisateur_nom`/`utilisateur_role`.
     utilisateur = models.ForeignKey(
-        settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name="journal_activite",
+        settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, blank=True,
+        related_name="journal_activite",
     )
-    horodatage = models.DateTimeField(auto_now_add=True)
+    utilisateur_nom = models.CharField(max_length=255, blank=True, default="")
+    utilisateur_role = models.CharField(max_length=20, blank=True, default="")
+    # École concernée, copiée à l'enregistrement (le compte peut disparaître ensuite) — c'est elle
+    # qui délimite ce que l'Administrateur voit dans l'historique global de son établissement.
+    ecole = models.ForeignKey(
+        "tenants.Ecole", on_delete=models.CASCADE, null=True, blank=True, related_name="journal_utilisateurs",
+    )
+    horodatage = models.DateTimeField(auto_now_add=True, db_index=True)
     categorie = models.CharField(max_length=20, choices=Categorie.choices)
+    action = models.CharField(max_length=20, choices=Action.choices, default=Action.AUTRE)
     description = models.CharField(max_length=255)
+    # Éléments touchés par l'action : [{"modele", "id", "libelle", "operation", "champs": [{"champ",
+    # "avant", "apres"}]}] — voir accounts.audit. Les champs sensibles (mots de passe, codes...)
+    # n'y figurent jamais.
+    details = models.JSONField(default=list, blank=True)
+    methode = models.CharField(max_length=10, blank=True, default="")
+    chemin = models.CharField(max_length=255, blank=True, default="")
     # Renseignées pour les connexions et actions déclenchées par une requête (voir
     # accounts.services.journaliser/_adresse_ip/_resumer_appareil) ; vides pour les actions
     # déclenchées côté serveur sans requête explicite associable.
@@ -249,9 +283,10 @@ class JournalUtilisateur(models.Model):
         ordering = ["-horodatage"]
         verbose_name = "Entrée du journal utilisateur"
         verbose_name_plural = "Journal utilisateur"
+        indexes = [models.Index(fields=["ecole", "-horodatage"])]
 
     def __str__(self):
-        return f"{self.utilisateur} — {self.description} ({self.horodatage:%d/%m/%Y %H:%M})"
+        return f"{self.utilisateur_nom or self.utilisateur} — {self.description} ({self.horodatage:%d/%m/%Y %H:%M})"
 
 
 class SessionActive(models.Model):

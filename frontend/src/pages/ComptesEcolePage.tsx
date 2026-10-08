@@ -21,7 +21,7 @@ const ROLE_COLORS: Record<Role, "brand" | "teal" | "amber" | "rose" | "slate"> =
   comptabilite: "teal", surveillance: "slate",
 };
 
-const CATEGORIE_LABELS: Record<JournalUtilisateurEntry["categorie"], "brand" | "teal" | "amber" | "rose" | "slate"> = {
+const CATEGORIE_LABELS: Partial<Record<JournalUtilisateurEntry["categorie"], "brand" | "teal" | "amber" | "rose" | "slate">> = {
   connexion: "slate", compte: "rose", eleve: "amber", enseignant: "teal", note: "brand", paiement: "teal",
 };
 

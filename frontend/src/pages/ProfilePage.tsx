@@ -11,7 +11,7 @@ import { useCooldown } from "../hooks/useCooldown";
 import type { EleveProfile, JournalUtilisateurEntry } from "../types";
 import { photoTropLourde, TAILLE_MAX_PHOTO_MO } from "../validation";
 
-const CATEGORIE_LABELS: Record<JournalUtilisateurEntry["categorie"], "brand" | "teal" | "amber" | "rose" | "slate"> = {
+const CATEGORIE_LABELS: Partial<Record<JournalUtilisateurEntry["categorie"], "brand" | "teal" | "amber" | "rose" | "slate">> = {
   connexion: "slate", compte: "rose", eleve: "amber", enseignant: "teal", note: "brand", paiement: "teal",
 };
 

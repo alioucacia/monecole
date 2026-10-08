@@ -63,7 +63,7 @@ DUREE_MAX_EN_COURS = timedelta(minutes=30)
 # (vérifié par les tests).
 PERIMETRE = [
     ("accounts.User", ("ecole",)),
-    ("accounts.JournalUtilisateur", ("utilisateur__ecole",)),
+    ("accounts.JournalUtilisateur", ("ecole",)),
     ("academics.AnneeScolaire", ("ecole",)),
     ("academics.Matiere", ("ecole",)),
     ("academics.Classe", ("annee_scolaire__ecole",)),
