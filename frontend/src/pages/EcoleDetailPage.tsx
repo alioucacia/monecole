@@ -90,6 +90,14 @@ export default function EcoleDetailPage() {
     modele_bulletin: 5, modele_attestation: 1, modele_badge: 1, modele_recu: 1, modele_fiche_inscription: 1, modele_certificat: 1,
   });
   const [savingModeles, setSavingModeles] = useState(false);
+  // Signataires de la fiche d'historique des paiements (Caissier à gauche, Fondateur au centre,
+  // Comptable à droite) — le Fondateur signe sous le nom du compte administrateur.
+  const [signataires, setSignataires] = useState({
+    signataire_comptable: true, signataire_comptable_nom: "",
+    signataire_caissier: false, signataire_caissier_nom: "",
+    signataire_fondateur: false,
+  });
+  const [savingSignataires, setSavingSignataires] = useState(false);
 
   // Création d'un compte Administrateur supplémentaire pour cette école (onglet Utilisateurs) —
   // la création de l'école elle-même n'en crée qu'un seul au départ.
@@ -122,6 +130,13 @@ export default function EcoleDetailPage() {
         modele_recu: ecoleRes.data.modele_recu, modele_fiche_inscription: ecoleRes.data.modele_fiche_inscription,
         modele_certificat: ecoleRes.data.modele_certificat,
       });
+      setSignataires({
+        signataire_comptable: ecoleRes.data.signataire_comptable,
+        signataire_comptable_nom: ecoleRes.data.signataire_comptable_nom || "",
+        signataire_caissier: ecoleRes.data.signataire_caissier,
+        signataire_caissier_nom: ecoleRes.data.signataire_caissier_nom || "",
+        signataire_fondateur: ecoleRes.data.signataire_fondateur,
+      });
     }).finally(() => setLoading(false));
   }, [ecoleId]);
 
@@ -136,6 +151,20 @@ export default function EcoleDetailPage() {
       toast.error(extractErrorMessage(err));
     } finally {
       setSavingModeles(false);
+    }
+  };
+
+  const handleSaveSignataires = async () => {
+    if (!ecole) return;
+    setSavingSignataires(true);
+    try {
+      const { data } = await ecolesApi.update(ecole.id, signataires);
+      setEcole(data);
+      toast.success("Signataires de la fiche d'historique des paiements enregistrés.");
+    } catch (err) {
+      toast.error(extractErrorMessage(err));
+    } finally {
+      setSavingSignataires(false);
     }
   };
 
@@ -551,6 +580,70 @@ export default function EcoleDetailPage() {
             <div className="mt-4">
               <Button onClick={handleSaveModeles} disabled={savingModeles}>
                 {savingModeles ? "Enregistrement…" : "Enregistrer les modèles"}
+              </Button>
+            </div>
+          </Card>
+          <Card className="lg:col-span-2">
+            <h3 className="font-bold text-ink-900 mb-1">Signataires de la fiche d'historique des paiements</h3>
+            <p className="text-sm text-slate-500 mb-4">
+              Cochez les personnes qui signent en bas de la fiche : Le Caissier à gauche, Le Fondateur au centre et
+              Le Comptable à droite. Le nom du Fondateur est celui du compte administrateur de l'école.
+            </p>
+            <div className="grid gap-4 sm:grid-cols-3">
+              <div className="space-y-2 rounded-xl border border-slate-200 p-3">
+                <label className="flex items-center gap-2 text-sm font-semibold text-ink-900 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={signataires.signataire_caissier}
+                    onChange={(e) => setSignataires({ ...signataires, signataire_caissier: e.target.checked })}
+                    className="h-4 w-4 rounded border-slate-300 text-brand-600"
+                  />
+                  Le Caissier <span className="font-normal text-slate-400">(à gauche)</span>
+                </label>
+                <Input
+                  label="Nom et prénom (optionnel)"
+                  value={signataires.signataire_caissier_nom}
+                  disabled={!signataires.signataire_caissier}
+                  onChange={(e) => setSignataires({ ...signataires, signataire_caissier_nom: e.target.value })}
+                />
+              </div>
+              <div className="space-y-2 rounded-xl border border-slate-200 p-3">
+                <label className="flex items-center gap-2 text-sm font-semibold text-ink-900 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={signataires.signataire_fondateur}
+                    onChange={(e) => setSignataires({ ...signataires, signataire_fondateur: e.target.checked })}
+                    className="h-4 w-4 rounded border-slate-300 text-brand-600"
+                  />
+                  Le Fondateur <span className="font-normal text-slate-400">(au centre)</span>
+                </label>
+                <p className="text-sm text-slate-600">
+                  {ecole.nom_fondateur
+                    ? <>Signe sous le nom de <strong>{ecole.nom_fondateur}</strong> (compte administrateur).</>
+                    : "Aucun compte administrateur actif avec un nom et prénom renseignés."}
+                </p>
+              </div>
+              <div className="space-y-2 rounded-xl border border-slate-200 p-3">
+                <label className="flex items-center gap-2 text-sm font-semibold text-ink-900 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={signataires.signataire_comptable}
+                    onChange={(e) => setSignataires({ ...signataires, signataire_comptable: e.target.checked })}
+                    className="h-4 w-4 rounded border-slate-300 text-brand-600"
+                  />
+                  Le Comptable <span className="font-normal text-slate-400">(à droite)</span>
+                </label>
+                <Input
+                  label="Nom et prénom (optionnel)"
+                  value={signataires.signataire_comptable_nom}
+                  disabled={!signataires.signataire_comptable}
+                  onChange={(e) => setSignataires({ ...signataires, signataire_comptable_nom: e.target.value })}
+                />
+              </div>
+            </div>
+            <div className="mt-4">
+              <Button onClick={handleSaveSignataires} disabled={savingSignataires}>
+                {savingSignataires ? "Enregistrement…" : "Enregistrer les signataires"}
               </Button>
             </div>
           </Card>

@@ -177,6 +177,14 @@ export interface Ecole {
   modele_certificat_display: string;
   modele_attestation: number;
   modele_attestation_display: string;
+  // Signataires de la fiche d'historique des paiements, paramétrés par le Super Admin.
+  // Le nom du Fondateur est celui du compte administrateur de l'école (`nom_fondateur`).
+  signataire_comptable: boolean;
+  signataire_comptable_nom: string;
+  signataire_caissier: boolean;
+  signataire_caissier_nom: string;
+  signataire_fondateur: boolean;
+  nom_fondateur: string;
 }
 
 /** Les 4 modèles de mise en page disponibles pour chaque document personnalisable (voir

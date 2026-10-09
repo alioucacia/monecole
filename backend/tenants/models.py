@@ -180,6 +180,16 @@ class Ecole(models.Model):
     # Super Admin — les 4 modèles fournis par l'établissement, reproduits à l'identique.
     modele_attestation = models.PositiveSmallIntegerField(choices=ModeleAttestation.choices, default=ModeleAttestation.PRESTIGE)
 
+    # Signataires de la fiche d'historique des paiements (payments/historique_paiements_pdf.html),
+    # paramétrés par le Super Admin : Le Caissier (à gauche), Le Fondateur (au centre) et Le
+    # Comptable (à droite). Le nom du Fondateur n'est pas saisi : c'est celui du compte
+    # administrateur de l'école (voir `nom_fondateur`).
+    signataire_comptable = models.BooleanField(default=True)
+    signataire_comptable_nom = models.CharField(max_length=150, blank=True)
+    signataire_caissier = models.BooleanField(default=False)
+    signataire_caissier_nom = models.CharField(max_length=150, blank=True)
+    signataire_fondateur = models.BooleanField(default=False)
+
     # Fonctionnalités optionnelles désactivées par le Super Admin pour cette école (liste de
     # clés parmi `tenants.features.FONCTIONNALITES`) — voir `a_fonctionnalite()` ci-dessous et
     # `tenants.permissions.fonctionnalite_requise` pour l'application côté API.
@@ -195,6 +205,13 @@ class Ecole(models.Model):
 
     def a_fonctionnalite(self, cle: str) -> bool:
         return cle not in (self.fonctionnalites_desactivees or [])
+
+    @property
+    def nom_fondateur(self) -> str:
+        """Prénom et nom du compte administrateur de l'école (le premier créé encore actif),
+        affiché sous la signature « Le Fondateur » de la fiche d'historique des paiements."""
+        admin = self.users.filter(role="admin", is_active=True).order_by("date_joined", "id").first()
+        return admin.get_full_name() if admin else ""
 
     def save(self, *args, **kwargs):
         if not self.slug:

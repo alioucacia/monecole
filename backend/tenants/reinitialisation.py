@@ -25,6 +25,8 @@ CHAMPS_REGLAGES_ECOLE = [
     "ire", "dpe", "dsee",
     "entete_ministere_1", "entete_ministere_2", "entete_republique", "entete_devise",
     "fonctionnalites_desactivees",
+    "signataire_comptable", "signataire_comptable_nom", "signataire_caissier", "signataire_caissier_nom",
+    "signataire_fondateur",
 ]
 
 

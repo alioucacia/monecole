@@ -133,6 +133,7 @@ class EcoleSerializer(serializers.ModelSerializer):
     modele_fiche_inscription_display = serializers.CharField(source="get_modele_fiche_inscription_display", read_only=True)
     modele_certificat_display = serializers.CharField(source="get_modele_certificat_display", read_only=True)
     modele_attestation_display = serializers.CharField(source="get_modele_attestation_display", read_only=True)
+    nom_fondateur = serializers.CharField(read_only=True)
 
     class Meta:
         model = Ecole
@@ -152,6 +153,8 @@ class EcoleSerializer(serializers.ModelSerializer):
             "modele_fiche_inscription", "modele_fiche_inscription_display",
             "modele_certificat", "modele_certificat_display",
             "modele_attestation", "modele_attestation_display",
+            "signataire_comptable", "signataire_comptable_nom", "signataire_caissier",
+            "signataire_caissier_nom", "signataire_fondateur", "nom_fondateur",
         ]
         read_only_fields = ["slug", "date_creation"]
 

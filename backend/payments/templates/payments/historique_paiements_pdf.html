@@ -69,6 +69,7 @@
     .visas .role { font-weight: bold; text-transform: uppercase; font-size: 8.5px; color: {{ couleur_principale }}; }
     .visas .zone { height: 16mm; }
     .visas .signature { border-top: 0.75px solid #94a3b8; font-size: 7.5px; color: #94a3b8; padding-top: 2px; }
+    .visas .nom { font-size: 9px; font-weight: bold; color: #1a2233; }
 
     .mention { font-size: 8px; color: #6b7280; margin-top: 10px; text-align: justify; }
     #pied-page { font-size: 7.5px; color: #94a3b8; text-align: center; border-top: 0.5px solid #cbd5e1; padding-top: 3px; }
@@ -210,19 +211,26 @@
     <p class="legende">Mois de mensualité d'Octobre à Juin. « Tranche N » / « Annuel » : mois réglé par une tranche ou par le paiement annuel.</p>
     {% endif %}
 
+    {% if signataire_caissier or signataire_fondateur or signataire_comptable %}
+    {# Signataires paramétrés par le Super Admin : Caissier à gauche, Fondateur au centre, Comptable à droite. #}
     <table class="visas">
         <tr>
-            <td width="58%"></td>
-            <td width="34%"><div class="role">Le Comptable</div></td>
-            <td width="8%"></td>
+            <td width="30%">{% if signataire_caissier %}<div class="role">Le Caissier</div>{% endif %}</td>
+            <td width="5%"></td>
+            <td width="30%">{% if signataire_fondateur %}<div class="role">Le Fondateur</div>{% endif %}</td>
+            <td width="5%"></td>
+            <td width="30%">{% if signataire_comptable %}<div class="role">Le Comptable</div>{% endif %}</td>
         </tr>
-        <tr><td colspan="3" class="zone"></td></tr>
+        <tr><td colspan="5" class="zone"></td></tr>
         <tr>
+            {% if signataire_caissier %}<td class="signature">{% if signataire_caissier_nom %}<div class="nom">{{ signataire_caissier_nom }}</div>{% endif %}Nom et signature</td>{% else %}<td></td>{% endif %}
             <td></td>
-            <td class="signature">Nom et signature</td>
+            {% if signataire_fondateur %}<td class="signature">{% if signataire_fondateur_nom %}<div class="nom">{{ signataire_fondateur_nom }}</div>{% endif %}Nom et signature</td>{% else %}<td></td>{% endif %}
             <td></td>
+            {% if signataire_comptable %}<td class="signature">{% if signataire_comptable_nom %}<div class="nom">{{ signataire_comptable_nom }}</div>{% endif %}Nom et signature</td>{% else %}<td></td>{% endif %}
         </tr>
     </table>
+    {% endif %}
 
     <p class="mention">
         Ce document récapitule l'ensemble des versements enregistrés par l'établissement pour l'élève ci-dessus au titre de

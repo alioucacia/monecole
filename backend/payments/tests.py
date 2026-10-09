@@ -147,3 +147,32 @@ class HistoriquePaiementsPdfTests(BaseTests):
         self.assertEqual(r.status_code, 200, r.content[:500])
         self.assertEqual(r["Content-Type"], "application/pdf")
         self.assertTrue(r.content.startswith(b"%PDF"))
+
+    def test_signataires_parametres_par_le_super_admin(self):
+        from unittest import mock
+
+        from django.template.loader import render_to_string
+
+        eleve = self._eleve()
+        type_mensuel = TypeFrais.objects.create(ecole=self.ecole, nom="Mensualité", montant_standard=100000, periodicite="mensuel")
+        Frais.objects.create(
+            eleve=eleve, type_frais=type_mensuel, annee_scolaire=self.annee, montant=100000,
+            date_echeance=date(2026, 10, 1), mois=date(2026, 10, 1),
+        )
+        self.ecole.signataire_caissier = True
+        self.ecole.signataire_caissier_nom = "Mamadou Diallo"
+        self.ecole.signataire_comptable_nom = "Aïssatou Bah"
+        self.ecole.signataire_fondateur = True
+        self.ecole.save()
+        self.admin.first_name, self.admin.last_name = "Ibrahima", "Camara"
+        self.admin.save()
+        with mock.patch("payments.views.render_to_string", wraps=render_to_string) as rendu:
+            r = self.client.get("/api/payments/frais/historique-paiements-pdf/", {"eleve": eleve.id, "annee_scolaire": self.annee.id})
+        self.assertEqual(r.status_code, 200, r.content[:500])
+        html = render_to_string(*rendu.call_args.args)
+        self.assertIn("Le Caissier", html)
+        self.assertIn("Mamadou Diallo", html)
+        self.assertIn("Le Comptable", html)
+        self.assertIn("Aïssatou Bah", html)
+        self.assertIn("Le Fondateur", html)
+        self.assertIn("Ibrahima Camara", html)

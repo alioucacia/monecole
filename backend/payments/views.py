@@ -1401,6 +1401,14 @@ class FraisViewSet(viewsets.ModelViewSet):
             "reference": f"HP-{eleve.matricule}-{aujourd_hui:%Y%m%d}",
             "date_edition": aujourd_hui,
             "edite_par": request.user.get_full_name() or request.user.username,
+            # Signataires paramétrés par le Super Admin (Ecole.signataire_*) — le Fondateur
+            # signe sous le nom du compte administrateur de l'école.
+            "signataire_comptable": ecole.signataire_comptable if ecole else True,
+            "signataire_comptable_nom": ecole.signataire_comptable_nom if ecole else "",
+            "signataire_caissier": ecole.signataire_caissier if ecole else False,
+            "signataire_caissier_nom": ecole.signataire_caissier_nom if ecole else "",
+            "signataire_fondateur": ecole.signataire_fondateur if ecole else False,
+            "signataire_fondateur_nom": ecole.nom_fondateur if ecole and ecole.signataire_fondateur else "",
             "ecole_nom": ecole.nom if ecole else "Taly-School",
             "ecole_adresse": ecole.adresse if ecole else "",
             "ecole_telephone": ecole.telephone if ecole else "",
