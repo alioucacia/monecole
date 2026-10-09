@@ -171,9 +171,9 @@ export default function PaymentsPage() {
   // Liste et totaux : année affichée dans toute l'application (sélecteur du haut, appliqué
   // côté serveur) — voir context/AnneeContext.tsx.
   const { anneeId: anneeVueId } = useAnnee();
-  // Frais « Payé » et « Partiel » masqués par défaut : la liste ne montre que les impayés.
-  const [afficherPayes, setAfficherPayes] = useState(false);
-  const [afficherPartiels, setAfficherPartiels] = useState(false);
+  // Un seul statut affiché à la fois : les impayés par défaut, ou seulement les payés / seulement
+  // les partiels selon la case cochée (les deux cases s'excluent).
+  const [filtreStatut, setFiltreStatut] = useState<"impaye" | "paye" | "partiel">("impaye");
   const classesDuCycle = cycleFiltre ? classes.filter((c) => c.cycle === cycleFiltre) : classes;
 
   const [fraisModalOpen, setFraisModalOpen] = useState(false);
@@ -239,10 +239,9 @@ export default function PaymentsPage() {
       search: searchDebounced || undefined,
       eleve__classe: classeFiltre || undefined,
       eleve__classe__cycle: classeFiltre ? undefined : cycleFiltre || undefined,
-      masquer_payes: peutGerer && !afficherPayes ? 1 : undefined,
-      masquer_partiels: peutGerer && !afficherPartiels ? 1 : undefined,
+      statut: peutGerer ? filtreStatut : undefined,
     }),
-    [searchDebounced, cycleFiltre, classeFiltre, afficherPayes, afficherPartiels]
+    [searchDebounced, cycleFiltre, classeFiltre, filtreStatut]
   );
 
   const handleExport = async () => {
@@ -671,15 +670,15 @@ export default function PaymentsPage() {
           </Select>
           <label className="flex items-center gap-2 text-sm text-slate-600 cursor-pointer mb-2.5">
             <input
-              type="checkbox" checked={afficherPayes} className="h-4 w-4 rounded border-slate-300 accent-brand-600"
-              onChange={(e) => setAfficherPayes(e.target.checked)}
+              type="checkbox" checked={filtreStatut === "paye"} className="h-4 w-4 rounded border-slate-300 accent-brand-600"
+              onChange={(e) => setFiltreStatut(e.target.checked ? "paye" : "impaye")}
             />
             Afficher les frais payés
           </label>
           <label className="flex items-center gap-2 text-sm text-slate-600 cursor-pointer mb-2.5">
             <input
-              type="checkbox" checked={afficherPartiels} className="h-4 w-4 rounded border-slate-300 accent-brand-600"
-              onChange={(e) => setAfficherPartiels(e.target.checked)}
+              type="checkbox" checked={filtreStatut === "partiel"} className="h-4 w-4 rounded border-slate-300 accent-brand-600"
+              onChange={(e) => setFiltreStatut(e.target.checked ? "partiel" : "impaye")}
             />
             Afficher les partiels
           </label>

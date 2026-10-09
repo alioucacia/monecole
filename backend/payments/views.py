@@ -680,14 +680,12 @@ class FraisViewSet(viewsets.ModelViewSet):
         return qs
 
     def filter_queryset(self, queryset):
-        """`?masquer_payes=1` / `?masquer_partiels=1` : excluent les frais au statut « Payé » /
-        « Partiel » (liste Paiements). Le statut dépend de `montant_du` (réduction propre à
-        l'élève), calculé en Python : total versé annoté en une requête, puis tri."""
+        """`?statut=impaye|partiel|paye` : ne garde que les frais de ce statut (liste Paiements).
+        Le statut dépend de `montant_du` (réduction propre à l'élève), calculé en Python : total
+        versé annoté en une requête, puis tri — même règle que `Frais.statut`."""
         queryset = super().filter_queryset(queryset)
-        params = self.request.query_params
-        masquer_payes = params.get("masquer_payes") in ("1", "true")
-        masquer_partiels = params.get("masquer_partiels") in ("1", "true")
-        if not (masquer_payes or masquer_partiels):
+        statut = self.request.query_params.get("statut")
+        if statut not in ("impaye", "partiel", "paye"):
             return queryset
         annotes = (
             queryset.select_related("eleve", "type_frais").prefetch_related(None)
@@ -696,11 +694,14 @@ class FraisViewSet(viewsets.ModelViewSet):
         ids = []
         for f in annotes:
             du = f.montant_du
-            paye = du <= 0 or f.total_verse >= du
-            partiel = not paye and f.total_verse > 0
-            if (masquer_payes and paye) or (masquer_partiels and partiel):
-                continue
-            ids.append(f.id)
+            if du <= 0 or f.total_verse >= du:
+                statut_frais = "paye"
+            elif f.total_verse <= 0:
+                statut_frais = "impaye"
+            else:
+                statut_frais = "partiel"
+            if statut_frais == statut:
+                ids.append(f.id)
         return queryset.filter(id__in=ids)
 
     def get_permissions(self):

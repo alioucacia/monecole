@@ -58,7 +58,7 @@ class AnneeVueTests(TestCase):
         # Non-admin : `annee_vue` ignoré, toujours l'année active.
         c.force_authenticate(self.compta)
         self.assertEqual(self._liste(c, "/api/payments/frais/", "id", annee_vue=self.a1.id), [str(self.f2.id)])
-        self.assertEqual(c.get("/api/payments/frais/", {"masquer_payes": 1}).status_code, 200)
+        self.assertEqual(c.get("/api/payments/frais/", {"statut": "impaye"}).status_code, 200)
         self.assertEqual(c.get("/api/payments/frais/summary/").status_code, 200)
 
     def test_autres_ecrans_non_filtres(self):
