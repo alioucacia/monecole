@@ -171,8 +171,9 @@ export default function PaymentsPage() {
   // Liste et totaux : année affichée dans toute l'application (sélecteur du haut, appliqué
   // côté serveur) — voir context/AnneeContext.tsx.
   const { anneeId: anneeVueId } = useAnnee();
-  // Frais « Payé » masqués par défaut : la liste ne montre que ce qui reste à encaisser.
+  // Frais « Payé » et « Partiel » masqués par défaut : la liste ne montre que les impayés.
   const [afficherPayes, setAfficherPayes] = useState(false);
+  const [afficherPartiels, setAfficherPartiels] = useState(false);
   const classesDuCycle = cycleFiltre ? classes.filter((c) => c.cycle === cycleFiltre) : classes;
 
   const [fraisModalOpen, setFraisModalOpen] = useState(false);
@@ -239,8 +240,9 @@ export default function PaymentsPage() {
       eleve__classe: classeFiltre || undefined,
       eleve__classe__cycle: classeFiltre ? undefined : cycleFiltre || undefined,
       masquer_payes: peutGerer && !afficherPayes ? 1 : undefined,
+      masquer_partiels: peutGerer && !afficherPartiels ? 1 : undefined,
     }),
-    [searchDebounced, cycleFiltre, classeFiltre, afficherPayes]
+    [searchDebounced, cycleFiltre, classeFiltre, afficherPayes, afficherPartiels]
   );
 
   const handleExport = async () => {
@@ -673,6 +675,13 @@ export default function PaymentsPage() {
               onChange={(e) => setAfficherPayes(e.target.checked)}
             />
             Afficher les frais payés
+          </label>
+          <label className="flex items-center gap-2 text-sm text-slate-600 cursor-pointer mb-2.5">
+            <input
+              type="checkbox" checked={afficherPartiels} className="h-4 w-4 rounded border-slate-300 accent-brand-600"
+              onChange={(e) => setAfficherPartiels(e.target.checked)}
+            />
+            Afficher les partiels
           </label>
           {(search || cycleFiltre || classeFiltre) && (
             <button
