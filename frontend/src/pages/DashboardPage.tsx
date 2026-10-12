@@ -251,6 +251,25 @@ function StudentDashboard({ data }: { data: Record<string, any> }) {
       </div>
 
       <Card>
+        <h3 className="font-bold text-ink-900 mb-4">Mes résultats</h3>
+        {(data.resultats_periodes ?? []).length === 0 ? (
+          <EmptyState title="Aucun résultat pour l'instant" description="Vos moyennes et rangs apparaîtront ici dès que des notes seront saisies." />
+        ) : (
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+            {data.resultats_periodes.map((r: any) => (
+              <div key={r.periode} className="rounded-xl border border-slate-100 px-4 py-3">
+                <p className="text-xs font-semibold text-slate-500 uppercase">{r.periode}</p>
+                <p className="text-xl font-bold text-ink-900 mt-1">{r.moyenne}/{data.bareme ?? 20}</p>
+                <p className="text-sm text-slate-600 mt-0.5">
+                  Rang : <span className="font-semibold">{r.rang}{r.rang === 1 ? "er" : "e"}</span> sur {r.effectif}
+                </p>
+              </div>
+            ))}
+          </div>
+        )}
+      </Card>
+
+      <Card>
         <h3 className="font-bold text-ink-900 mb-4">Classe : {data.classe ?? "—"}</h3>
         <h4 className="text-sm font-medium text-slate-500 mb-2">Prochains cours</h4>
         {data.prochains_creneaux.length === 0 ? (

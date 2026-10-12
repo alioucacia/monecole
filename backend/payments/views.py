@@ -512,7 +512,8 @@ class CategorieDepenseViewSet(viewsets.ModelViewSet):
 
 
 class DepenseViewSet(viewsets.ModelViewSet):
-    """Sorties de caisse de l'établissement (hors salaires enseignants) — le pendant de
+    """Dépenses saisies de l'établissement (les salaires payés s'ajoutent aux sorties dans
+    `CaisseView`, sans passer par cette table) — le pendant de
     `FraisViewSet`/`PaiementViewSet` côté dépenses, alimente le tableau de bord Caisse
     (voir `CaisseView`) et le rapport journalier (simple filtre de date sur cette même vue)."""
 
@@ -612,6 +613,26 @@ class CaisseView(APIView):
             }
             for d in depenses
         ]
+        # Les salaires enseignants versés (fiche de paie « payée ») sont des sorties de caisse
+        # comme les autres dépenses : datés du jour de paiement (à défaut, du mois concerné),
+        # sans doublon dans `Depense` — la fiche de paie reste la seule source.
+        from people.models import PaieEnseignant
+        paies = (
+            PaieEnseignant.objects.filter(enseignant__user__ecole_id=ecole_id, payee=True)
+            .select_related("enseignant__user")
+        )
+        for p in paies:
+            date_sortie = p.date_paiement or p.mois
+            if not (debut <= date_sortie <= fin):
+                continue
+            sorties.append({
+                "id": f"paie-{p.id}", "date": date_sortie, "categorie": None,
+                "categorie_nom": "Salaires enseignants",
+                "motif": f"Salaire {p.mois:%m/%Y} — {p.enseignant.user.get_full_name()}",
+                "montant": p.net_a_payer, "mode_paiement": "", "mode_paiement_display": "",
+                "reference": "", "responsable": "", "enregistre_par_nom": None,
+            })
+        sorties.sort(key=lambda s: s["date"])
         total_rentrees = sum((r["montant"] for r in rentrees), Decimal("0"))
         total_sorties = sum((s["montant"] for s in sorties), Decimal("0"))
         return {

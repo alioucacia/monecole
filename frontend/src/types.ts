@@ -860,9 +860,9 @@ export interface CaisseRentree {
 }
 
 export interface CaisseSortie {
-  id: number;
+  id: number | string; // "paie-<id>" pour un salaire enseignant versé
   date: string;
-  categorie: number;
+  categorie: number | null;
   categorie_nom: string;
   motif: string;
   montant: string;

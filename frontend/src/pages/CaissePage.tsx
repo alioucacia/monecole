@@ -154,7 +154,7 @@ export default function CaissePage() {
             </Table>
           )}
 
-          <h3 className="text-sm font-bold text-ink-900 mb-2 mt-8">Sorties — Dépenses</h3>
+          <h3 className="text-sm font-bold text-ink-900 mb-2 mt-8">Sorties — Dépenses et salaires</h3>
           {rapport.sorties.length === 0 ? (
             <EmptyState title="Aucune sortie sur cette période" />
           ) : (

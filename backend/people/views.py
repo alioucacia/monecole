@@ -1314,13 +1314,20 @@ class PaieEnseignantViewSet(viewsets.ModelViewSet):
             and "nombre_heures" not in data
             and (is_create or "mode_calcul" in data)
         )
+        extra = {}
+        # Une paie « payée » sans date est datée d'aujourd'hui : c'est cette date qui la place
+        # dans le bon rapport de caisse (voir payments.views.CaisseView).
+        if data.get("payee") and not data.get("date_paiement") and not (
+            serializer.instance and serializer.instance.date_paiement
+        ):
+            extra["date_paiement"] = date.today()
         if veut_auto_calc:
             enseignant = data.get("enseignant") or serializer.instance.enseignant
             mois = data.get("mois") or serializer.instance.mois
             heures, _ = _heures_pointees(enseignant, mois)
-            serializer.save(nombre_heures=heures)
+            serializer.save(nombre_heures=heures, **extra)
         else:
-            serializer.save()
+            serializer.save(**extra)
 
     def perform_create(self, serializer):
         self._appliquer_heures_pointees(serializer, is_create=True)

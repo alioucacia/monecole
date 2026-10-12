@@ -196,7 +196,23 @@ class DashboardView(APIView):
                 .values("jour", "heure_debut", "heure_fin", "enseignement__matiere__nom", "salle")
             )
 
+        # Moyenne et rang de l'élève pour chaque période (trimestre) de l'année en cours, avec
+        # le même calcul que le bulletin/les Résultats (voir grades.views._class_results).
+        resultats_periodes = []
+        if eleve.classe_id:
+            from grades.views import _class_results
+
+            for p in periodes_annee.order_by("date_debut"):
+                classement = _class_results(eleve.classe, [p])
+                moi = next((r for r in classement if r["eleve_id"] == eleve.id), None)
+                if moi and moi["moyenne_generale"] is not None:
+                    resultats_periodes.append({
+                        "periode": p.nom, "moyenne": moi["moyenne_generale"], "rang": moi["rang"],
+                        "effectif": sum(1 for r in classement if r["moyenne_generale"] is not None),
+                    })
+
         return {
+            "resultats_periodes": resultats_periodes,
             "moyenne_generale": moyenne_generale,
             # Barème de la classe (sur 10 en Primaire, sur 20 au Collège — voir Classe.bareme).
             "bareme": eleve.classe.bareme if eleve.classe else 20,
