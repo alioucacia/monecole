@@ -31,10 +31,8 @@ export default function ImpayesParClassePage() {
   useEffect(() => {
     fraisApi.impayesParClasse().then(({ data }) => setGroupes(data)).finally(() => setLoading(false));
   }, []);
-  // Actualisation silencieuse toutes les 5 s (voir useAutoRefresh).
-  useAutoRefresh(() => {
-    fraisApi.impayesParClasse().then(({ data }) => setGroupes(data)).catch(() => {});
-  });
+  // Actualisation silencieuse (voir useAutoRefresh).
+  useAutoRefresh(() => fraisApi.impayesParClasse().then(({ data }) => setGroupes(data)));
 
   const totalGeneral = groupes.reduce((acc, g) => acc + Number(g.total_solde), 0);
   const totalImpayes = groupes.reduce((acc, g) => acc + g.nb_impayes, 0);

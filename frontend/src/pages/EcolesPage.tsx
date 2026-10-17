@@ -2,7 +2,9 @@ import { useEffect, useMemo, useState, type FormEvent } from "react";
 import { Link } from "react-router-dom";
 import { Bar, BarChart, CartesianGrid, Line, LineChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 
-import { ecolesApi, paiementsEcolesApi, plansAbonnementApi, resumeNotificationAdmin, unwrapList, type EleveHorsListe } from "../api/services";
+import { ecolesApi, paiementsEcolesApi, plansAbonnementApi, resumeNotificationAdmin, unwrapList, type EleveHorsListe, type EleveSansPaiement, type PaiementHorsListe } from "../api/services";
+import { ElevesSansPaiementTable } from "../components/ElevesSansPaiement";
+import { PaiementsHorsListeTable } from "../components/PaiementsHorsListe";
 import { extractErrorMessage } from "../api/client";
 import { Badge, Button, Card, EmptyState, Input, Modal, PageHeader, Select, Spinner, StatCard, Table } from "../components/ui";
 import { useConfirm } from "../context/ConfirmContext";
@@ -96,6 +98,58 @@ export default function EcolesPage() {
     } finally {
       setHorsListeLoading(false);
     }
+  };
+
+  // Paiements encaissés pour ces élèves hors liste, par école, supprimables (null = modale
+  // fermée) — voir EcoleViewSet.paiements_hors_liste.
+  const [paiementsHorsListe, setPaiementsHorsListe] = useState<{ ecole: number; ecole_nom: string; annee: string | null; paiements: PaiementHorsListe[] }[] | null>(null);
+  const [paiementsHorsListeEcole, setPaiementsHorsListeEcole] = useState("");
+  const [paiementsHorsListeLoading, setPaiementsHorsListeLoading] = useState(false);
+
+  const chargerPaiementsHorsListe = async (ecole: string) => {
+    setPaiementsHorsListeEcole(ecole);
+    setPaiementsHorsListeLoading(true);
+    try {
+      const { data } = await ecolesApi.paiementsHorsListe(ecole ? Number(ecole) : undefined);
+      setPaiementsHorsListe(data);
+    } catch (err) {
+      toast.error(extractErrorMessage(err));
+    } finally {
+      setPaiementsHorsListeLoading(false);
+    }
+  };
+
+  const supprimerPaiementsHorsListe = async (ecole: number, ids: number[]) => {
+    const { data } = await ecolesApi.supprimerPaiementsHorsListe(ecole, ids);
+    const { data: restants } = await ecolesApi.paiementsHorsListe(paiementsHorsListeEcole ? Number(paiementsHorsListeEcole) : undefined);
+    setPaiementsHorsListe(restants);
+    return data;
+  };
+
+  // Élèves sans aucun paiement, par école, supprimables (null = modale fermée) — voir
+  // EcoleViewSet.eleves_sans_paiement.
+  const [sansPaiement, setSansPaiement] = useState<{ ecole: number; ecole_nom: string; eleves: EleveSansPaiement[] }[] | null>(null);
+  const [sansPaiementEcole, setSansPaiementEcole] = useState("");
+  const [sansPaiementLoading, setSansPaiementLoading] = useState(false);
+
+  const chargerSansPaiement = async (ecole: string) => {
+    setSansPaiementEcole(ecole);
+    setSansPaiementLoading(true);
+    try {
+      const { data } = await ecolesApi.elevesSansPaiement(ecole ? Number(ecole) : undefined);
+      setSansPaiement(data);
+    } catch (err) {
+      toast.error(extractErrorMessage(err));
+    } finally {
+      setSansPaiementLoading(false);
+    }
+  };
+
+  const supprimerSansPaiement = async (ecole: number, ids: number[]) => {
+    const { data } = await ecolesApi.supprimerElevesSansPaiement(ecole, ids);
+    const { data: restants } = await ecolesApi.elevesSansPaiement(sansPaiementEcole ? Number(sansPaiementEcole) : undefined);
+    setSansPaiement(restants);
+    return data;
   };
 
   const load = () => {
@@ -267,6 +321,12 @@ export default function EcolesPage() {
             <Button variant="secondary" onClick={() => chargerHorsListe("")} disabled={horsListeLoading && horsListe === null}>
               {horsListeLoading && horsListe === null ? "Recherche…" : "👻 Élèves hors liste"}
             </Button>
+            <Button variant="secondary" onClick={() => chargerPaiementsHorsListe("")} disabled={paiementsHorsListeLoading && paiementsHorsListe === null}>
+              {paiementsHorsListeLoading && paiementsHorsListe === null ? "Recherche…" : "💸 Paiements hors liste"}
+            </Button>
+            <Button variant="secondary" onClick={() => chargerSansPaiement("")} disabled={sansPaiementLoading && sansPaiement === null}>
+              {sansPaiementLoading && sansPaiement === null ? "Recherche…" : "🚫 Élèves sans paiement"}
+            </Button>
             <Button onClick={openCreate}>+ Nouvelle école</Button>
           </div>
         }
@@ -307,6 +367,58 @@ export default function EcolesPage() {
                   </tr>
                 ))}
               </Table>
+            </div>
+          )))}
+        </div>
+      </Modal>
+
+      <Modal open={paiementsHorsListe !== null} onClose={() => setPaiementsHorsListe(null)} title="Paiements non rattachés à un élève de la liste" wide>
+        <div className="space-y-4">
+          <div className="flex flex-wrap items-center gap-3">
+            <Select value={paiementsHorsListeEcole} onChange={(e) => chargerPaiementsHorsListe(e.target.value)} disabled={paiementsHorsListeLoading}>
+              <option value="">Toutes les écoles concernées</option>
+              {ecoles.map((e) => <option key={e.id} value={e.id}>{e.nom}</option>)}
+            </Select>
+            {paiementsHorsListeLoading && <Spinner />}
+          </div>
+          <p className="text-sm text-slate-500">
+            Paiements de l'année active de chaque école encaissés pour des élèves absents de sa liste Élèves (inactifs,
+            sans classe ou classe d'une autre année). Ils sont comptés dans la Caisse de l'école : supprimez ceux qui
+            n'ont pas lieu d'être.
+          </p>
+          {paiementsHorsListe && (paiementsHorsListe.every((g) => g.paiements.length === 0) ? (
+            <EmptyState title="Aucun paiement hors liste" description="Tous les paiements sont rattachés à des élèves des listes Élèves." />
+          ) : paiementsHorsListe.filter((g) => g.paiements.length > 0).map((groupe) => (
+            <div key={groupe.ecole} className="space-y-2">
+              <h3 className="font-bold text-slate-700">
+                {groupe.ecole_nom}
+                <span className="ml-2 text-sm font-normal text-slate-500">{groupe.annee ?? "aucune année active"}</span>
+              </h3>
+              <PaiementsHorsListeTable paiements={groupe.paiements} onSupprimer={(ids) => supprimerPaiementsHorsListe(groupe.ecole, ids)} />
+            </div>
+          )))}
+        </div>
+      </Modal>
+
+      <Modal open={sansPaiement !== null} onClose={() => setSansPaiement(null)} title="Élèves sans aucun paiement" wide>
+        <div className="space-y-4">
+          <div className="flex flex-wrap items-center gap-3">
+            <Select value={sansPaiementEcole} onChange={(e) => chargerSansPaiement(e.target.value)} disabled={sansPaiementLoading}>
+              <option value="">Toutes les écoles concernées</option>
+              {ecoles.map((e) => <option key={e.id} value={e.id}>{e.nom}</option>)}
+            </Select>
+            {sansPaiementLoading && <Spinner />}
+          </div>
+          <p className="text-sm text-slate-500">
+            Élèves de chaque école, toutes années confondues, sur lesquels aucun paiement n'a été enregistré. Leur
+            suppression n'efface aucun montant de la Caisse.
+          </p>
+          {sansPaiement && (sansPaiement.every((g) => g.eleves.length === 0) ? (
+            <EmptyState title="Aucun élève sans paiement" description="Chaque élève a au moins un paiement enregistré." />
+          ) : sansPaiement.filter((g) => g.eleves.length > 0).map((groupe) => (
+            <div key={groupe.ecole} className="space-y-2">
+              <h3 className="font-bold text-slate-700">{groupe.ecole_nom}</h3>
+              <ElevesSansPaiementTable eleves={groupe.eleves} onSupprimer={(ids) => supprimerSansPaiement(groupe.ecole, ids)} />
             </div>
           )))}
         </div>

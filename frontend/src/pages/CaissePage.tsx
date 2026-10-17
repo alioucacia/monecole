@@ -75,10 +75,10 @@ export default function CaissePage() {
       .finally(() => setLoading(false));
   }, [dateDebut, dateFin]);
 
-  // Actualisation silencieuse toutes les 5 s (voir useAutoRefresh) — même période, sans spinner.
-  useAutoRefresh(() => {
-    caisseApi.get({ date_debut: dateDebut, date_fin: dateFin }).then(({ data }) => setRapport(data)).catch(() => {});
-  });
+  // Actualisation silencieuse (voir useAutoRefresh) — même période, sans spinner.
+  useAutoRefresh(() =>
+    caisseApi.get({ date_debut: dateDebut, date_fin: dateFin }).then(({ data }) => setRapport(data)),
+  );
 
   const handleTelechargerPdf = () => {
     const nomFichier = dateDebut === dateFin ? `rapport_caisse_${dateDebut}.pdf` : `rapport_caisse_${dateDebut}_${dateFin}.pdf`;

@@ -343,21 +343,36 @@ class Frais(models.Model):
             return self.montant
         if self.facteur_applique is None:
             facteur = facteur_actuel
-        elif facteur_actuel < self.facteur_applique:
+        elif facteur_actuel < self.facteur_applique and self._montant_avec(facteur_actuel) >= self.montant_paye:
             self.facteur_applique = facteur_actuel
             if self.pk:
                 type(self).objects.filter(pk=self.pk).update(facteur_applique=facteur_actuel)
             facteur = facteur_actuel
+        # Sinon le gel tient — y compris face à une réduction plus favorable qui ramènerait le dû
+        # SOUS ce qui est déjà versé (ex: inscription payée, puis élève passé en Fondation 100%) :
+        # la réduction ne s'applique jamais à une somme déjà encaissée, sans quoi l'argent reçu
+        # devenait un « trop-perçu » et le taux de recouvrement dépassait 100%.
         else:
             facteur = self.facteur_applique
         # `facteur` a 3 décimales (voir facteur_applique/EleveProfile.facteur_mensualite) : sans
         # arrondi, le produit hérite de ces 3 décimales et dépasse les 2 autorisées par
         # Paiement.montant, ce qui rejette avec une erreur de validation tout paiement dont le
         # montant est repris tel quel depuis ce calcul (ex: "payer le solde exact du mois").
+        return self._montant_avec(facteur)
+
+    def _montant_avec(self, facteur) -> Decimal:
         return (self.montant * facteur).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
 
     @property
     def montant_paye(self):
+        # Sans requête quand c'est possible : `solde`/`statut` le relisent, et les listes (page
+        # Paiements, impayés par classe...) l'appellent pour chaque frais — une requête à chaque
+        # fois faisait croître le temps de réponse avec le nombre d'élèves.
+        if hasattr(self, "total_verse"):  # annoté (Coalesce(Sum("paiements__montant")))
+            return self.total_verse
+        prefetch = getattr(self, "_prefetched_objects_cache", {}).get("paiements")
+        if prefetch is not None:  # prefetch_related("paiements")
+            return sum((p.montant for p in prefetch), Decimal("0"))
         total = self.paiements.aggregate(total=models.Sum("montant"))["total"]
         return total or Decimal("0")
 

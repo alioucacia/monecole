@@ -368,6 +368,89 @@ def eleves_hors_liste(ecole_id, annee) -> list[dict]:
     return sorted(par_eleve.values(), key=lambda l: l["eleve_nom"].lower())
 
 
+def paiements_hors_liste_qs(ecole_id, annee):
+    """Paiements encaissés sur `annee` pour des élèves hors liste (voir `eleves_hors_liste`) :
+    comptés dans la Caisse et les rapports, mais rattachés à aucun élève de la liste Élèves."""
+    from people.models import EleveProfile
+
+    inscrits = EleveProfile.objects.filter(
+        filtre_eleves_annee(annee), actif=True, user__ecole_id=ecole_id, classe__isnull=False,
+    ).values("id")
+    return (
+        Paiement.objects.filter(frais__eleve__user__ecole_id=ecole_id, frais__annee_scolaire=annee)
+        .exclude(frais__eleve_id__in=inscrits)
+        .select_related(
+            "frais__eleve__user", "frais__eleve__classe__annee_scolaire", "frais__type_frais",
+            "enregistre_par", "periode",
+        )
+        .order_by("frais__eleve__user__last_name", "frais__eleve__user__first_name", "-date_paiement", "-id")
+    )
+
+
+def paiements_hors_liste(ecole_id, annee) -> list[dict]:
+    """Détail, paiement par paiement, de `paiements_hors_liste_qs` — pour que l'administrateur
+    (FraisViewSet.paiements_hors_liste) ou le Super Admin (EcoleViewSet.paiements_hors_liste)
+    les examine et supprime ceux qui n'ont pas lieu d'être."""
+    lignes = []
+    for p in paiements_hors_liste_qs(ecole_id, annee):
+        eleve = p.frais.eleve
+        if not eleve.actif:
+            motif = "Inactif (parti / transféré)"
+        elif eleve.classe is None:
+            motif = "Sans classe"
+        else:
+            motif = f"Classe d'une autre année ({eleve.classe.nom} — {eleve.classe.annee_scolaire.libelle})"
+        lignes.append({
+            "id": p.id, "date_paiement": p.date_paiement, "montant": p.montant,
+            "mode_paiement": p.get_mode_paiement_display(), "reference": p.reference,
+            "type_frais": p.frais.type_frais.nom, "mois": p.mois,
+            "periode": p.periode.nom if p.periode else "",
+            "enregistre_par": p.enregistre_par.get_full_name() if p.enregistre_par else "",
+            "eleve": eleve.id, "eleve_nom": eleve.user.get_full_name(), "matricule": eleve.matricule,
+            "actif": eleve.actif, "motif": motif,
+        })
+    return lignes
+
+
+def supprimer_paiement(paiement):
+    """Supprime un paiement. Symétrique de PaiementViewSet.perform_create : si c'était le dernier
+    encaissé sur ce frais, on « dégèle » la réduction (le frais suit de nouveau la catégorie
+    courante de l'élève, comme s'il n'avait jamais été payé)."""
+    frais = paiement.frais
+    paiement.delete()
+    if not frais.paiements.exists() and frais.facteur_applique is not None:
+        frais.facteur_applique = None
+        frais.save(update_fields=["facteur_applique"])
+
+
+def supprimer_paiements_hors_liste(ecole_id, annee, ids, request) -> dict:
+    """Supprime, parmi `ids`, les paiements qui sont bien hors liste pour cette école et cette
+    année (jamais un paiement d'un élève de la liste, même si son id est envoyé), et journalise."""
+    from accounts.models import JournalUtilisateur
+    from accounts.services import journaliser
+
+    if not isinstance(ids, list):
+        raise ValidationError("Le paramètre 'ids' doit être une liste.")
+    try:
+        ids = [int(i) for i in ids]
+    except (TypeError, ValueError):
+        raise ValidationError("Le paramètre 'ids' ne doit contenir que des identifiants numériques.")
+    paiements = list(paiements_hors_liste_qs(ecole_id, annee).filter(id__in=ids))
+    total = sum((p.montant for p in paiements), Decimal("0"))
+    details = [f"{p.frais.eleve.user.get_full_name()} ({p.montant} GNF)" for p in paiements]
+    with transaction.atomic():
+        for p in paiements:
+            supprimer_paiement(p)
+    if paiements:
+        journaliser(
+            request.user, JournalUtilisateur.Categorie.PAIEMENT,
+            f"{len(paiements)} paiement(s) d'élèves hors liste supprimé(s) — {total} GNF : "
+            + ", ".join(details[:10]) + (" …" if len(details) > 10 else ""),
+            request,
+        )
+    return {"supprimes": len(paiements), "montant_total": total}
+
+
 def _situation_paiement(eleve_suivi, mois_filtre="") -> str | None:
     """« payes » si tout ce qui est dû est réglé, « non_payes » sinon (impayé ou partiel) — sur
     le mois filtré, ou à défaut sur l'inscription/réinscription et les mois déjà commencés (un
@@ -659,15 +742,18 @@ class CaisseView(APIView):
         # Les salaires enseignants versés (fiche de paie « payée ») sont des sorties de caisse
         # comme les autres dépenses : datés du jour de paiement (à défaut, du mois concerné),
         # sans doublon dans `Depense` — la fiche de paie reste la seule source.
+        from django.db.models import Q
         from people.models import PaieEnseignant
         paies = (
             PaieEnseignant.objects.filter(enseignant__user__ecole_id=ecole_id, payee=True)
+            .filter(
+                Q(date_paiement__gte=debut, date_paiement__lte=fin)
+                | Q(date_paiement__isnull=True, mois__gte=debut, mois__lte=fin)
+            )
             .select_related("enseignant__user")
         )
         for p in paies:
             date_sortie = p.date_paiement or p.mois
-            if not (debut <= date_sortie <= fin):
-                continue
             sorties.append({
                 "id": f"paie-{p.id}", "date": date_sortie, "categorie": None,
                 "categorie_nom": "Salaires enseignants",
@@ -1021,6 +1107,23 @@ class FraisViewSet(viewsets.ModelViewSet):
         if annee is None:
             return Response([])
         return Response(eleves_hors_liste(request.user.ecole_id, annee))
+
+    @action(detail=False, methods=["get"], url_path="paiements-hors-liste", permission_classes=[IsAdmin])
+    def paiements_hors_liste(self, request):
+        """Paiements de l'année affichée encaissés pour des élèves absents de la liste Élèves
+        (voir `eleves_hors_liste`), détaillés un par un."""
+        annee = annee_courante(request)
+        if annee is None:
+            return Response([])
+        return Response(paiements_hors_liste(request.user.ecole_id, annee))
+
+    @action(detail=False, methods=["post"], url_path="supprimer-paiements-hors-liste", permission_classes=[IsAdmin])
+    def supprimer_paiements_hors_liste(self, request):
+        """Supprime définitivement les paiements hors liste cochés (`ids`)."""
+        annee = annee_courante(request)
+        if annee is None:
+            return Response({"supprimes": 0, "montant_total": Decimal("0")})
+        return Response(supprimer_paiements_hors_liste(request.user.ecole_id, annee, request.data.get("ids"), request))
 
     @action(detail=False, methods=["get"], url_path="suivi-mensuel")
     def suivi_mensuel(self, request):
@@ -1560,16 +1663,44 @@ class FraisViewSet(viewsets.ModelViewSet):
         response["Content-Disposition"] = f'attachment; filename="suivi_mensuel_{eleve.matricule}_{annee.libelle}.pdf"'
         return response
 
-    @action(detail=False, methods=["get"], url_path="summary")
-    def summary(self, request):
+    def _qs_totaux(self, request):
+        """Frais pris en compte dans les totaux : ceux d'une année scolaire (`?annee_scolaire=`
+        explicite, sinon l'année affichée ; `?toutes_annees=1` : toutes années) et de la rubrique."""
         qs = self.get_queryset()
-        # Totaux d'une année scolaire : `?annee_scolaire=` explicite, sinon l'année affichée
-        # (`?toutes_annees=1` : toutes années confondues).
         if request.query_params.get("annee_scolaire"):
             qs = qs.filter(annee_scolaire_id=request.query_params["annee_scolaire"])
         else:
             qs = AnneeScolaireFilterBackend().filter_queryset(request, qs, self)
-        qs = self._filtrer_rubrique(qs)
+        return self._filtrer_rubrique(qs)
+
+    @action(detail=False, methods=["get"], url_path="trop-percus", permission_classes=[IsAdminOrComptabilite])
+    def trop_percus(self, request):
+        """Frais (mêmes filtres que `summary`) sur lesquels on a encaissé PLUS que le montant dû —
+        ce qui porte le taux de recouvrement au-delà de 100% : paiement en double, frais en doublon,
+        réduction accordée après paiement, tarif modifié... À corriger frais par frais."""
+        frais = (
+            self._qs_totaux(request).select_related("eleve__user", "eleve__classe", "type_frais")
+            .annotate(total_verse=Coalesce(Sum("paiements__montant"), Decimal("0")))
+            .filter(total_verse__gt=0)
+        )
+        lignes = []
+        for f in frais:
+            du = f.montant_du
+            if f.total_verse <= du:
+                continue
+            eleve = f.eleve
+            lignes.append({
+                "id": f.id, "eleve": eleve.id, "eleve_nom": eleve.user.get_full_name(), "matricule": eleve.matricule,
+                "classe": eleve.classe.nom if eleve.classe else "", "actif": eleve.actif,
+                "type_frais": f.type_frais.nom, "categorie": eleve.get_categorie_paiement_display(),
+                "tarif": f.montant, "montant_du": du, "total_verse": f.total_verse, "excedent": f.total_verse - du,
+            })
+        lignes.sort(key=lambda l: l["eleve_nom"].lower())
+        return Response(lignes)
+
+    @action(detail=False, methods=["get"], url_path="summary")
+    def summary(self, request):
+        qs = self._qs_totaux(request)
         # Sum("montant") sur la requête ne peut pas tenir compte de la réduction (catégorie de
         # paiement/fidélité) : Frais.montant_du n'est pas une colonne mais calculé par élève —
         # boucle Python, comme le fait déjà impayes_par_classe() ci-dessous pour la même raison.
@@ -1721,11 +1852,4 @@ class PaiementViewSet(viewsets.ModelViewSet):
         )
 
     def perform_destroy(self, instance):
-        # Symétrique de perform_create() : si ce paiement était le dernier encaissé sur ce frais,
-        # on "dégèle" la réduction (le frais suit de nouveau la catégorie courante de l'élève,
-        # comme s'il n'avait jamais été payé) plutôt que de garder un gel devenu sans objet.
-        frais = instance.frais
-        instance.delete()
-        if not frais.paiements.exists() and frais.facteur_applique is not None:
-            frais.facteur_applique = None
-            frais.save(update_fields=["facteur_applique"])
+        supprimer_paiement(instance)

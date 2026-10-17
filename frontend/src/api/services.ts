@@ -42,6 +42,22 @@ export const ecolesApi = {
     api.get<{ ecole: number; ecole_nom: string; annee: string | null; eleves: EleveHorsListe[] }[]>(
       "/tenants/ecoles/eleves-hors-liste/", { params: { ecole } },
     ),
+  /** Super Admin : par école (année active), détail des paiements encaissés pour des élèves
+   * absents de la liste Élèves. Sans `ecole`, seules les écoles concernées sont renvoyées. */
+  paiementsHorsListe: (ecole?: number) =>
+    api.get<{ ecole: number; ecole_nom: string; annee: string | null; paiements: PaiementHorsListe[] }[]>(
+      "/tenants/ecoles/paiements-hors-liste/", { params: { ecole } },
+    ),
+  supprimerPaiementsHorsListe: (ecole: number, ids: number[]) =>
+    api.post<{ supprimes: number; montant_total: string }>(`/tenants/ecoles/${ecole}/supprimer-paiements-hors-liste/`, { ids }),
+  /** Super Admin : par école, élèves sur lesquels aucun paiement n'a été enregistré. Sans
+   * `ecole`, seules les écoles concernées sont renvoyées. */
+  elevesSansPaiement: (ecole?: number) =>
+    api.get<{ ecole: number; ecole_nom: string; eleves: EleveSansPaiement[] }[]>(
+      "/tenants/ecoles/eleves-sans-paiement/", { params: { ecole } },
+    ),
+  supprimerElevesSansPaiement: (ecole: number, ids: number[]) =>
+    api.post<{ supprimes: number }>(`/tenants/ecoles/${ecole}/supprimer-eleves-sans-paiement/`, { ids }),
   seConnecterCommeAdmin: (id: number) => api.post<{ access: string; refresh: string; user: User }>(`/tenants/ecoles/${id}/se-connecter-comme-admin/`),
 };
 
@@ -334,6 +350,10 @@ export const elevesApi = {
   update: (id: number, data: Record<string, unknown>) => api.patch<EleveProfile>(`/people/eleves/${id}/`, toFormData(data), multipartHeaders),
   remove: (id: number) => api.delete(`/people/eleves/${id}/`),
   /** Suppression définitive de plusieurs élèves cochés dans la liste (admin uniquement). */
+  /** Admin : élèves de l'école (toutes années) sans aucun paiement enregistré. */
+  sansPaiement: () => api.get<EleveSansPaiement[]>("/people/eleves/sans-paiement/"),
+  /** Suppression définitive d'élèves sans paiement (ceux qui en ont un sont ignorés). */
+  supprimerSansPaiement: (ids: number[]) => api.post<{ supprimes: number }>("/people/eleves/supprimer-sans-paiement/", { ids }),
   removeMany: (ids: number[]) => api.post<{ supprimes: number; proteges: { id: number; nom: string; actif: boolean }[] }>("/people/eleves/suppression-groupee/", { ids }),
   exportCsv: (params?: Record<string, unknown>) => downloadFile("/people/eleves/export/", params || {}, "eleves.csv"),
   exportPdf: (params?: Record<string, unknown>) => downloadFile("/people/eleves/export-pdf/", params || {}, "eleves.pdf"),
@@ -597,6 +617,52 @@ export interface EleveHorsListe {
   total_paye: string;
 }
 
+/** Frais encaissé au-delà de son montant dû (voir FraisViewSet.trop_percus). */
+export interface FraisTropPercu {
+  id: number;
+  eleve: number;
+  eleve_nom: string;
+  matricule: string;
+  classe: string;
+  actif: boolean;
+  type_frais: string;
+  categorie: string;
+  tarif: string;
+  montant_du: string;
+  total_verse: string;
+  excedent: string;
+}
+
+/** Élève sur lequel aucun paiement n'a été enregistré (voir people.views.eleves_sans_paiement). */
+export interface EleveSansPaiement {
+  id: number;
+  nom: string;
+  matricule: string;
+  classe: string;
+  annee: string;
+  actif: boolean;
+  date_inscription: string;
+  nombre_frais: number;
+}
+
+/** Paiement encaissé pour un élève absent de la liste Élèves (voir payments.views.paiements_hors_liste). */
+export interface PaiementHorsListe {
+  id: number;
+  date_paiement: string;
+  montant: string;
+  mode_paiement: string;
+  reference: string;
+  type_frais: string;
+  mois: string | null;
+  periode: string;
+  enregistre_par: string;
+  eleve: number;
+  eleve_nom: string;
+  matricule: string;
+  actif: boolean;
+  motif: string;
+}
+
 export const fraisApi = {
   list: (params?: Record<string, unknown>) => api.get<Paginated<Frais> | Frais[]>("/payments/frais/", { params }),
   create: (data: Partial<Frais>) => api.post<Frais>("/payments/frais/", data),
@@ -621,6 +687,12 @@ export const fraisApi = {
   /** Admin : élèves ayant des frais sur l'année affichée mais absents de la liste des élèves de
    * cette année (inactifs, sans classe, ou classe d'une autre année), avec le motif. */
   elevesHorsListe: () => api.get<EleveHorsListe[]>("/payments/frais/eleves-hors-liste/"),
+  /** Frais (année affichée, rubrique) sur lesquels on a encaissé plus que le montant dû. */
+  tropPercus: (params?: Record<string, unknown>) => api.get<FraisTropPercu[]>("/payments/frais/trop-percus/", { params }),
+  /** Admin : détail des paiements de l'année affichée encaissés pour ces élèves hors liste. */
+  paiementsHorsListe: () => api.get<PaiementHorsListe[]>("/payments/frais/paiements-hors-liste/"),
+  supprimerPaiementsHorsListe: (ids: number[]) =>
+    api.post<{ supprimes: number; montant_total: string }>("/payments/frais/supprimer-paiements-hors-liste/", { ids }),
   exportCsv: (params?: Record<string, unknown>) => downloadFile("/payments/frais/export/", params || {}, "frais_paiements.csv"),
   /** Fiche de paiement (PDF) d'un élève pour un frais donné — nécessite qu'un paiement ait déjà été enregistré. */
   fichePaiementPdf: (id: number, filename: string) => downloadFile(`/payments/frais/${id}/fiche-paiement/`, {}, filename),

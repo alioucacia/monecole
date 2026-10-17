@@ -2,10 +2,11 @@ import axios from "axios";
 import { useEffect, useState, type FormEvent } from "react";
 import { Link, useLocation, useNavigate } from "react-router-dom";
 
-import { classesApi, elevesApi, typesFraisApi, unwrapList, usersApi, type DoublonImportEleve } from "../api/services";
+import { classesApi, elevesApi, typesFraisApi, unwrapList, usersApi, type DoublonImportEleve, type EleveSansPaiement } from "../api/services";
 import { extractBlobErrorMessage, extractErrorMessage } from "../api/client";
 import { Badge, Button, DeleteButton, EditButton, EmptyState, Input, Modal, PageHeader, RowActions, Select, Spinner, StatCard, Table } from "../components/ui";
 import { ClasseOptions, CycleSelect } from "../components/CycleSelect";
+import { ElevesSansPaiementTable } from "../components/ElevesSansPaiement";
 import { StatutMensualiteBadge } from "../components/StatutMensualite";
 import { useAuth } from "../context/AuthContext";
 import { useConfirm, usePrompt } from "../context/ConfirmContext";
@@ -97,6 +98,31 @@ export default function StudentsPage() {
   // Répartition rapide (actifs/inactifs/nouveaux/réinscrits) sur l'ensemble des élèves
   // correspondant aux filtres actuels — pas seulement la page affichée (`items`), d'où des appels
   // séparés en `page_size: 1` (seul `count` nous intéresse, pas les résultats eux-mêmes).
+  // Admin : élèves sans aucun paiement enregistré, supprimables (null = modale fermée, voir
+  // EleveProfileViewSet.sans_paiement).
+  const [sansPaiement, setSansPaiement] = useState<EleveSansPaiement[] | null>(null);
+  const [sansPaiementLoading, setSansPaiementLoading] = useState(false);
+
+  const openSansPaiement = async () => {
+    setSansPaiementLoading(true);
+    try {
+      const { data } = await elevesApi.sansPaiement();
+      setSansPaiement(data);
+    } catch (err) {
+      toast.error(extractErrorMessage(err));
+    } finally {
+      setSansPaiementLoading(false);
+    }
+  };
+
+  const supprimerSansPaiement = async (ids: number[]) => {
+    const { data } = await elevesApi.supprimerSansPaiement(ids);
+    const { data: restants } = await elevesApi.sansPaiement();
+    setSansPaiement(restants);
+    reload();
+    return data;
+  };
+
   const [stats, setStats] = useState<{ actifs: number; inactifs: number; reinscrits: number } | null>(null);
   useEffect(() => {
     const base = { search: search || undefined, classe: classeFilter || undefined, cycle: cycleFilter || undefined, page_size: 1 };
@@ -448,6 +474,7 @@ export default function StudentsPage() {
               <>
                 <Button variant="secondary" onClick={handleExport} disabled={exporting}>{exporting ? "Export…" : "📤 Exporter CSV"}</Button>
                 <Button variant="secondary" onClick={handleExportPdf} disabled={exportingPdf}>{exportingPdf ? "Génération…" : classeFilter ? "🖨️ Imprimer la liste de la classe" : "🖨️ Imprimer les listes par classe"}</Button>
+                <Button variant="secondary" onClick={openSansPaiement} disabled={sansPaiementLoading}>{sansPaiementLoading ? "Recherche…" : "🚫 Élèves sans paiement"}</Button>
                 <Button variant="secondary" onClick={() => { setImportRapport(null); setImportError(""); setImportEnAttente(null); setImportModalOpen(true); }}>📥 Importer Excel</Button>
               </>
             )}
@@ -612,6 +639,18 @@ export default function StudentsPage() {
           </div>
         </>
       )}
+
+      <Modal open={sansPaiement !== null} onClose={() => setSansPaiement(null)} wide title="Élèves sans aucun paiement">
+        {sansPaiement && (
+          <div className="space-y-3">
+            <p className="text-sm text-slate-500">
+              Élèves de l'école, toutes années confondues, sur lesquels aucun paiement n'a été enregistré (élèves créés par
+              erreur, doublons, inscriptions abandonnées…). Leur suppression n'efface aucun montant de la Caisse.
+            </p>
+            <ElevesSansPaiementTable eleves={sansPaiement} onSupprimer={supprimerSansPaiement} />
+          </div>
+        )}
+      </Modal>
 
       <Modal open={modalOpen} onClose={() => setModalOpen(false)} title={editing ? "Modifier l'élève" : "Nouvel élève"} wide>
         <form noValidate onSubmit={handleSubmit} className="grid grid-cols-1 sm:grid-cols-2 gap-4">

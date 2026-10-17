@@ -9,7 +9,7 @@ import { useAutoRefresh } from "./useAutoRefresh";
  * Consomme un endpoint DRF paginé (ou un simple tableau) et expose les contrôles
  * "précédent / suivant" en s'appuyant sur les URLs absolues renvoyées par l'API.
  *
- * La liste s'actualise d'elle-même toutes les 5 s (voir useAutoRefresh), silencieusement : pas de
+ * La liste s'actualise d'elle-même toutes les 30 s (voir useAutoRefresh), silencieusement : pas de
  * spinner, et sur la page de résultats affichée (pas de retour à la première page).
  */
 export function usePaginated<T>(

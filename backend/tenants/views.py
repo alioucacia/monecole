@@ -231,6 +231,82 @@ class EcoleViewSet(viewsets.ModelViewSet):
                 })
         return Response(resultat)
 
+    @action(detail=False, methods=["get"], url_path="paiements-hors-liste")
+    def paiements_hors_liste(self, request):
+        """Super Admin : pour chaque école (ou seulement `?ecole=`), le détail des paiements de
+        son année active encaissés pour des élèves absents de sa liste Élèves — même règle que
+        l'onglet Paiements de l'école (voir payments.views.paiements_hors_liste). Sans `?ecole=`,
+        seules les écoles concernées sont renvoyées."""
+        from academics.models import AnneeScolaire
+        from payments.views import paiements_hors_liste
+
+        ecoles = self.get_queryset().order_by("nom")
+        ecole_id = request.query_params.get("ecole")
+        if ecole_id:
+            ecoles = ecoles.filter(pk=ecole_id) if ecole_id.isdigit() else ecoles.none()
+        annees = {a.ecole_id: a for a in AnneeScolaire.objects.filter(active=True, ecole__in=ecoles)}
+        resultat = []
+        for ecole in ecoles:
+            annee = annees.get(ecole.id)
+            paiements = paiements_hors_liste(ecole.id, annee) if annee else []
+            if paiements or ecole_id:
+                resultat.append({
+                    "ecole": ecole.id, "ecole_nom": ecole.nom,
+                    "annee": annee.libelle if annee else None, "paiements": paiements,
+                })
+        return Response(resultat)
+
+    @action(detail=True, methods=["post"], url_path="supprimer-paiements-hors-liste")
+    def supprimer_paiements_hors_liste(self, request, pk=None):
+        """Super Admin : supprime définitivement les paiements hors liste cochés (`ids`) de cette
+        école, sur son année active."""
+        from academics.models import AnneeScolaire
+        from payments.views import supprimer_paiements_hors_liste
+
+        ecole = self.get_object()
+        annee = AnneeScolaire.objects.filter(active=True, ecole=ecole).first()
+        if annee is None:
+            return Response({"supprimes": 0, "montant_total": 0})
+        resultat = supprimer_paiements_hors_liste(ecole.id, annee, request.data.get("ids"), request)
+        if resultat["supprimes"]:
+            _journaliser(
+                request, JournalActivite.Action.ECOLE_MODIFIEE, ecole,
+                f"{resultat['supprimes']} paiement(s) d'élèves hors liste supprimé(s) — {resultat['montant_total']} GNF",
+            )
+        return Response(resultat)
+
+    @action(detail=False, methods=["get"], url_path="eleves-sans-paiement")
+    def eleves_sans_paiement(self, request):
+        """Super Admin : pour chaque école (ou seulement `?ecole=`), les élèves sur lesquels aucun
+        paiement n'a été enregistré (voir people.views.eleves_sans_paiement). Sans `?ecole=`,
+        seules les écoles concernées sont renvoyées."""
+        from people.views import eleves_sans_paiement
+
+        ecoles = self.get_queryset().order_by("nom")
+        ecole_id = request.query_params.get("ecole")
+        if ecole_id:
+            ecoles = ecoles.filter(pk=ecole_id) if ecole_id.isdigit() else ecoles.none()
+        resultat = []
+        for ecole in ecoles:
+            eleves = eleves_sans_paiement(ecole.id)
+            if eleves or ecole_id:
+                resultat.append({"ecole": ecole.id, "ecole_nom": ecole.nom, "eleves": eleves})
+        return Response(resultat)
+
+    @action(detail=True, methods=["post"], url_path="supprimer-eleves-sans-paiement")
+    def supprimer_eleves_sans_paiement(self, request, pk=None):
+        """Super Admin : supprime définitivement les élèves sans paiement cochés (`ids`) de cette école."""
+        from people.views import supprimer_eleves_sans_paiement
+
+        ecole = self.get_object()
+        resultat = supprimer_eleves_sans_paiement(ecole.id, request.data.get("ids"), request)
+        if resultat["supprimes"]:
+            _journaliser(
+                request, JournalActivite.Action.ECOLE_MODIFIEE, ecole,
+                f"{resultat['supprimes']} élève(s) sans paiement supprimé(s)",
+            )
+        return Response(resultat)
+
     @action(detail=False, methods=["post"], url_path="relancer-retard")
     def relancer_retard(self, request):
         """Envoie un rappel (email + SMS) à l'administrateur de chaque école en retard de

@@ -30,12 +30,13 @@ export default function DashboardPage() {
     dashboardApi.get().then(({ data }) => setData(data)).finally(() => setLoading(false));
   }, [user]);
 
-  // Auto-refresh (toutes les 5 s, voir useAutoRefresh) : les chiffres (effectifs, impayés,
+  // Auto-refresh (voir useAutoRefresh) : les chiffres (effectifs, impayés,
   // présences du jour...) peuvent changer pendant que la page reste ouverte — revérifiés en
   // arrière-plan sans redéclencher le spinner de chargement initial.
-  useAutoRefresh(() => {
-    dashboardApi.get().then(({ data }) => setData(data)).catch(() => {});
-  }, !!user && user.role !== "superadmin");
+  useAutoRefresh(
+    () => dashboardApi.get().then(({ data }) => setData(data)),
+    !!user && user.role !== "superadmin",
+  );
 
   if (user?.role === "superadmin") return <Navigate to="/ecoles" replace />;
   if (loading) return <div className="flex justify-center py-20"><Spinner /></div>;

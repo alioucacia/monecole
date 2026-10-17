@@ -65,6 +65,67 @@ from .serializers import (
 )
 
 
+def _eleves_sans_paiement_qs(ecole_id):
+    """Élèves de l'école (toutes années, actifs ou non) sur lesquels aucun paiement n'a jamais
+    été enregistré — les seuls qu'on peut supprimer sans effacer de l'argent encaissé (voir
+    EleveProfileViewSet.destroy)."""
+    from payments.models import Paiement
+
+    return (
+        EleveProfile.objects.filter(user__ecole_id=ecole_id)
+        .exclude(id__in=Paiement.objects.filter(frais__eleve__user__ecole_id=ecole_id).values("frais__eleve_id"))
+    )
+
+
+def eleves_sans_paiement(ecole_id) -> list[dict]:
+    """Liste de `_eleves_sans_paiement_qs`, pour l'administrateur de l'école
+    (EleveProfileViewSet.sans_paiement) et le Super Admin (EcoleViewSet.eleves_sans_paiement)."""
+    from django.db.models import Count
+
+    eleves = (
+        _eleves_sans_paiement_qs(ecole_id)
+        .select_related("user", "classe__annee_scolaire")
+        .annotate(nombre_frais=Count("frais"))
+        .order_by("user__last_name", "user__first_name")
+    )
+    return [{
+        "id": e.id, "nom": e.user.get_full_name(), "matricule": e.matricule,
+        "classe": e.classe.nom if e.classe else "",
+        "annee": e.classe.annee_scolaire.libelle if e.classe else "",
+        "actif": e.actif, "date_inscription": e.date_inscription, "nombre_frais": e.nombre_frais,
+    } for e in eleves]
+
+
+def supprimer_eleves_sans_paiement(ecole_id, ids, request) -> dict:
+    """Supprime définitivement, parmi `ids`, les élèves de l'école sans aucun paiement (avec leur
+    compte de connexion, comme `perform_destroy`). Un élève qui a un paiement, ou d'une autre
+    école, est ignoré même si son id est envoyé."""
+    from accounts.models import JournalUtilisateur
+    from accounts.services import journaliser
+
+    if not isinstance(ids, list) or not ids:
+        raise ValidationError("Le paramètre 'ids' (liste d'identifiants d'élèves) est requis.")
+    try:
+        ids = [int(i) for i in ids]
+    except (TypeError, ValueError):
+        raise ValidationError("Le paramètre 'ids' ne doit contenir que des identifiants numériques.")
+    with transaction.atomic():
+        # Verrou sur les élèves : PaiementViewSet.create verrouille aussi l'élève, un paiement
+        # ne peut donc pas être enregistré entre la vérification et la suppression.
+        list(EleveProfile.objects.select_for_update().filter(id__in=ids, user__ecole_id=ecole_id).values_list("id", flat=True))
+        eleves = list(_eleves_sans_paiement_qs(ecole_id).filter(id__in=ids).select_related("user"))
+        noms = [e.user.get_full_name() for e in eleves]
+        User.objects.filter(eleve_profile__in=eleves).delete()
+    if noms:
+        journaliser(
+            request.user, JournalUtilisateur.Categorie.ELEVE,
+            f"{len(noms)} élève(s) sans paiement supprimé(s) : {', '.join(noms[:20])}"
+            + (" …" if len(noms) > 20 else ""),
+            request,
+        )
+    return {"supprimes": len(noms)}
+
+
 class EleveProfileViewSet(viewsets.ModelViewSet):
     queryset = EleveProfile.objects.select_related("user", "classe", "parent")
     # La comptabilité peut enregistrer/modifier un élève (inscription, correction de dossier)
@@ -672,6 +733,16 @@ class EleveProfileViewSet(viewsets.ModelViewSet):
                 request,
             )
         return Response({"supprimes": len(noms), "proteges": proteges})
+
+    @action(detail=False, methods=["get"], url_path="sans-paiement", permission_classes=[IsAdmin])
+    def sans_paiement(self, request):
+        """Élèves de l'école (toutes années) sur lesquels aucun paiement n'a été enregistré."""
+        return Response(eleves_sans_paiement(request.user.ecole_id))
+
+    @action(detail=False, methods=["post"], url_path="supprimer-sans-paiement", permission_classes=[IsAdmin])
+    def supprimer_sans_paiement(self, request):
+        """Supprime définitivement les élèves sans paiement cochés (`ids`)."""
+        return Response(supprimer_eleves_sans_paiement(request.user.ecole_id, request.data.get("ids"), request))
 
     @action(detail=True, methods=["post"], url_path="marquer-non-reinscrit", permission_classes=[IsAdminOrComptabilite])
     def marquer_non_reinscrit(self, request, pk=None):

@@ -3,7 +3,7 @@ import { useEffect, useState } from "react";
 import { sauvegardesEcoleApi, unwrapList } from "../api/services";
 import { extractErrorMessage } from "../api/client";
 import { Badge, Button, EmptyState, Input, Modal, PageHeader, Spinner, Table } from "../components/ui";
-import { useAutoRefresh } from "../hooks/useAutoRefresh";
+import { INTERVALLE_SUIVI_MS, useAutoRefresh } from "../hooks/useAutoRefresh";
 import type { OperationSauvegardeEcole } from "../types";
 
 const STATUT: Record<OperationSauvegardeEcole["statut"], { label: string; color: "green" | "rose" | "amber" }> = {
@@ -77,7 +77,7 @@ export default function SauvegardeEcolePage() {
   useEffect(() => load(), []);
   // Sauvegardes et restaurations s'exécutent en arrière-plan côté serveur : l'historique est
   // rechargé toutes les 5 s pour afficher leur résultat.
-  useAutoRefresh(() => load(true));
+  useAutoRefresh(() => load(true), true, INTERVALLE_SUIVI_MS);
 
   const enCours = operations.find((op) => op.statut === "en_cours");
 

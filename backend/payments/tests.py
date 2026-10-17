@@ -176,3 +176,131 @@ class HistoriquePaiementsPdfTests(BaseTests):
         self.assertIn("Aïssatou Bah", html)
         self.assertIn("Le Fondateur", html)
         self.assertIn("Ibrahima Camara", html)
+
+
+class PaiementsHorsListeTests(BaseTests):
+    def setUp(self):
+        super().setUp()
+        self.type = TypeFrais.objects.create(ecole=self.ecole, nom="Cantine", montant_standard=50000, periodicite="annuel")
+        self.inscrit = self._eleve(1)
+        self.parti = self._eleve(2)
+        self.parti.actif = False
+        self.parti.save()
+        self.p_inscrit = self._paiement(self.inscrit)
+        self.p_parti = self._paiement(self.parti)
+
+    def _paiement(self, eleve):
+        frais = Frais.objects.create(
+            eleve=eleve, type_frais=self.type, annee_scolaire=self.annee, montant=50000, date_echeance=date(2026, 10, 1),
+        )
+        return Paiement.objects.create(frais=frais, montant=20000)
+
+    def test_admin_liste_et_supprime_seulement_les_paiements_hors_liste(self):
+        r = self.client.get("/api/payments/frais/paiements-hors-liste/")
+        self.assertEqual(r.status_code, 200, r.content)
+        self.assertEqual([p["id"] for p in r.json()], [self.p_parti.id])
+
+        r = self.client.post(
+            "/api/payments/frais/supprimer-paiements-hors-liste/",
+            {"ids": [self.p_parti.id, self.p_inscrit.id]}, format="json",
+        )
+        self.assertEqual(r.status_code, 200, r.content)
+        self.assertEqual(r.json()["supprimes"], 1)
+        self.assertFalse(Paiement.objects.filter(pk=self.p_parti.pk).exists())
+        self.assertTrue(Paiement.objects.filter(pk=self.p_inscrit.pk).exists())
+
+    def test_super_admin_par_ecole(self):
+        sa = User.objects.create_user(username="sa", password="x", role="superadmin")
+        self.client.force_authenticate(sa)
+        r = self.client.get("/api/tenants/ecoles/paiements-hors-liste/")
+        self.assertEqual(r.status_code, 200, r.content)
+        self.assertEqual([p["id"] for p in r.json()[0]["paiements"]], [self.p_parti.id])
+
+        r = self.client.post(
+            f"/api/tenants/ecoles/{self.ecole.id}/supprimer-paiements-hors-liste/",
+            {"ids": [self.p_parti.id, self.p_inscrit.id]}, format="json",
+        )
+        self.assertEqual(r.status_code, 200, r.content)
+        self.assertEqual(r.json()["supprimes"], 1)
+        self.assertTrue(Paiement.objects.filter(pk=self.p_inscrit.pk).exists())
+
+
+class ElevesSansPaiementTests(BaseTests):
+    def setUp(self):
+        super().setUp()
+        self.type = TypeFrais.objects.create(ecole=self.ecole, nom="Cantine", montant_standard=50000, periodicite="annuel")
+        self.payeur = self._eleve(1)
+        self.sans = self._eleve(2)
+        for eleve in (self.payeur, self.sans):
+            frais = Frais.objects.create(
+                eleve=eleve, type_frais=self.type, annee_scolaire=self.annee, montant=50000, date_echeance=date(2026, 10, 1),
+            )
+        Paiement.objects.create(frais=self.payeur.frais.get(), montant=10000)
+
+    def test_admin_liste_et_supprime_seulement_les_eleves_sans_paiement(self):
+        r = self.client.get("/api/people/eleves/sans-paiement/")
+        self.assertEqual(r.status_code, 200, r.content)
+        self.assertEqual([e["id"] for e in r.json()], [self.sans.id])
+
+        r = self.client.post("/api/people/eleves/supprimer-sans-paiement/", {"ids": [self.sans.id, self.payeur.id]}, format="json")
+        self.assertEqual(r.status_code, 200, r.content)
+        self.assertEqual(r.json()["supprimes"], 1)
+        self.assertFalse(EleveProfile.objects.filter(pk=self.sans.pk).exists())
+        self.assertFalse(User.objects.filter(username="e2").exists())
+        self.assertTrue(EleveProfile.objects.filter(pk=self.payeur.pk).exists())
+
+    def test_super_admin_par_ecole(self):
+        sa = User.objects.create_user(username="sa", password="x", role="superadmin")
+        self.client.force_authenticate(sa)
+        r = self.client.get("/api/tenants/ecoles/eleves-sans-paiement/")
+        self.assertEqual(r.status_code, 200, r.content)
+        self.assertEqual([e["id"] for e in r.json()[0]["eleves"]], [self.sans.id])
+
+        r = self.client.post(
+            f"/api/tenants/ecoles/{self.ecole.id}/supprimer-eleves-sans-paiement/",
+            {"ids": [self.sans.id, self.payeur.id]}, format="json",
+        )
+        self.assertEqual(r.status_code, 200, r.content)
+        self.assertEqual(r.json()["supprimes"], 1)
+        self.assertTrue(EleveProfile.objects.filter(pk=self.payeur.pk).exists())
+
+
+class TropPercuInscriptionTests(BaseTests):
+    """Inscription payée, puis élève passé en Fondation 100% : l'argent déjà encaissé ne doit
+    pas devenir un trop-perçu (taux de recouvrement > 100%)."""
+
+    def setUp(self):
+        super().setUp()
+        self.type = TypeFrais.objects.create(
+            ecole=self.ecole, nom="Inscription", montant_standard=100000, periodicite="annuel", usage="inscription",
+        )
+        self.eleve = self._eleve()
+        self.frais = Frais.objects.create(
+            eleve=self.eleve, type_frais=self.type, annee_scolaire=self.annee, montant=100000, date_echeance=date(2026, 9, 1),
+        )
+        r = self.client.post("/api/payments/paiements/", {"frais": self.frais.id, "montant": "100000"}, format="json")
+        self.assertEqual(r.status_code, 201, r.content)
+
+    def test_reduction_apres_paiement_ne_cree_pas_de_trop_percu(self):
+        self.eleve.categorie_paiement = EleveProfile.CategoriePaiement.FONDATION_GRATUIT
+        self.eleve.save()
+        frais = Frais.objects.get(pk=self.frais.pk)
+        self.assertEqual(frais.montant_du, Decimal("100000"))
+        r = self.client.get("/api/payments/frais/summary/", {"rubrique": "inscription"})
+        self.assertEqual(r.json()["taux_recouvrement"], 100.0)
+        self.assertEqual(self.client.get("/api/payments/frais/trop-percus/", {"rubrique": "inscription"}).json(), [])
+
+    def test_migration_repare_un_gel_deja_abaisse(self):
+        import importlib
+
+        from django.apps import apps
+
+        # État laissé par l'ancien code : gel abaissé à 0 alors que 100 000 sont versés.
+        Frais.objects.filter(pk=self.frais.pk).update(facteur_applique=Decimal("0"))
+        self.eleve.categorie_paiement = EleveProfile.CategoriePaiement.FONDATION_GRATUIT
+        self.eleve.save()
+        trop = self.client.get("/api/payments/frais/trop-percus/", {"rubrique": "inscription"}).json()
+        self.assertEqual([f["id"] for f in trop], [self.frais.id])
+
+        importlib.import_module("payments.migrations.0014_corriger_trop_percus_reduction").corriger(apps, None)
+        self.assertEqual(Frais.objects.get(pk=self.frais.pk).montant_du, Decimal("100000"))

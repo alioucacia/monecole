@@ -1,10 +1,11 @@
 import { useEffect, useState, type FormEvent } from "react";
 import { Link } from "react-router-dom";
 
-import { anneesApi, classesApi, elevesApi, fraisApi, paiementsApi, periodesApi, tarifsClasseApi, typesFraisApi, unwrapList, type EleveHorsListe } from "../api/services";
+import { anneesApi, classesApi, elevesApi, fraisApi, paiementsApi, periodesApi, tarifsClasseApi, typesFraisApi, unwrapList, type EleveHorsListe, type FraisTropPercu, type PaiementHorsListe } from "../api/services";
 import { extractBlobErrorMessage, extractErrorMessage } from "../api/client";
 import { Badge, Button, EmptyState, Input, Modal, PageHeader, Select, Spinner, StatCard, Table } from "../components/ui";
 import { CycleSelect } from "../components/CycleSelect";
+import { PaiementsHorsListeTable } from "../components/PaiementsHorsListe";
 import { StatutMensualiteBadge } from "../components/StatutMensualite";
 import { useAnnee } from "../context/AnneeContext";
 import { useAuth } from "../context/AuthContext";
@@ -164,6 +165,10 @@ export default function PaymentsPage() {
   const [eleves, setEleves] = useState<EleveProfile[]>([]);
   const [classes, setClasses] = useState<Classe[]>([]);
   const [summary, setSummary] = useState<Record<string, unknown> | null>(null);
+  // Frais encaissés au-delà du montant dû — ce qui pousse le taux de recouvrement au-delà de
+  // 100% (null = modale fermée, voir FraisViewSet.trop_percus).
+  const [tropPercus, setTropPercus] = useState<FraisTropPercu[] | null>(null);
+  const [tropPercusLoading, setTropPercusLoading] = useState(false);
 
   const [search, setSearch] = useState("");
   const [cycleFiltre, setCycleFiltre] = useState<Cycle | "">("");
@@ -234,6 +239,10 @@ export default function PaymentsPage() {
   // modale fermée, voir FraisViewSet.eleves_hors_liste).
   const [horsListe, setHorsListe] = useState<EleveHorsListe[] | null>(null);
   const [horsListeLoading, setHorsListeLoading] = useState(false);
+  // Admin : paiements encaissés pour ces élèves hors liste, supprimables (null = modale fermée,
+  // voir FraisViewSet.paiements_hors_liste).
+  const [paiementsHorsListe, setPaiementsHorsListe] = useState<PaiementHorsListe[] | null>(null);
+  const [paiementsHorsListeLoading, setPaiementsHorsListeLoading] = useState(false);
 
   const [searchDebounced, setSearchDebounced] = useState("");
   useEffect(() => {
@@ -297,8 +306,8 @@ export default function PaymentsPage() {
   };
 
   const loadSummary = () => fraisApi.summary({ rubrique }).then(({ data }) => setSummary(data));
-  // Totaux du haut actualisés toutes les 5 s, comme la liste (voir usePaginated).
-  useAutoRefresh(() => { loadSummary().catch(() => {}); }, peutGerer);
+  // Totaux du haut actualisés régulièrement, comme la liste (voir usePaginated).
+  useAutoRefresh(() => loadSummary(), peutGerer);
   const loadTypes = () => typesFraisApi.list().then(({ data }) => setTypes(unwrapList(data)));
 
   const handleNotifierImpayes = async () => {
@@ -588,6 +597,39 @@ export default function PaymentsPage() {
     }
   };
 
+  const openPaiementsHorsListe = async () => {
+    setPaiementsHorsListeLoading(true);
+    try {
+      const { data } = await fraisApi.paiementsHorsListe();
+      setPaiementsHorsListe(data);
+    } catch (err) {
+      toast.error(extractErrorMessage(err));
+    } finally {
+      setPaiementsHorsListeLoading(false);
+    }
+  };
+
+  const supprimerPaiementsHorsListe = async (ids: number[]) => {
+    const { data } = await fraisApi.supprimerPaiementsHorsListe(ids);
+    const { data: restants } = await fraisApi.paiementsHorsListe();
+    setPaiementsHorsListe(restants);
+    reload();
+    loadSummary();
+    return data;
+  };
+
+  const openTropPercus = async () => {
+    setTropPercusLoading(true);
+    try {
+      const { data } = await fraisApi.tropPercus({ rubrique });
+      setTropPercus(data);
+    } catch (err) {
+      toast.error(extractErrorMessage(err));
+    } finally {
+      setTropPercusLoading(false);
+    }
+  };
+
   const openTypesModal = () => {
     setTypeEditTarget(null);
     setTypeForm(emptyTypeForm);
@@ -663,6 +705,11 @@ export default function PaymentsPage() {
                 {horsListeLoading ? "Recherche…" : "👻 Élèves hors liste"}
               </Button>
             )}
+            {user?.role === "admin" && (
+              <Button variant="secondary" onClick={openPaiementsHorsListe} disabled={paiementsHorsListeLoading}>
+                {paiementsHorsListeLoading ? "Recherche…" : "💸 Paiements hors liste"}
+              </Button>
+            )}
             <Button variant="secondary" onClick={openTypesModal}>⚙️ Types de frais</Button>
             <Button onClick={openFraisModal}>+ Nouveau frais</Button>
           </div>
@@ -687,6 +734,14 @@ export default function PaymentsPage() {
           <StatCard label="Total encaissé" value={money(summary.total_encaisse as string)} icon="💰" accent="green" />
           <StatCard label="Solde restant" value={money(summary.solde_total as string)} icon="📉" accent="rose" />
           <StatCard label="Taux de recouvrement" value={summary.taux_recouvrement !== null ? `${summary.taux_recouvrement}%` : "—"} icon="📊" accent="amber" />
+          {Number(summary.taux_recouvrement) > 100 && (
+            <div className="col-span-2 sm:col-span-4 flex flex-wrap items-center gap-3 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
+              <span>⚠️ Plus d'argent encaissé que dû : certains frais ont reçu plus que leur montant dû.</span>
+              <Button variant="secondary" onClick={openTropPercus} disabled={tropPercusLoading}>
+                {tropPercusLoading ? "Recherche…" : "Voir les trop-perçus"}
+              </Button>
+            </div>
+          )}
         </div>
       )}
 
@@ -1146,6 +1201,54 @@ export default function PaymentsPage() {
               </Table>
             </div>
           )
+        )}
+      </Modal>
+
+      <Modal open={tropPercus !== null} onClose={() => setTropPercus(null)} wide title="Frais encaissés au-delà du montant dû">
+        {tropPercus && (tropPercus.length === 0 ? (
+          <EmptyState title="Aucun trop-perçu" description="Aucun frais n'a reçu plus que son montant dû." />
+        ) : (
+          <div className="space-y-3">
+            <p className="text-sm text-slate-500">
+              {tropPercus.length} frais ont reçu plus que leur montant dû (paiement en double, frais en doublon, tarif ou
+              catégorie modifié après paiement…), pour un excédent total de{" "}
+              {money(tropPercus.reduce((s, f) => s + Number(f.excedent), 0))}. Ouvrez la fiche de l'élève pour corriger
+              (supprimer le paiement en trop, le frais en doublon, ou rétablir la catégorie).
+            </p>
+            <Table headers={["Élève", "Classe", "Frais", "Catégorie", "Tarif", "Dû", "Versé", "Excédent", ""]}>
+              {tropPercus.map((f) => (
+                <tr key={f.id}>
+                  <td className="px-4 py-2">
+                    <div className="font-medium">{f.eleve_nom}</div>
+                    <div className="text-xs text-slate-500">{f.matricule}{!f.actif && " · inactif"}</div>
+                  </td>
+                  <td className="px-4 py-2">{f.classe || <span className="text-slate-400">Sans classe</span>}</td>
+                  <td className="px-4 py-2">{f.type_frais}</td>
+                  <td className="px-4 py-2 text-slate-500">{f.categorie}</td>
+                  <td className="px-4 py-2 whitespace-nowrap">{money(f.tarif)}</td>
+                  <td className="px-4 py-2 whitespace-nowrap">{money(f.montant_du)}</td>
+                  <td className="px-4 py-2 whitespace-nowrap">{money(f.total_verse)}</td>
+                  <td className="px-4 py-2 whitespace-nowrap font-semibold text-rose-600">{money(f.excedent)}</td>
+                  <td className="px-4 py-2">
+                    <Link to={`/eleves/${f.eleve}`} className="text-xs font-semibold text-brand-700 hover:underline">Voir la fiche</Link>
+                  </td>
+                </tr>
+              ))}
+            </Table>
+          </div>
+        ))}
+      </Modal>
+
+      <Modal open={paiementsHorsListe !== null} onClose={() => setPaiementsHorsListe(null)} wide title="Paiements non rattachés à un élève de la liste">
+        {paiementsHorsListe && (
+          <div className="space-y-3">
+            <p className="text-sm text-slate-500">
+              Paiements de l'année affichée encaissés pour des élèves qui ne figurent pas dans la liste des élèves de cette
+              année (inactifs, sans classe ou classe d'une autre année). Ils sont comptés dans la Caisse : supprimez ceux
+              qui n'ont pas lieu d'être.
+            </p>
+            <PaiementsHorsListeTable paiements={paiementsHorsListe} onSupprimer={supprimerPaiementsHorsListe} />
+          </div>
         )}
       </Modal>
 

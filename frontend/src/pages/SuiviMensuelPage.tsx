@@ -96,10 +96,10 @@ export default function SuiviMensuelPage() {
       .finally(() => setLoading(false));
   }, [classeId, cycleFiltre]);
 
-  // Actualisation silencieuse toutes les 5 s (voir useAutoRefresh) — mêmes filtres, sans spinner.
+  // Actualisation silencieuse (voir useAutoRefresh) — mêmes filtres, sans spinner.
   useAutoRefresh(() => {
     const params = classeId ? { classe: Number(classeId) } : { cycle: cycleFiltre || undefined };
-    fraisApi.suiviMensuelClasse(params).then(({ data }) => setSuivi(data)).catch(() => {});
+    return fraisApi.suiviMensuelClasse(params).then(({ data }) => setSuivi(data));
   });
 
   // Imprime la liste telle que filtrée à l'écran (cycle / classe / mois / statut) — ou, via les
