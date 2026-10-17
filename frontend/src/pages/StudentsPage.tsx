@@ -1,3 +1,4 @@
+import axios from "axios";
 import { useEffect, useState, type FormEvent } from "react";
 import { Link, useLocation, useNavigate } from "react-router-dom";
 
@@ -242,8 +243,27 @@ export default function StudentsPage() {
 
   const handleDelete = async (eleve: EleveProfile) => {
     if (!(await confirmer(`Supprimer définitivement ${eleve.user.first_name} ${eleve.user.last_name} ?`, { danger: true }))) return;
-    await elevesApi.remove(eleve.id);
-    reload();
+    try {
+      await elevesApi.remove(eleve.id);
+      reload();
+    } catch (err) {
+      // Élève ayant déjà des paiements : suppression refusée (voir EleveProfileViewSet.destroy),
+      // on propose de le rendre inactif à la place pour garder son historique.
+      const avecPaiements = axios.isAxiosError(err) && (err.response?.data as { code?: string } | undefined)?.code === "eleve_avec_paiements";
+      if (!avecPaiements) {
+        toast.error(extractErrorMessage(err));
+        return;
+      }
+      if (!eleve.actif) {
+        toast.error(`${extractErrorMessage(err)} (L'élève est déjà inactif.)`);
+        return;
+      }
+      if (await confirmer(`${extractErrorMessage(err)}\n\nRendre ${eleve.user.first_name} ${eleve.user.last_name} inactif maintenant ?`, {
+        title: "Suppression impossible", confirmLabel: "🚪 Rendre inactif",
+      })) {
+        await handleToggleActif(eleve);
+      }
+    }
   };
 
   // Sélection par cases à cocher pour la suppression groupée (admin) — limitée à la page
@@ -265,11 +285,30 @@ export default function StudentsPage() {
   const handleDeleteSelection = async () => {
     const n = selection.size;
     if (!n) return;
-    if (!(await confirmer(`Supprimer définitivement ${n} élève${n > 1 ? "s" : ""} sélectionné${n > 1 ? "s" : ""} ? Leurs comptes, notes, paiements et historiques seront supprimés.`, { danger: true }))) return;
+    if (!(await confirmer(`Supprimer définitivement ${n} élève${n > 1 ? "s" : ""} sélectionné${n > 1 ? "s" : ""} ? Leurs comptes, notes et historiques seront supprimés. Les élèves ayant déjà des paiements ne seront pas supprimés.`, { danger: true }))) return;
     setSuppressionEnCours(true);
     try {
       const { data } = await elevesApi.removeMany([...selection]);
-      toast.success(`${data.supprimes} élève${data.supprimes > 1 ? "s" : ""} supprimé${data.supprimes > 1 ? "s" : ""}.`);
+      if (data.supprimes) toast.success(`${data.supprimes} élève${data.supprimes > 1 ? "s" : ""} supprimé${data.supprimes > 1 ? "s" : ""}.`);
+      if (data.proteges.length) {
+        const noms = data.proteges.map((e) => e.nom).join(", ");
+        const actifs = data.proteges.filter((e) => e.actif);
+        if (actifs.length && await confirmer(
+          `${data.proteges.length} élève(s) non supprimé(s) car des paiements sont enregistrés à leur nom : ${noms}.\n\n`
+          + `Rendre inactif(s) (parti / transféré) le(s) ${actifs.length} élève(s) encore actif(s) pour conserver leur historique ?`,
+          { title: "Suppression partielle", confirmLabel: "🚪 Rendre inactif(s)" },
+        )) {
+          const motif = await demander("Vous pouvez préciser le motif du départ.", {
+            title: "Rendre les élèves inactifs", label: "Motif (optionnel)", confirmLabel: "Confirmer",
+          });
+          if (motif !== null) {
+            await Promise.all(actifs.map((e) => elevesApi.marquerNonReinscrit(e.id, motif)));
+            toast.success(`${actifs.length} élève(s) rendu(s) inactif(s).`);
+          }
+        } else if (!actifs.length) {
+          toast.error(`Non supprimé(s) car des paiements sont enregistrés à leur nom (déjà inactifs) : ${noms}.`);
+        }
+      }
       reload();
     } catch (err) {
       toast.error(extractErrorMessage(err));

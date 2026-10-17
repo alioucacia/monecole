@@ -17,7 +17,7 @@ from django.http import HttpResponse
 from django.shortcuts import get_object_or_404
 from django.template.loader import render_to_string
 from django.utils import timezone
-from rest_framework import viewsets
+from rest_framework import status, viewsets
 from rest_framework.decorators import action
 from rest_framework.exceptions import PermissionDenied, ValidationError
 from rest_framework.permissions import AllowAny, IsAuthenticated
@@ -119,6 +119,28 @@ class EleveProfileViewSet(viewsets.ModelViewSet):
             self.request.user, JournalUtilisateur.Categorie.ELEVE,
             f"Fiche élève modifiée : {eleve.user.get_full_name()}", self.request,
         )
+
+    def destroy(self, request, *args, **kwargs):
+        # Supprimer l'élève supprimerait en cascade ses frais et ses paiements (voir
+        # payments.Frais.eleve) : de l'argent réellement encaissé disparaîtrait de la Caisse et
+        # des rapports. Dès qu'un paiement existe, on refuse — l'élève doit être rendu inactif
+        # (parti/transféré), ce qui garde son historique (visible dans Paiements → « Élèves hors
+        # liste »). Un élève sans paiement (créé par erreur...) reste supprimable.
+        from payments.models import Paiement
+
+        eleve = self.get_object()
+        if Paiement.objects.filter(frais__eleve=eleve).exists():
+            return Response(
+                {
+                    "detail": (
+                        "Impossible de supprimer cet élève : des paiements sont déjà enregistrés à son "
+                        "nom. Rendez-le plutôt inactif (parti / transféré) pour conserver son historique."
+                    ),
+                    "code": "eleve_avec_paiements",
+                },
+                status=status.HTTP_409_CONFLICT,
+            )
+        return super().destroy(request, *args, **kwargs)
 
     def perform_destroy(self, instance):
         from accounts.models import JournalUtilisateur
@@ -626,7 +648,19 @@ class EleveProfileViewSet(viewsets.ModelViewSet):
             ids = [int(i) for i in ids]
         except (TypeError, ValueError):
             raise ValidationError("Le paramètre 'ids' ne doit contenir que des identifiants numériques.")
-        eleves = self.get_queryset().filter(id__in=ids)
+        from payments.models import Paiement
+
+        # Élèves ayant au moins un paiement : jamais supprimés (voir `destroy`), seulement
+        # signalés pour être rendus inactifs.
+        avec_paiements = set(
+            Paiement.objects.filter(frais__eleve_id__in=ids).values_list("frais__eleve_id", flat=True)
+        )
+        selection = list(self.get_queryset().filter(id__in=ids))
+        eleves = [e for e in selection if e.id not in avec_paiements]
+        proteges = [
+            {"id": e.id, "nom": e.user.get_full_name(), "actif": e.actif}
+            for e in selection if e.id in avec_paiements
+        ]
         noms = [e.user.get_full_name() for e in eleves]
         with transaction.atomic():
             User.objects.filter(eleve_profile__in=eleves).delete()
@@ -637,7 +671,7 @@ class EleveProfileViewSet(viewsets.ModelViewSet):
                 + (" …" if len(noms) > 20 else ""),
                 request,
             )
-        return Response({"supprimes": len(noms)})
+        return Response({"supprimes": len(noms), "proteges": proteges})
 
     @action(detail=True, methods=["post"], url_path="marquer-non-reinscrit", permission_classes=[IsAdminOrComptabilite])
     def marquer_non_reinscrit(self, request, pk=None):

@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState, type FormEvent } from "react";
 import { Link } from "react-router-dom";
 import { Bar, BarChart, CartesianGrid, Line, LineChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 
-import { ecolesApi, paiementsEcolesApi, plansAbonnementApi, resumeNotificationAdmin, unwrapList } from "../api/services";
+import { ecolesApi, paiementsEcolesApi, plansAbonnementApi, resumeNotificationAdmin, unwrapList, type EleveHorsListe } from "../api/services";
 import { extractErrorMessage } from "../api/client";
 import { Badge, Button, Card, EmptyState, Input, Modal, PageHeader, Select, Spinner, StatCard, Table } from "../components/ui";
 import { useConfirm } from "../context/ConfirmContext";
@@ -79,6 +79,24 @@ export default function EcolesPage() {
 
   const [exporting, setExporting] = useState(false);
   const [relancing, setRelancing] = useState(false);
+  // Élèves présents dans Paiements mais absents de la liste Élèves, par école (null = modale
+  // fermée) — voir EcoleViewSet.eleves_hors_liste.
+  const [horsListe, setHorsListe] = useState<{ ecole: number; ecole_nom: string; annee: string | null; eleves: EleveHorsListe[] }[] | null>(null);
+  const [horsListeEcole, setHorsListeEcole] = useState("");
+  const [horsListeLoading, setHorsListeLoading] = useState(false);
+
+  const chargerHorsListe = async (ecole: string) => {
+    setHorsListeEcole(ecole);
+    setHorsListeLoading(true);
+    try {
+      const { data } = await ecolesApi.elevesHorsListe(ecole ? Number(ecole) : undefined);
+      setHorsListe(data);
+    } catch (err) {
+      toast.error(extractErrorMessage(err));
+    } finally {
+      setHorsListeLoading(false);
+    }
+  };
 
   const load = () => {
     setLoading(true);
@@ -246,10 +264,53 @@ export default function EcolesPage() {
                 {relancing ? "Envoi…" : "📣 Relancer les retards"}
               </Button>
             )}
+            <Button variant="secondary" onClick={() => chargerHorsListe("")} disabled={horsListeLoading && horsListe === null}>
+              {horsListeLoading && horsListe === null ? "Recherche…" : "👻 Élèves hors liste"}
+            </Button>
             <Button onClick={openCreate}>+ Nouvelle école</Button>
           </div>
         }
       />
+
+      <Modal open={horsListe !== null} onClose={() => setHorsListe(null)} title="Élèves présents dans Paiements mais absents de la liste Élèves" wide>
+        <div className="space-y-4">
+          <div className="flex flex-wrap items-center gap-3">
+            <Select value={horsListeEcole} onChange={(e) => chargerHorsListe(e.target.value)} disabled={horsListeLoading}>
+              <option value="">Toutes les écoles concernées</option>
+              {ecoles.map((e) => <option key={e.id} value={e.id}>{e.nom}</option>)}
+            </Select>
+            {horsListeLoading && <Spinner />}
+          </div>
+          <p className="text-sm text-slate-500">
+            Élèves ayant des frais sur l'année active de leur école sans faire partie de ses élèves inscrits
+            (inactifs, sans classe ou classe d'une autre année).
+          </p>
+          {horsListe && (horsListe.every((g) => g.eleves.length === 0) ? (
+            <EmptyState title="Aucun écart" description="Tous les élèves des listes Paiements figurent dans les listes Élèves." />
+          ) : horsListe.filter((g) => g.eleves.length > 0).map((groupe) => (
+            <div key={groupe.ecole} className="space-y-2">
+              <h3 className="font-bold text-slate-700">
+                {groupe.ecole_nom}
+                <span className="ml-2 text-sm font-normal text-slate-500">
+                  {groupe.annee ?? "aucune année active"} · {groupe.eleves.length} élève(s)
+                </span>
+              </h3>
+              <Table headers={["Élève", "Matricule", "Motif", "Frais", "Dû", "Payé"]}>
+                {groupe.eleves.map((e) => (
+                  <tr key={e.eleve}>
+                    <td className="px-4 py-2 font-medium">{e.eleve_nom}</td>
+                    <td className="px-4 py-2 text-slate-500">{e.matricule}</td>
+                    <td className="px-4 py-2"><Badge color={e.actif ? "amber" : "rose"}>{e.motif}</Badge></td>
+                    <td className="px-4 py-2">{e.nombre_frais}</td>
+                    <td className="px-4 py-2">{money(e.total_du)}</td>
+                    <td className="px-4 py-2">{money(e.total_paye)}</td>
+                  </tr>
+                ))}
+              </Table>
+            </div>
+          )))}
+        </div>
+      </Modal>
 
       {stats && (
         <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-4 mb-6">

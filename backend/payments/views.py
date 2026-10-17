@@ -325,6 +325,49 @@ def _suivi_inscription(frais, eleve=None, annee_scolaire=None, cache_tarifs=None
     }
 
 
+def eleves_hors_liste(ecole_id, annee) -> list[dict]:
+    """Élèves de l'école ayant des frais sur `annee` (liste Paiements) sans faire partie des
+    élèves inscrits de cette année (liste Élèves) : inactif (parti/transféré), sans classe, ou
+    classe d'une autre année — avec le motif et leurs totaux dû/payé. Utilisé par
+    l'administrateur de l'école (FraisViewSet.eleves_hors_liste) et par le Super Admin, école
+    par école (tenants.views.EcoleViewSet.eleves_hors_liste)."""
+    from people.models import EleveProfile
+
+    frais = (
+        Frais.objects.filter(eleve__user__ecole_id=ecole_id, annee_scolaire=annee)
+        .select_related("eleve__user", "eleve__classe__annee_scolaire", "type_frais")
+        .annotate(total_verse=Coalesce(Sum("paiements__montant"), Decimal("0")))
+    )
+    # Inscrits de l'année = actifs, et classe de cette année (ou sans classe sur l'année
+    # active) — même règle que filtre_eleves_annee, partagée par les autres listes.
+    dans_la_liste = set(
+        EleveProfile.objects.filter(filtre_eleves_annee(annee), actif=True, user__ecole_id=ecole_id)
+        .values_list("id", flat=True)
+    )
+    par_eleve = {}
+    for f in frais:
+        eleve = f.eleve
+        if eleve.id in dans_la_liste and eleve.classe_id:
+            continue
+        ligne = par_eleve.get(eleve.id)
+        if ligne is None:
+            if not eleve.actif:
+                motif = "Inactif (parti / transféré)" + (f" — {eleve.motif_sortie}" if eleve.motif_sortie else "")
+            elif eleve.classe is None:
+                motif = "Sans classe"
+            else:
+                motif = f"Classe d'une autre année ({eleve.classe.nom} — {eleve.classe.annee_scolaire.libelle})"
+            ligne = par_eleve[eleve.id] = {
+                "eleve": eleve.id, "eleve_nom": eleve.user.get_full_name(), "matricule": eleve.matricule,
+                "classe": eleve.classe.nom if eleve.classe else "", "actif": eleve.actif, "motif": motif,
+                "nombre_frais": 0, "total_du": Decimal("0"), "total_paye": Decimal("0"),
+            }
+        ligne["nombre_frais"] += 1
+        ligne["total_du"] += f.montant_du
+        ligne["total_paye"] += f.total_verse
+    return sorted(par_eleve.values(), key=lambda l: l["eleve_nom"].lower())
+
+
 def _situation_paiement(eleve_suivi, mois_filtre="") -> str | None:
     """« payes » si tout ce qui est dû est réglé, « non_payes » sinon (impayé ou partiel) — sur
     le mois filtré, ou à défaut sur l'inscription/réinscription et les mois déjà commencés (un
@@ -966,6 +1009,18 @@ class FraisViewSet(viewsets.ModelViewSet):
             "frais_crees": frais_crees, "paiements_crees": paiements_crees,
             "erreurs": erreurs, "total_lignes": len(lignes),
         })
+
+    @action(detail=False, methods=["get"], url_path="eleves-hors-liste", permission_classes=[IsAdmin])
+    def eleves_hors_liste(self, request):
+        """Élèves qui ont des frais sur l'année affichée (liste Paiements) mais qui n'apparaissent
+        pas dans la liste des élèves de cette année : élève inactif (parti/transféré), sans
+        classe, ou dont la classe appartient à une autre année (classe pas mise à jour, frais
+        importés sur la mauvaise année...). Pour que l'administrateur puisse les retrouver et
+        corriger leur fiche (réactiver, affecter une classe) ou leurs frais."""
+        annee = annee_courante(request)
+        if annee is None:
+            return Response([])
+        return Response(eleves_hors_liste(request.user.ecole_id, annee))
 
     @action(detail=False, methods=["get"], url_path="suivi-mensuel")
     def suivi_mensuel(self, request):

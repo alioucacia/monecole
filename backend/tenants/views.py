@@ -205,6 +205,32 @@ class EcoleViewSet(viewsets.ModelViewSet):
             "ecoles_a_surveiller": ecoles_a_surveiller,
         })
 
+    @action(detail=False, methods=["get"], url_path="eleves-hors-liste")
+    def eleves_hors_liste(self, request):
+        """Super Admin : pour chaque école (ou seulement `?ecole=`), les élèves présents dans la
+        liste Paiements de son année active mais absents de sa liste Élèves (inactifs, sans
+        classe, classe d'une autre année) — même règle que l'onglet Paiements de l'école (voir
+        payments.views.eleves_hors_liste). Sans `?ecole=`, seules les écoles concernées sont
+        renvoyées."""
+        from academics.models import AnneeScolaire
+        from payments.views import eleves_hors_liste
+
+        ecoles = self.get_queryset().order_by("nom")
+        ecole_id = request.query_params.get("ecole")
+        if ecole_id:
+            ecoles = ecoles.filter(pk=ecole_id) if ecole_id.isdigit() else ecoles.none()
+        annees = {a.ecole_id: a for a in AnneeScolaire.objects.filter(active=True, ecole__in=ecoles)}
+        resultat = []
+        for ecole in ecoles:
+            annee = annees.get(ecole.id)
+            eleves = eleves_hors_liste(ecole.id, annee) if annee else []
+            if eleves or ecole_id:
+                resultat.append({
+                    "ecole": ecole.id, "ecole_nom": ecole.nom,
+                    "annee": annee.libelle if annee else None, "eleves": eleves,
+                })
+        return Response(resultat)
+
     @action(detail=False, methods=["post"], url_path="relancer-retard")
     def relancer_retard(self, request):
         """Envoie un rappel (email + SMS) à l'administrateur de chaque école en retard de

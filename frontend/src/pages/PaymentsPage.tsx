@@ -1,7 +1,7 @@
 import { useEffect, useState, type FormEvent } from "react";
 import { Link } from "react-router-dom";
 
-import { anneesApi, classesApi, elevesApi, fraisApi, paiementsApi, periodesApi, tarifsClasseApi, typesFraisApi, unwrapList } from "../api/services";
+import { anneesApi, classesApi, elevesApi, fraisApi, paiementsApi, periodesApi, tarifsClasseApi, typesFraisApi, unwrapList, type EleveHorsListe } from "../api/services";
 import { extractBlobErrorMessage, extractErrorMessage } from "../api/client";
 import { Badge, Button, EmptyState, Input, Modal, PageHeader, Select, Spinner, StatCard, Table } from "../components/ui";
 import { CycleSelect } from "../components/CycleSelect";
@@ -230,6 +230,10 @@ export default function PaymentsPage() {
   const [fichePendingId, setFichePendingId] = useState<number | null>(null);
   const [proformaPendingId, setProformaPendingId] = useState<number | null>(null);
   const [notifying, setNotifying] = useState(false);
+  // Admin : élèves présents dans Paiements mais absents de la liste Élèves de l'année (null =
+  // modale fermée, voir FraisViewSet.eleves_hors_liste).
+  const [horsListe, setHorsListe] = useState<EleveHorsListe[] | null>(null);
+  const [horsListeLoading, setHorsListeLoading] = useState(false);
 
   const [searchDebounced, setSearchDebounced] = useState("");
   useEffect(() => {
@@ -572,6 +576,18 @@ export default function PaymentsPage() {
     }
   };
 
+  const openHorsListe = async () => {
+    setHorsListeLoading(true);
+    try {
+      const { data } = await fraisApi.elevesHorsListe();
+      setHorsListe(data);
+    } catch (err) {
+      toast.error(extractErrorMessage(err));
+    } finally {
+      setHorsListeLoading(false);
+    }
+  };
+
   const openTypesModal = () => {
     setTypeEditTarget(null);
     setTypeForm(emptyTypeForm);
@@ -642,6 +658,11 @@ export default function PaymentsPage() {
             <Link to="/paiements/tarifs-classe">
               <Button variant="secondary">💰 Tarifs par classe</Button>
             </Link>
+            {user?.role === "admin" && (
+              <Button variant="secondary" onClick={openHorsListe} disabled={horsListeLoading}>
+                {horsListeLoading ? "Recherche…" : "👻 Élèves hors liste"}
+              </Button>
+            )}
             <Button variant="secondary" onClick={openTypesModal}>⚙️ Types de frais</Button>
             <Button onClick={openFraisModal}>+ Nouveau frais</Button>
           </div>
@@ -1094,6 +1115,36 @@ export default function PaymentsPage() {
                 ))}
               </Table>
             </>
+          )
+        )}
+      </Modal>
+
+      <Modal open={horsListe !== null} onClose={() => setHorsListe(null)} wide title="Élèves présents dans Paiements mais absents de la liste Élèves">
+        {horsListe && (
+          horsListe.length === 0 ? (
+            <EmptyState title="Aucun écart" description="Tous les élèves de la liste Paiements figurent dans la liste des élèves de l'année." />
+          ) : (
+            <div className="space-y-3">
+              <p className="text-sm text-slate-500">
+                {horsListe.length} élève(s) ont des frais sur l'année affichée sans faire partie des élèves inscrits de cette
+                année. Ouvrez leur fiche pour les réactiver ou leur affecter une classe.
+              </p>
+              <Table headers={["Élève", "Matricule", "Motif", "Frais", "Dû", "Payé", ""]}>
+                {horsListe.map((e) => (
+                  <tr key={e.eleve}>
+                    <td className="px-4 py-2 font-medium">{e.eleve_nom}</td>
+                    <td className="px-4 py-2 text-slate-500">{e.matricule}</td>
+                    <td className="px-4 py-2"><Badge color={e.actif ? "amber" : "rose"}>{e.motif}</Badge></td>
+                    <td className="px-4 py-2">{e.nombre_frais}</td>
+                    <td className="px-4 py-2">{money(e.total_du)}</td>
+                    <td className="px-4 py-2">{money(e.total_paye)}</td>
+                    <td className="px-4 py-2">
+                      <Link to={`/eleves/${e.eleve}`} className="text-xs font-semibold text-brand-700 hover:underline">Voir la fiche</Link>
+                    </td>
+                  </tr>
+                ))}
+              </Table>
+            </div>
           )
         )}
       </Modal>
