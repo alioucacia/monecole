@@ -152,21 +152,33 @@ class EleveProfileViewSet(viewsets.ModelViewSet):
 
     @action(detail=False, methods=["get"], url_path="export-pdf")
     def export_pdf(self, request):
-        """Version imprimable (PDF) de la liste des élèves (mêmes filtres que la liste)."""
-        queryset = self.filter_queryset(self.get_queryset())
+        """Version imprimable (PDF) de la liste des élèves (mêmes filtres que la liste), regroupée
+        par classe : une page par classe, élèves numérotés par ordre alphabétique, avec l'effectif
+        (garçons/filles) — prête à afficher ou à distribuer aux enseignants."""
+        queryset = (
+            self.filter_queryset(self.get_queryset())
+            .select_related("classe__professeur_principal")
+            .order_by("classe__niveau", "classe__nom", "user__last_name", "user__first_name")
+        )
 
-        classe_nom = None
-        classe_id = request.query_params.get("classe")
-        if classe_id:
-            classe = Classe.objects.filter(pk=classe_id).first()
-            classe_nom = classe.nom if classe else None
+        groupes = []
+        for eleve in queryset:
+            if not groupes or groupes[-1]["classe"] != eleve.classe:
+                groupes.append({"classe": eleve.classe, "eleves": []})
+            groupes[-1]["eleves"].append(eleve)
+        # Élèves sans classe en dernier (le tri SQL place les NULL en tête selon la base).
+        groupes.sort(key=lambda g: g["classe"] is None)
+        for groupe in groupes:
+            groupe["total"] = len(groupe["eleves"])
+            groupe["garcons"] = sum(1 for e in groupe["eleves"] if e.user.sexe == "M")
+            groupe["filles"] = sum(1 for e in groupe["eleves"] if e.user.sexe == "F")
 
         html = render_to_string("people/eleves_pdf.html", {
-            "eleves": queryset,
-            "total": queryset.count(),
-            "classe_nom": classe_nom,
+            "groupes": groupes,
+            "total": sum(g["total"] for g in groupes),
             "date_generation": timezone.now(),
             "ecole_nom": _ecole_nom(request.user),
+            "annee": _annee_active(request.user),
             "ecole_logo_data_uri": (
                 _image_data_uri(request.user.ecole.logo, _mm_px(16, 16), mode="contain")
                 if request.user.ecole_id and request.user.ecole.logo else None

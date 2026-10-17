@@ -700,11 +700,22 @@ class FraisViewSet(viewsets.ModelViewSet):
             return qs.filter(eleve__parent=user)
         return qs
 
+    def _filtrer_rubrique(self, queryset):
+        """`?rubrique=inscription` : seulement les frais d'inscription/réinscription (voir
+        TypeFrais.usage) ; `?rubrique=autres` : tous les autres (scolarité, cantine...) — la
+        page Paiements les affiche dans deux onglets séparés."""
+        rubrique = self.request.query_params.get("rubrique")
+        if rubrique == "inscription":
+            return queryset.filter(type_frais__usage__in=USAGES_INSCRIPTION)
+        if rubrique == "autres":
+            return queryset.exclude(type_frais__usage__in=USAGES_INSCRIPTION)
+        return queryset
+
     def filter_queryset(self, queryset):
         """`?statut=impaye|partiel|paye` : ne garde que les frais de ce statut (liste Paiements).
         Le statut dépend de `montant_du` (réduction propre à l'élève), calculé en Python : total
         versé annoté en une requête, puis tri — même règle que `Frais.statut`."""
-        queryset = super().filter_queryset(queryset)
+        queryset = self._filtrer_rubrique(super().filter_queryset(queryset))
         statut = self.request.query_params.get("statut")
         if statut not in ("impaye", "partiel", "paye"):
             return queryset
@@ -1503,6 +1514,7 @@ class FraisViewSet(viewsets.ModelViewSet):
             qs = qs.filter(annee_scolaire_id=request.query_params["annee_scolaire"])
         else:
             qs = AnneeScolaireFilterBackend().filter_queryset(request, qs, self)
+        qs = self._filtrer_rubrique(qs)
         # Sum("montant") sur la requête ne peut pas tenir compte de la réduction (catégorie de
         # paiement/fidélité) : Frais.montant_du n'est pas une colonne mais calculé par élève —
         # boucle Python, comme le fait déjà impayes_par_classe() ci-dessous pour la même raison.

@@ -3,52 +3,83 @@
 <head>
 <meta charset="utf-8" />
 <style>
-    @page { size: A4 landscape; margin: 1.5cm; }
+    @page { size: A4 portrait; margin: 1.3cm; }
     body { font-family: Helvetica, Arial, sans-serif; color: #1e1b2e; font-size: 10px; }
-    .header { text-align: center; border-bottom: 3px solid #6d28d9; padding-bottom: 10px; margin-bottom: 14px; }
+    .page-classe { page-break-after: always; }
+    .page-classe.derniere { page-break-after: auto; }
+    .header { text-align: center; border-bottom: 3px solid #6d28d9; padding-bottom: 8px; margin-bottom: 10px; }
     .header .logo { width: 14mm; height: 14mm; object-fit: contain; margin-bottom: 4px; }
-    .header h1 { color: #4c1d95; font-size: 18px; margin: 0 0 4px 0; }
+    .header h1 { color: #4c1d95; font-size: 16px; margin: 0 0 2px 0; }
     .header p { color: #6b7280; margin: 0; font-size: 10px; }
-    table.eleves { width: 100%; border-collapse: collapse; margin-top: 8px; }
-    table.eleves th { background-color: #ede9fe; color: #4c1d95; padding: 6px; text-align: left; font-size: 9px; text-transform: uppercase; border: 1px solid #ddd6fe; }
-    table.eleves td { padding: 6px; border: 1px solid #eee; font-size: 10px; }
-    .footer { margin-top: 16px; width: 100%; text-align: right; font-size: 9px; color: #6b7280; }
+    .titre-classe { font-size: 15px; font-weight: bold; color: #1e1b2e; margin: 6px 0 2px 0; }
+    table.infos { width: 100%; margin-bottom: 6px; }
+    table.infos td { font-size: 10px; color: #4b5563; padding: 1px 0; }
+    table.eleves { width: 100%; border-collapse: collapse; margin-top: 4px; }
+    table.eleves th { background-color: #ede9fe; color: #4c1d95; padding: 5px; text-align: left; font-size: 9px; text-transform: uppercase; border: 1px solid #ddd6fe; }
+    table.eleves td { padding: 5px; border: 1px solid #e5e7eb; font-size: 10px; }
+    td.num { text-align: center; width: 6%; }
+    .footer { margin-top: 12px; width: 100%; text-align: right; font-size: 9px; color: #6b7280; }
 </style>
 </head>
 <body>
-    <div class="header">
-        {% if ecole_logo_data_uri %}<img class="logo" src="{{ ecole_logo_data_uri }}" /><br/>{% endif %}
-        <h1>{{ ecole_nom }}</h1>
-        <p>Liste des élèves{% if classe_nom %} — {{ classe_nom }}{% endif %} ({{ total }} élève{{ total|pluralize }})</p>
+    {% for groupe in groupes %}
+    <div class="page-classe{% if forloop.last %} derniere{% endif %}">
+        <div class="header">
+            {% if ecole_logo_data_uri %}<img class="logo" src="{{ ecole_logo_data_uri }}" /><br/>{% endif %}
+            <h1>{{ ecole_nom }}</h1>
+            <p>Liste des élèves{% if annee %} — Année scolaire {{ annee.libelle }}{% endif %}</p>
+        </div>
+
+        <div class="titre-classe">Classe : {{ groupe.classe.nom|default:"Élèves sans classe" }}</div>
+        <table class="infos">
+            <tr>
+                <td>
+                    {% if groupe.classe.cycle %}Cycle : {{ groupe.classe.get_cycle_display }}{% endif %}
+                    {% if groupe.classe.professeur_principal %}{% if groupe.classe.cycle %} &nbsp;·&nbsp; {% endif %}Professeur principal : {{ groupe.classe.professeur_principal.get_full_name }}{% endif %}
+                </td>
+                <td style="text-align: right;">
+                    Effectif : <strong>{{ groupe.total }}</strong> élève{{ groupe.total|pluralize }}
+                    ({{ groupe.garcons }} G / {{ groupe.filles }} F)
+                </td>
+            </tr>
+        </table>
+
+        <table class="eleves">
+            <thead>
+                <tr>
+                    <th class="num">N°</th>
+                    <th>Matricule</th>
+                    <th>Nom</th>
+                    <th>Prénom(s)</th>
+                    <th>Sexe</th>
+                    <th>Date de naissance</th>
+                    <th>Parent / Tuteur</th>
+                    <th>Téléphone</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for eleve in groupe.eleves %}
+                <tr>
+                    <td class="num">{{ forloop.counter }}</td>
+                    <td>{{ eleve.matricule }}</td>
+                    <td>{{ eleve.user.last_name|upper }}</td>
+                    <td>{{ eleve.user.first_name }}</td>
+                    <td>{{ eleve.user.sexe|default:"—" }}</td>
+                    <td>{{ eleve.user.date_of_birth|date:"d/m/Y"|default:"—" }}</td>
+                    <td>{% if eleve.parent %}{{ eleve.parent.get_full_name }}{% else %}{{ eleve.nom_tuteur|default:eleve.nom_pere|default:"—" }}{% endif %}</td>
+                    <td>{% if eleve.parent and eleve.parent.phone %}{{ eleve.parent.phone }}{% else %}{{ eleve.user.phone|default:"—" }}{% endif %}</td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+
+        <p class="footer">Généré le {{ date_generation|date:"d/m/Y à H:i" }}</p>
     </div>
-
-    <table class="eleves">
-        <thead>
-            <tr>
-                <th>Matricule</th>
-                <th>Nom</th>
-                <th>Prénom</th>
-                <th>Classe</th>
-                <th>Parent</th>
-                <th>Email</th>
-                <th>Téléphone</th>
-            </tr>
-        </thead>
-        <tbody>
-            {% for eleve in eleves %}
-            <tr>
-                <td>{{ eleve.matricule }}</td>
-                <td>{{ eleve.user.last_name }}</td>
-                <td>{{ eleve.user.first_name }}</td>
-                <td>{{ eleve.classe.nom|default:"—" }}</td>
-                <td>{{ eleve.parent.get_full_name|default:"—" }}</td>
-                <td>{{ eleve.user.email|default:"—" }}</td>
-                <td>{{ eleve.user.phone|default:"—" }}</td>
-            </tr>
-            {% endfor %}
-        </tbody>
-    </table>
-
-    <p class="footer">Généré le {{ date_generation|date:"d/m/Y à H:i" }}</p>
+    {% empty %}
+    <div class="header">
+        <h1>{{ ecole_nom }}</h1>
+        <p>Liste des élèves — aucun élève ne correspond aux filtres choisis.</p>
+    </div>
+    {% endfor %}
 </body>
 </html>

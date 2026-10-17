@@ -324,7 +324,13 @@ export default function StudentsPage() {
   const handleExportPdf = async () => {
     setExportingPdf(true);
     try {
-      await elevesApi.exportPdf({ search: search || undefined, classe: classeFilter || undefined });
+      // Une page par classe (toutes les classes du cycle choisi, ou seulement celle filtrée).
+      // Sans statut choisi, seuls les élèves actifs sont imprimés (pas les partis/transférés).
+      await elevesApi.exportPdf({
+        search: search || undefined, classe: classeFilter || undefined, cycle: cycleFilter || undefined,
+        actif: statutFilter === "inactif" ? false : true,
+        statut_inscription: statutFilter === "reinscription" || statutFilter === "transfert" ? statutFilter : undefined,
+      });
     } catch (err) {
       // Sans ce catch, un échec restait invisible (bouton "mort") — voir le même correctif
       // sur les fiches de paiement/badges.
@@ -402,7 +408,7 @@ export default function StudentsPage() {
             {isAdmin && (
               <>
                 <Button variant="secondary" onClick={handleExport} disabled={exporting}>{exporting ? "Export…" : "📤 Exporter CSV"}</Button>
-                <Button variant="secondary" onClick={handleExportPdf} disabled={exportingPdf}>{exportingPdf ? "Export…" : "🖨️ Exporter PDF"}</Button>
+                <Button variant="secondary" onClick={handleExportPdf} disabled={exportingPdf}>{exportingPdf ? "Génération…" : classeFilter ? "🖨️ Imprimer la liste de la classe" : "🖨️ Imprimer les listes par classe"}</Button>
                 <Button variant="secondary" onClick={() => { setImportRapport(null); setImportError(""); setImportEnAttente(null); setImportModalOpen(true); }}>📥 Importer Excel</Button>
               </>
             )}

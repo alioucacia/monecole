@@ -174,6 +174,9 @@ export default function PaymentsPage() {
   // Un seul statut affiché à la fois : les impayés par défaut, ou seulement les payés / seulement
   // les partiels selon la case cochée (les deux cases s'excluent).
   const [filtreStatut, setFiltreStatut] = useState<"impaye" | "paye" | "partiel">("impaye");
+  // Onglet : frais d'inscription/réinscription à part du reste (scolarité, cantine...) —
+  // `?rubrique=` côté serveur, appliqué à la liste comme aux totaux.
+  const [rubrique, setRubrique] = useState<"autres" | "inscription">("autres");
   const classesDuCycle = cycleFiltre ? classes.filter((c) => c.cycle === cycleFiltre) : classes;
 
   const [fraisModalOpen, setFraisModalOpen] = useState(false);
@@ -240,8 +243,9 @@ export default function PaymentsPage() {
       eleve__classe: classeFiltre || undefined,
       eleve__classe__cycle: classeFiltre ? undefined : cycleFiltre || undefined,
       statut: peutGerer ? filtreStatut : undefined,
+      rubrique,
     }),
-    [searchDebounced, cycleFiltre, classeFiltre, filtreStatut]
+    [searchDebounced, cycleFiltre, classeFiltre, filtreStatut, rubrique]
   );
 
   const handleExport = async () => {
@@ -288,7 +292,7 @@ export default function PaymentsPage() {
     }
   };
 
-  const loadSummary = () => fraisApi.summary().then(({ data }) => setSummary(data));
+  const loadSummary = () => fraisApi.summary({ rubrique }).then(({ data }) => setSummary(data));
   // Totaux du haut actualisés toutes les 5 s, comme la liste (voir usePaginated).
   useAutoRefresh(() => { loadSummary().catch(() => {}); }, peutGerer);
   const loadTypes = () => typesFraisApi.list().then(({ data }) => setTypes(unwrapList(data)));
@@ -333,10 +337,14 @@ export default function PaymentsPage() {
     loadTypes();
     if (peutGerer) {
       anneesApi.list().then(({ data }) => setAnnees(unwrapList(data)));
-      loadSummary();
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [peutGerer]);
+
+  useEffect(() => {
+    if (peutGerer) loadSummary();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [peutGerer, rubrique]);
 
   // Classes de l'année affichée (filtres Cycle/Classe de la liste et de « Nouveau frais »).
   // Rechargées quand l'année est connue/change : au premier rendu `anneeVueId` est encore null
@@ -639,6 +647,18 @@ export default function PaymentsPage() {
           </div>
         ) : undefined}
       />
+
+      <div className="flex gap-2 mb-5 border-b border-slate-100">
+        {([["autres", "📚 Scolarité et autres frais"], ["inscription", "📝 Inscriptions / Réinscriptions"]] as const).map(([cle, label]) => (
+          <button
+            key={cle}
+            onClick={() => setRubrique(cle)}
+            className={`px-4 py-2 text-sm font-semibold border-b-2 -mb-px ${rubrique === cle ? "border-brand-600 text-brand-700" : "border-transparent text-slate-500 hover:text-slate-700"}`}
+          >
+            {label}
+          </button>
+        ))}
+      </div>
 
       {peutGerer && summary && (
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 mb-6">
