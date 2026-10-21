@@ -62,6 +62,11 @@ class EleveProfile(models.Model):
         REINSCRIPTION = "reinscription", "Réinscription"
         TRANSFERT = "transfert", "Transfert"
 
+    class BonusMode(models.TextChoices):
+        AUTO = "auto", "Automatique (règle de la fratrie)"
+        OUI = "oui", "Élève Bonus (désigné par l'administrateur)"
+        NON = "non", "Jamais Élève Bonus"
+
     class CategoriePaiement(models.TextChoices):
         STANDARD = "standard", "Standard — paie l'intégralité de la mensualité"
         FONDATION_50 = "fondation_50", "Fondation — 50% de réduction sur la mensualité"
@@ -114,11 +119,18 @@ class EleveProfile(models.Model):
             "(ex: Fondation 50% + fidélité = 47,5% du tarif standard)."
         ),
     )
-    # Réduction « fratrie » (voir people/fratrie.py) : calculée automatiquement, jamais saisie.
+    # Réduction « fratrie » / Élève Bonus (voir people/fratrie.py) : résultat calculé, jamais
+    # saisi — d'après la règle de l'école (Ecole.eleve_bonus_actif/eleve_bonus_seuil) et le
+    # choix manuel de l'administrateur (`bonus_mode`).
     exonere_fratrie = models.BooleanField(
         default=False, editable=False,
-        help_text="Enfant de la classe la plus basse d'un parent qui a au moins 6 enfants inscrits : "
-                  "exonéré de mensualité.",
+        help_text="Élève Bonus : enfant de la classe la plus basse d'un parent qui a au moins le nombre "
+                  "d'enfants inscrits fixé pour l'école (ou désigné par l'administrateur) — exonéré de scolarité.",
+    )
+    bonus_mode = models.CharField(
+        max_length=4, choices=BonusMode.choices, default=BonusMode.AUTO,
+        help_text="Choix de l'administrateur : laisser la règle décider, désigner cet élève comme Bonus, "
+                  "ou l'exclure du Bonus.",
     )
 
     class Meta:

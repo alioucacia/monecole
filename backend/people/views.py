@@ -48,6 +48,7 @@ from .models import (
 from .serializers import (
     RendezVousSerializer,
     AlerteParentSerializer,
+    BonusModeSerializer,
     CategoriePaiementSerializer,
     EleveBadgeSerializer,
     EleveProfileSerializer,
@@ -286,6 +287,18 @@ class EleveProfileViewSet(viewsets.ModelViewSet):
         serializer.is_valid(raise_exception=True)
         serializer.save()
         # Contexte de la vue : renvoie aussi `categorie_figee` (voir EleveProfileSerializer).
+        return Response(EleveProfileSerializer(eleve, context=self.get_serializer_context()).data)
+
+    @action(detail=True, methods=["patch"], url_path="bonus", permission_classes=[IsAdmin])
+    def bonus(self, request, pk=None):
+        """Statut « Élève Bonus » choisi par l'administrateur : automatique (règle de la fratrie),
+        désigné Bonus, ou exclu du Bonus — voir people/fratrie.py. Le recalcul de la fratrie
+        se fait au save (people/signals.py)."""
+        eleve = self.get_object()
+        serializer = BonusModeSerializer(eleve, data=request.data)
+        serializer.is_valid(raise_exception=True)
+        serializer.save()
+        eleve.refresh_from_db()
         return Response(EleveProfileSerializer(eleve, context=self.get_serializer_context()).data)
 
     @action(detail=True, methods=["get"], url_path="recu-inscription")

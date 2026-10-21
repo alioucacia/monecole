@@ -96,6 +96,7 @@ class EleveProfileSerializer(serializers.ModelSerializer):
     parent_username = serializers.CharField(source="parent.username", read_only=True, default=None)
     categorie_paiement_display = serializers.CharField(source="get_categorie_paiement_display", read_only=True)
     facteur_mensualite = serializers.DecimalField(max_digits=4, decimal_places=3, read_only=True)
+    bonus_mode_display = serializers.CharField(source="get_bonus_mode_display", read_only=True)
 
     class Meta:
         model = EleveProfile
@@ -105,9 +106,9 @@ class EleveProfileSerializer(serializers.ModelSerializer):
             "date_inscription", "lieu_naissance", "nom_pere", "nom_mere", "nom_tuteur",
             "regime", "statut_inscription", "actif", "date_sortie", "motif_sortie",
             "categorie_paiement", "categorie_paiement_display", "reduction_fidelite_mensualite", "facteur_mensualite",
-            "exonere_fratrie", "categorie_figee",
+            "exonere_fratrie", "bonus_mode", "bonus_mode_display", "categorie_figee",
         ]
-        read_only_fields = ["exonere_fratrie"]
+        read_only_fields = ["exonere_fratrie", "bonus_mode"]
 
     def get_categorie_figee(self, eleve):
         view = self.context.get("view")
@@ -138,6 +139,23 @@ class CategoriePaiementSerializer(serializers.ModelSerializer):
                 "plus être modifiée (seul le retour en « Standard » reste possible)."
             )
         return value
+
+
+class BonusModeSerializer(serializers.ModelSerializer):
+    """Choix de l'administrateur sur le statut « Élève Bonus » d'un élève (voir people/fratrie.py
+    et `EleveProfileViewSet.bonus`)."""
+
+    class Meta:
+        model = EleveProfile
+        fields = ["bonus_mode"]
+
+    def validate(self, attrs):
+        ecole = self.instance.user.ecole if self.instance else None
+        if ecole is not None and not ecole.eleve_bonus_actif:
+            raise serializers.ValidationError(
+                "L'option « Élève Bonus » n'est pas activée pour votre école (réglage du Super Admin)."
+            )
+        return attrs
 
 
 class EleveProfileWriteSerializer(serializers.ModelSerializer):

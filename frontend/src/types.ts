@@ -32,6 +32,9 @@ export interface User {
   ecole_couleur_principale: string | null;
   ecole_couleur_secondaire: string | null;
   ecole_fonctionnalites_desactivees: string[];
+  // Option « Élève Bonus » (fratrie) réglée par le Super Admin pour l'école de ce compte.
+  ecole_eleve_bonus_actif: boolean;
+  ecole_eleve_bonus_seuil: number | null;
   // Logo + adresse de l'école de ce compte — affichés en haut du tableau de bord.
   ecole_logo: string | null;
   ecole_adresse: string | null;
@@ -184,6 +187,8 @@ export interface Ecole {
   signataire_caissier: boolean;
   signataire_caissier_nom: string;
   signataire_fondateur: boolean;
+  eleve_bonus_actif: boolean;
+  eleve_bonus_seuil: number;
   nom_fondateur: string;
 }
 
@@ -541,9 +546,14 @@ export interface EleveProfile {
   categorie_paiement_display: string;
   reduction_fidelite_mensualite: boolean;
   facteur_mensualite: string;
-  /** Benjamin (classe la plus basse) d'un parent ayant au moins 6 enfants inscrits : exonéré de
-   * mensualité — calculé automatiquement (backend people/fratrie.py). */
+  /** Élève Bonus : benjamin (classe la plus basse) d'un parent ayant au moins le nombre d'enfants
+   * inscrits fixé pour l'école, ou désigné par l'administrateur — exonéré de scolarité (résultat
+   * calculé par le backend, people/fratrie.py). */
   exonere_fratrie: boolean;
+  /** Choix de l'administrateur (voir backend people/fratrie.py) : règle automatique, désigné
+   * Élève Bonus, ou exclu du Bonus. */
+  bonus_mode: BonusMode;
+  bonus_mode_display: string;
   /** Fiche élève uniquement (`null` dans les listes) : scolarité déjà entamée sur l'année
    * active — catégorie de paiement grisée, seul le retour en « Standard » reste possible. */
   categorie_figee?: boolean | null;
@@ -551,6 +561,8 @@ export interface EleveProfile {
 
 /** Prise en charge de la mensualité (scolarité) d'un élève — n'affecte que les frais mensuels
  * (cantine/transport/inscription restent facturés normalement quelle que soit la catégorie). */
+export type BonusMode = "auto" | "oui" | "non";
+
 export type CategoriePaiement = "standard" | "fondation_50" | "fondation_gratuit" | "inscription_seulement";
 
 export interface EnseignantProfile {

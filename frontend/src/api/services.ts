@@ -1,6 +1,6 @@
 import { api } from "./client";
 import type {
-  AffectationTransport, AgentCantineInfo, Annonce, AnneeScolaire, Bulletin, CaisseRapport, CategorieDepense, CategoriePaiement, Classe, Creneau, Depense, Ecole, EcoleStatsDetail,
+  AffectationTransport, AgentCantineInfo, Annonce, AnneeScolaire, BonusMode, Bulletin, CaisseRapport, CategorieDepense, CategoriePaiement, Classe, Creneau, Depense, Ecole, EcoleStatsDetail,
   EcoleStatsGlobales, EcoleUtilisateur, EleveProfile,
   Emprunt, Enseignement, EnseignantProfile, Fonctionnalite, Formule, Frais, InscriptionCantine, JournalActiviteEntry, JournalUtilisateurEntry, Livre, Matiere, Message, ModeleMessage, Note, 
   Paginated,AlerteParent, AnalysePerformance, ChauffeurInfo, EleveBadge, EnseignantBadge, GroupeRevision, JustificatifAbsence, MessageIA, PaiementEcole, Paiement, PaieEnseignant,
@@ -372,6 +372,9 @@ export const elevesApi = {
    * et réduction fidélité — accessible à la comptabilité sans droit d'édition du reste de la fiche. */
   setCategoriePaiement: (id: number, data: { categorie_paiement: CategoriePaiement; reduction_fidelite_mensualite: boolean }) =>
     api.patch<EleveProfile>(`/people/eleves/${id}/categorie-paiement/`, data),
+  /** Statut « Élève Bonus » choisi par l'administrateur (auto / désigné / exclu). */
+  setBonusMode: (id: number, bonus_mode: BonusMode) =>
+    api.patch<EleveProfile>(`/people/eleves/${id}/bonus/`, { bonus_mode }),
   /** Modèle Excel (.xlsx) à remplir pour l'import en masse — voir importExcel. */
   importExcelModele: (filename: string) => downloadFile("/people/eleves/import-excel-modele/", {}, filename),
   /** Import en masse d'élèves depuis un fichier Excel (.xlsx) — chaque ligne est traitée

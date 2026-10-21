@@ -190,6 +190,13 @@ class Ecole(models.Model):
     signataire_caissier_nom = models.CharField(max_length=150, blank=True)
     signataire_fondateur = models.BooleanField(default=False)
 
+    # « Élève Bonus » (voir people/fratrie.py), paramétré par le Super Admin : un parent qui a
+    # au moins `eleve_bonus_seuil` enfants inscrits (actifs) ne paie pas la scolarité de celui
+    # qui est dans la classe la plus basse. Désactivé : aucun élève Bonus dans l'école, même
+    # désigné manuellement par l'administrateur (`EleveProfile.bonus_mode`).
+    eleve_bonus_actif = models.BooleanField(default=True)
+    eleve_bonus_seuil = models.PositiveSmallIntegerField(default=6)
+
     # Fonctionnalités optionnelles désactivées par le Super Admin pour cette école (liste de
     # clés parmi `tenants.features.FONCTIONNALITES`) — voir `a_fonctionnalite()` ci-dessous et
     # `tenants.permissions.fonctionnalite_requise` pour l'application côté API.

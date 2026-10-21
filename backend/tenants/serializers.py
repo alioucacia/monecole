@@ -155,8 +155,10 @@ class EcoleSerializer(serializers.ModelSerializer):
             "modele_attestation", "modele_attestation_display",
             "signataire_comptable", "signataire_comptable_nom", "signataire_caissier",
             "signataire_caissier_nom", "signataire_fondateur", "nom_fondateur",
+            "eleve_bonus_actif", "eleve_bonus_seuil",
         ]
         read_only_fields = ["slug", "date_creation"]
+        extra_kwargs = {"eleve_bonus_seuil": {"min_value": 2, "max_value": 20}}
 
     def validate_fonctionnalites_desactivees(self, value):
         inconnues = [cle for cle in value if cle not in FONCTIONNALITES]

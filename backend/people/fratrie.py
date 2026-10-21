@@ -1,7 +1,15 @@
-"""Réduction « fratrie » : un parent qui a au moins `SEUIL_FRATRIE` enfants inscrits (actifs)
-dans l'établissement ne paie pas la mensualité de celui qui est dans la classe la plus basse.
+"""Réduction « fratrie » (« Élève Bonus ») : un parent qui a au moins `eleve_bonus_seuil`
+enfants inscrits (actifs) dans l'établissement ne paie pas la scolarité de celui qui est dans la
+classe la plus basse. Le Super Admin active/désactive la règle et fixe le seuil école par école
+(Ecole.eleve_bonus_actif/eleve_bonus_seuil) ; l'administrateur peut ensuite corriger élève par
+élève (EleveProfile.bonus_mode) :
+- « auto » : la règle décide ;
+- « oui » : élève Bonus quoi qu'il arrive (tant que la règle est active pour l'école) — un
+  enfant désigné ainsi REMPLACE le bénéficiaire automatique de sa fratrie ;
+- « non » : jamais Bonus — le bénéficiaire automatique devient alors le suivant (classe la plus
+  basse parmi les enfants restés en « auto »).
 
-Le bénéficiaire est recalculé automatiquement (voir people/signals.py) et mémorisé dans
+Le résultat est recalculé automatiquement (voir people/signals.py) et mémorisé dans
 `EleveProfile.exonere_fratrie`, lu par `EleveProfile.facteur_mensualite`.
 """
 
@@ -56,18 +64,57 @@ def cle_beneficiaire(eleve) -> tuple:
     return (*rang_niveau(eleve.classe), -(naissance.toordinal() if naissance else 0), eleve.id)
 
 
+def reglage_ecole(ecole) -> tuple[bool, int]:
+    """(règle active, seuil) pour une école — valeurs par défaut sans école, ou depuis une
+    migration antérieure à l'ajout de ces réglages (modèle historique)."""
+    if ecole is None:
+        return True, SEUIL_FRATRIE
+    return getattr(ecole, "eleve_bonus_actif", True), getattr(ecole, "eleve_bonus_seuil", SEUIL_FRATRIE) or SEUIL_FRATRIE
+
+
+def _beneficiaires(enfants, actif, seuil) -> set:
+    if not actif:
+        return set()
+    designes = {e.pk for e in enfants if getattr(e, "bonus_mode", "auto") == "oui"}
+    if designes:
+        return designes
+    if len(enfants) < seuil:
+        return set()
+    candidats = [e for e in enfants if getattr(e, "bonus_mode", "auto") == "auto"]
+    return {min(candidats, key=cle_beneficiaire).pk} if candidats else set()
+
+
+def _appliquer(queryset, beneficiaires) -> None:
+    queryset.exclude(pk__in=beneficiaires).filter(exonere_fratrie=True).update(exonere_fratrie=False)
+    queryset.filter(pk__in=beneficiaires, exonere_fratrie=False).update(exonere_fratrie=True)
+
+
 def recalculer_exoneration_fratrie(parent_id, modele=None) -> None:
-    """Désigne (ou retire) l'enfant exonéré de mensualité parmi les enfants actifs du parent.
+    """Désigne (ou retire) l'enfant exonéré de scolarité parmi les enfants actifs du parent.
     `modele` : EleveProfile (ou sa version historique, depuis une migration)."""
     if not parent_id:
         return
     if modele is None:
         from .models import EleveProfile as modele
-    enfants = list(modele.objects.filter(parent_id=parent_id, actif=True).select_related("classe", "user"))
-    beneficiaire = min(enfants, key=cle_beneficiaire) if len(enfants) >= SEUIL_FRATRIE else None
     tous = modele.objects.filter(parent_id=parent_id)
-    if beneficiaire:
-        tous.exclude(pk=beneficiaire.pk).filter(exonere_fratrie=True).update(exonere_fratrie=False)
-        tous.filter(pk=beneficiaire.pk, exonere_fratrie=False).update(exonere_fratrie=True)
-    else:
-        tous.filter(exonere_fratrie=True).update(exonere_fratrie=False)
+    enfants = list(tous.filter(actif=True).select_related("classe", "user__ecole"))
+    actif, seuil = reglage_ecole(enfants[0].user.ecole if enfants else None)
+    _appliquer(tous, _beneficiaires(enfants, actif, seuil))
+
+
+def recalculer_eleve_sans_parent(eleve) -> None:
+    """Élève sans compte parent : pas de fratrie, Bonus uniquement s'il est désigné."""
+    actif, _ = reglage_ecole(eleve.user.ecole)
+    bonus = actif and eleve.actif and eleve.bonus_mode == "oui"
+    type(eleve).objects.filter(pk=eleve.pk).exclude(exonere_fratrie=bonus).update(exonere_fratrie=bonus)
+
+
+def recalculer_ecole(ecole_id) -> None:
+    """Après un changement du réglage de l'école par le Super Admin."""
+    from .models import EleveProfile
+
+    eleves = EleveProfile.objects.filter(user__ecole_id=ecole_id)
+    for parent_id in eleves.filter(parent__isnull=False).values_list("parent_id", flat=True).distinct():
+        recalculer_exoneration_fratrie(parent_id)
+    for eleve in eleves.filter(parent__isnull=True).select_related("user__ecole"):
+        recalculer_eleve_sans_parent(eleve)

@@ -181,3 +181,70 @@ class FratrieTests(TestCase):
         self.assertEqual(ancien.montant_du, Decimal("0"))
         r = client.post("/api/payments/paiements/", {"frais": ancien.id, "montant": "1000", "mode_paiement": "especes"}, format="json")
         self.assertEqual(r.status_code, 400)
+
+    def _fratrie_de_six(self):
+        return [self._enfant(c) for c in ["Term A", "11e A", "9e A", "7e A", "6e annee", "3e annee"]]
+
+    def test_super_admin_desactive_ou_change_le_seuil(self):
+        enfants = self._fratrie_de_six()
+        self.assertTrue(EleveProfile.objects.get(pk=enfants[-1].pk).exonere_fratrie)
+
+        self.ecole.eleve_bonus_actif = False
+        self.ecole.save()
+        self.assertFalse(EleveProfile.objects.filter(exonere_fratrie=True).exists())
+
+        self.ecole.eleve_bonus_actif = True
+        self.ecole.eleve_bonus_seuil = 7
+        self.ecole.save()
+        self.assertFalse(EleveProfile.objects.filter(exonere_fratrie=True).exists())  # 6 < 7
+
+        self.ecole.eleve_bonus_seuil = 3
+        self.ecole.save()
+        self.assertEqual(list(EleveProfile.objects.filter(exonere_fratrie=True)), [enfants[-1]])
+
+    def test_super_admin_regle_l_option_par_l_api(self):
+        from rest_framework.test import APIClient
+
+        self._fratrie_de_six()
+        sa = User.objects.create_user(username="sa", password="x", role="superadmin")
+        client = APIClient()
+        client.force_authenticate(sa)
+        r = client.patch(f"/api/tenants/ecoles/{self.ecole.id}/", {"eleve_bonus_actif": False}, format="json")
+        self.assertEqual(r.status_code, 200, r.content)
+        self.assertFalse(EleveProfile.objects.filter(exonere_fratrie=True).exists())
+
+    def test_admin_modifie_le_statut_bonus(self):
+        from rest_framework.test import APIClient
+
+        enfants = self._fratrie_de_six()
+        auto = enfants[-1]
+        admin = User.objects.create_user(username="ad", password="x", role="admin", ecole=self.ecole)
+        client = APIClient()
+        client.force_authenticate(admin)
+        bonus = lambda: set(EleveProfile.objects.filter(exonere_fratrie=True).values_list("pk", flat=True))
+
+        # Désigner un autre enfant : il remplace le Bonus automatique.
+        r = client.patch(f"/api/people/eleves/{enfants[0].id}/bonus/", {"bonus_mode": "oui"}, format="json")
+        self.assertEqual(r.status_code, 200, r.content)
+        self.assertIs(r.json()["exonere_fratrie"], True)
+        self.assertEqual(bonus(), {enfants[0].pk})
+
+        # Retour en automatique, puis exclusion du benjamin : le Bonus passe au suivant.
+        client.patch(f"/api/people/eleves/{enfants[0].id}/bonus/", {"bonus_mode": "auto"}, format="json")
+        self.assertEqual(bonus(), {auto.pk})
+        client.patch(f"/api/people/eleves/{auto.id}/bonus/", {"bonus_mode": "non"}, format="json")
+        self.assertEqual(bonus(), {enfants[4].pk})  # 6e année
+
+        # Élève sans parent désigné Bonus.
+        u = User.objects.create_user(username="seul", password="x", role="student", ecole=self.ecole)
+        seul = EleveProfile.objects.create(user=u, matricule="SEUL", classe=self.classes["GS"])
+        self.assertFalse(seul.exonere_fratrie)
+        r = client.patch(f"/api/people/eleves/{seul.id}/bonus/", {"bonus_mode": "oui"}, format="json")
+        self.assertIs(r.json()["exonere_fratrie"], True)
+
+        # Option désactivée : modification refusée.
+        self.ecole.eleve_bonus_actif = False
+        self.ecole.save()
+        r = client.patch(f"/api/people/eleves/{auto.id}/bonus/", {"bonus_mode": "oui"}, format="json")
+        self.assertEqual(r.status_code, 400)
+        self.assertFalse(EleveProfile.objects.filter(exonere_fratrie=True).exists())

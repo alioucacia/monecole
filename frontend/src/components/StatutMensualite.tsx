@@ -10,8 +10,8 @@ const STATUTS: Record<CategoriePaiement, { label: string; className: string }> =
 };
 
 /** Étiquette « Statut de paiement (mensualité) » — distingue d'un coup d'œil les élèves pris en
- * charge par la Fondation des élèves au tarif standard. `exonereFratrie` (benjamin d'une famille
- * d'au moins 6 enfants) prime : l'élève ne paie pas la mensualité, quelle que soit sa catégorie. */
+ * charge par la Fondation des élèves au tarif standard. `exonereFratrie` (Élève Bonus : benjamin
+ * d'une famille nombreuse, ou désigné par l'administrateur) prime : l'élève ne paie pas la mensualité, quelle que soit sa catégorie. */
 export function StatutMensualiteBadge({ categorie, exonereFratrie }: { categorie?: CategoriePaiement | null; exonereFratrie?: boolean }) {
   if (exonereFratrie) return <ExonereFratrieBadge />;
   const statut = STATUTS[categorie ?? "standard"] ?? STATUTS.standard;
@@ -25,12 +25,13 @@ export function StatutMensualiteBadge({ categorie, exonereFratrie }: { categorie
   );
 }
 
-/** « Élève Bonus » : enfant de la classe la plus basse d'une famille d'au moins 6 enfants
- * inscrits — ne paie pas la scolarité (voir backend people/fratrie.py). */
+/** « Élève Bonus » : enfant de la classe la plus basse d'une famille nombreuse (seuil réglé par
+ * le Super Admin pour l'école), ou désigné par l'administrateur — ne paie pas la scolarité (voir
+ * backend people/fratrie.py). */
 export function ExonereFratrieBadge() {
   return (
     <span
-      title="Classe la plus basse d'une famille d'au moins 6 enfants inscrits : ne paie pas la scolarité"
+      title="Élève Bonus : ne paie pas la scolarité"
       className="mt-1 inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-violet-100 text-violet-700 ring-1 ring-violet-300"
     >
       Élève Bonus

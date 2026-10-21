@@ -14,7 +14,7 @@ import { useAuth } from "../context/AuthContext";
 import { useConfirm, usePrompt } from "../context/ConfirmContext";
 import { useToast } from "../context/ToastContext";
 import type {
-  AffectationTransport, AnneeScolaire, Bulletin, CategoriePaiement, EleveProfile, Emprunt, Frais, JustificatifAbsence, Note, Periode, Presence, SuiviMensuelMois,
+  AffectationTransport, AnneeScolaire, BonusMode, Bulletin, CategoriePaiement, EleveProfile, Emprunt, Frais, JustificatifAbsence, Note, Periode, Presence, SuiviMensuelMois,
 } from "../types";
 
 const CATEGORIE_LABELS: Record<CategoriePaiement, string> = {
@@ -131,6 +131,7 @@ export default function StudentDetailPage() {
   const [proformaPreviewOpen, setProformaPreviewOpen] = useState(false);
   const [historiquePaiementsOpen, setHistoriquePaiementsOpen] = useState(false);
   const [categorieSaving, setCategorieSaving] = useState(false);
+  const [bonusSaving, setBonusSaving] = useState(false);
 
   useEffect(() => {
     if (!eleveId) return;
@@ -252,6 +253,26 @@ export default function StudentDetailPage() {
       toast.error(extractErrorMessage(err));
     } finally {
       setCategorieSaving(false);
+    }
+  };
+
+  const handleBonusChange = async (mode: BonusMode) => {
+    if (!eleve) return;
+    setBonusSaving(true);
+    try {
+      const { data } = await elevesApi.setBonusMode(eleve.id, mode);
+      setEleve(data);
+      // Le Bonus a pu passer à un frère ou une sœur : seule la scolarité de CET élève est
+      // rechargée ici, la leur l'est en ouvrant leur fiche.
+      fraisApi.list({ eleve: eleve.id, page_size: 200 }).then(({ data }) => setFrais(unwrapList(data))).catch(() => {});
+      if (anneeActiveId) {
+        fraisApi.suiviMensuel(eleve.id, anneeActiveId).then(({ data }) => setSuiviMensuel(data.mois)).catch(() => {});
+      }
+      toast.success(data.exonere_fratrie ? "Cet élève est maintenant Élève Bonus." : "Cet élève n'est pas Élève Bonus.");
+    } catch (err) {
+      toast.error(extractErrorMessage(err));
+    } finally {
+      setBonusSaving(false);
     }
   };
 
@@ -632,10 +653,31 @@ export default function StudentDetailPage() {
               <div className="mt-3 flex flex-wrap items-center gap-2 text-xs text-violet-700 bg-violet-50 border border-violet-200 rounded-xl px-3 py-2">
                 <ExonereFratrieBadge />
                 <span>
-                  Classe la plus basse d'une famille d'au moins 6 enfants inscrits : cet élève ne paie pas la
-                  scolarité (calculé automatiquement, quelle que soit la catégorie ci-dessus). Inscription,
+                  {eleve.bonus_mode === "oui"
+                    ? "Désigné Élève Bonus par l'administration"
+                    : `Classe la plus basse d'une famille d'au moins ${user?.ecole_eleve_bonus_seuil ?? 6} enfants inscrits`}
+                  {" "}: cet élève ne paie pas la scolarité, quelle que soit la catégorie ci-dessus. Inscription,
                   cantine et transport restent dus.
                 </span>
+              </div>
+            )}
+            {isAdmin && user?.ecole_eleve_bonus_actif && (
+              <div className="mt-3 flex flex-wrap items-end gap-3">
+                <Select
+                  label="Statut Élève Bonus"
+                  value={eleve.bonus_mode}
+                  disabled={bonusSaving}
+                  onChange={(e) => handleBonusChange(e.target.value as BonusMode)}
+                  className="max-w-xs"
+                >
+                  <option value="auto">Automatique (règle de la famille nombreuse)</option>
+                  <option value="oui">Élève Bonus (désigné manuellement)</option>
+                  <option value="non">Jamais Élève Bonus</option>
+                </Select>
+                <p className="text-xs text-slate-400 max-w-md">
+                  Désigner un enfant comme Bonus remplace celui choisi automatiquement dans sa famille. L'exclure fait
+                  passer le Bonus automatique à l'enfant suivant de la classe la plus basse.
+                </p>
               </div>
             )}
             {aCommencePaiement && (

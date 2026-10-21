@@ -98,6 +98,9 @@ export default function EcoleDetailPage() {
     signataire_fondateur: false,
   });
   const [savingSignataires, setSavingSignataires] = useState(false);
+  // Option « Élève Bonus » (fratrie) — voir backend people/fratrie.py.
+  const [eleveBonus, setEleveBonus] = useState({ eleve_bonus_actif: true, eleve_bonus_seuil: "6" });
+  const [savingEleveBonus, setSavingEleveBonus] = useState(false);
 
   // Création d'un compte Administrateur supplémentaire pour cette école (onglet Utilisateurs) —
   // la création de l'école elle-même n'en crée qu'un seul au départ.
@@ -137,6 +140,10 @@ export default function EcoleDetailPage() {
         signataire_caissier_nom: ecoleRes.data.signataire_caissier_nom || "",
         signataire_fondateur: ecoleRes.data.signataire_fondateur,
       });
+      setEleveBonus({
+        eleve_bonus_actif: ecoleRes.data.eleve_bonus_actif,
+        eleve_bonus_seuil: String(ecoleRes.data.eleve_bonus_seuil),
+      });
     }).finally(() => setLoading(false));
   }, [ecoleId]);
 
@@ -165,6 +172,23 @@ export default function EcoleDetailPage() {
       toast.error(extractErrorMessage(err));
     } finally {
       setSavingSignataires(false);
+    }
+  };
+
+  const handleSaveEleveBonus = async () => {
+    if (!ecole) return;
+    setSavingEleveBonus(true);
+    try {
+      const { data } = await ecolesApi.update(ecole.id, {
+        eleve_bonus_actif: eleveBonus.eleve_bonus_actif,
+        eleve_bonus_seuil: Number(eleveBonus.eleve_bonus_seuil),
+      });
+      setEcole(data);
+      toast.success("Option « Élève Bonus » enregistrée pour cette école.");
+    } catch (err) {
+      toast.error(extractErrorMessage(err));
+    } finally {
+      setSavingEleveBonus(false);
     }
   };
 
@@ -644,6 +668,41 @@ export default function EcoleDetailPage() {
             <div className="mt-4">
               <Button onClick={handleSaveSignataires} disabled={savingSignataires}>
                 {savingSignataires ? "Enregistrement…" : "Enregistrer les signataires"}
+              </Button>
+            </div>
+          </Card>
+          <Card className="lg:col-span-2">
+            <h3 className="font-bold text-ink-900 mb-1">Élève Bonus (famille nombreuse)</h3>
+            <p className="text-sm text-slate-500 mb-4">
+              Quand un parent a au moins le nombre d'enfants inscrits indiqué ci-dessous, celui qui est dans la classe
+              la plus basse ne paie pas la scolarité (mensualités, tranches ou annuel). Inscription, cantine et transport
+              restent dus. L'administrateur de l'école peut ensuite modifier le statut Bonus élève par élève.
+            </p>
+            <div className="flex flex-wrap items-end gap-4">
+              <label className="flex items-center gap-2 text-sm font-semibold text-ink-900 cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={eleveBonus.eleve_bonus_actif}
+                  onChange={(e) => setEleveBonus({ ...eleveBonus, eleve_bonus_actif: e.target.checked })}
+                  className="h-4 w-4 rounded border-slate-300 text-brand-600"
+                />
+                Activer l'option pour cette école
+              </label>
+              <div className="w-48">
+                <Input
+                  label="À partir de (enfants inscrits)"
+                  type="number"
+                  min={2}
+                  max={20}
+                  value={eleveBonus.eleve_bonus_seuil}
+                  disabled={!eleveBonus.eleve_bonus_actif}
+                  onChange={(e) => setEleveBonus({ ...eleveBonus, eleve_bonus_seuil: e.target.value })}
+                />
+              </div>
+            </div>
+            <div className="mt-4">
+              <Button onClick={handleSaveEleveBonus} disabled={savingEleveBonus}>
+                {savingEleveBonus ? "Enregistrement…" : "Enregistrer l'option Élève Bonus"}
               </Button>
             </div>
           </Card>

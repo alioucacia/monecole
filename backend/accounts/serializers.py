@@ -59,6 +59,9 @@ class UserSerializer(UniqueLoginFieldsMixin, serializers.ModelSerializer):
     ecole_fonctionnalites_desactivees = serializers.ListField(
         source="ecole.fonctionnalites_desactivees", read_only=True, default=list,
     )
+    # Option « Élève Bonus » (fratrie) réglée par le Super Admin — voir people/fratrie.py.
+    ecole_eleve_bonus_actif = serializers.BooleanField(source="ecole.eleve_bonus_actif", read_only=True, default=False)
+    ecole_eleve_bonus_seuil = serializers.IntegerField(source="ecole.eleve_bonus_seuil", read_only=True, default=None)
     # Logo + adresse de l'école, affichés en haut du tableau de bord — mêmes raisons que les
     # couleurs ci-dessus (porté par /me/, déjà chargé pour tous les rôles).
     ecole_logo = serializers.ImageField(source="ecole.logo", read_only=True, default=None)
@@ -78,6 +81,7 @@ class UserSerializer(UniqueLoginFieldsMixin, serializers.ModelSerializer):
             "doit_changer_mot_de_passe", "otp_actif", "email_verifie", "telephone_verifie",
             "ecole_couleur_principale", "ecole_couleur_secondaire", "ecole_fonctionnalites_desactivees",
             "ecole_logo", "ecole_adresse", "en_ligne", "a_code_suppression",
+            "ecole_eleve_bonus_actif", "ecole_eleve_bonus_seuil",
             "totp_actif", "verrouille_jusqu_a",
         ]
         # CRITIQUE : `role` doit rester en lecture seule ici. `UserSerializer` sert à la fois à
