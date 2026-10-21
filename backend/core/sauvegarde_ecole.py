@@ -74,6 +74,7 @@ PERIMETRE = [
     ("people.EleveProfile", ("user__ecole",)),
     ("people.EnseignantProfile", ("user__ecole",)),
     ("people.HistoriqueClasse", ("eleve__user__ecole",)),
+    ("people.HistoriqueStatutEleve", ("eleve__user__ecole",)),
     ("people.EleveBadge", ("eleve__user__ecole",)),
     ("people.EnseignantBadge", ("enseignant__user__ecole",)),
     ("people.PointageEnseignant", ("enseignant__user__ecole",)),

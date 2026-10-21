@@ -39,7 +39,7 @@ from accounts.permissions import (
 )
 from tenants.permissions import fonctionnalite_requise
 
-from . import assistant_ia
+from . import archives, assistant_ia
 from .models import (
     AlerteParent, EleveBadge, EleveProfile, EnseignantBadge, EnseignantProfile,
     GroupeRevision, MessageIA, PaieEnseignant, PointageEnseignant, RendezVous,
@@ -57,12 +57,15 @@ from .serializers import (
     EnseignantProfileSerializer,
     EnseignantProfileWriteSerializer,
     GroupeRevisionSerializer,
+    HistoriqueStatutEleveSerializer,
     MarquerNonReinscritSerializer,
     MessageIACreateSerializer,
     MessageIASerializer,
     PaieEnseignantSerializer,
     PointageEnseignantSerializer,
     ReinscriptionSerializer,
+    RestaurationEleveSerializer,
+    SortieEleveSerializer,
 )
 
 
@@ -135,7 +138,7 @@ class EleveProfileViewSet(viewsets.ModelViewSet):
     permission_classes = [IsAdminOrComptabiliteReadWriteNoDelete]
     # "parent" : permet de retrouver les enfants d'un compte parent donné (voir ComptesEcolePage.tsx
     # → "Enfants") sans avoir à filtrer côté client sur la liste complète des élèves de l'école.
-    filterset_fields = ["classe", "actif", "statut_inscription", "parent"]
+    filterset_fields = ["classe", "actif", "statut_inscription", "parent", "type_sortie"]
     search_fields = ["user__first_name", "user__last_name", "matricule"]
     # Liste (et exports CSV/PDF) dans l'ordre d'inscription — `id` départage les élèves inscrits
     # le même jour (`date_inscription` n'a pas d'heure), dans leur ordre réel de création. Le
@@ -757,27 +760,105 @@ class EleveProfileViewSet(viewsets.ModelViewSet):
         """Supprime définitivement les élèves sans paiement cochés (`ids`)."""
         return Response(supprimer_eleves_sans_paiement(request.user.ecole_id, request.data.get("ids"), request))
 
+    def _journaliser_statut(self, eleve, texte):
+        from accounts.models import JournalUtilisateur
+        from accounts.services import journaliser
+
+        journaliser(
+            self.request.user, JournalUtilisateur.Categorie.ELEVE,
+            f"{texte} : {eleve.user.get_full_name()}", self.request,
+        )
+
+    def _reponse_eleve(self, eleve):
+        eleve.refresh_from_db()
+        return Response(EleveProfileSerializer(eleve, context=self.get_serializer_context()).data)
+
+    @action(detail=True, methods=["post"], url_path="sortie", permission_classes=[IsAdminOrComptabilite])
+    def sortie(self, request, pk=None):
+        """Sortie d'un élève (archivé, transféré, abandon, cycle terminé) — ou, s'il est déjà
+        sorti, changement de la nature de sa sortie. Rien n'est supprimé : voir people/archives.py."""
+        eleve = self.get_object()
+        serializer = SortieEleveSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        deja_sorti = not eleve.actif
+        archives.sortir_eleve(eleve, auteur=request.user, **serializer.validated_data)
+        self._journaliser_statut(
+            eleve,
+            f"{'Sortie reclassée' if deja_sorti else 'Élève sorti'} ({eleve.get_type_sortie_display()})",
+        )
+        return self._reponse_eleve(eleve)
+
+    @action(detail=True, methods=["post"], url_path="restaurer", permission_classes=[IsAdminOrComptabilite])
+    def restaurer(self, request, pk=None):
+        """Remet en activité un élève archivé/transféré/sorti, éventuellement dans une autre
+        classe — son historique (notes, paiements, sorties précédentes) est conservé."""
+        eleve = self.get_object()
+        serializer = RestaurationEleveSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        classe = None
+        if serializer.validated_data["classe"]:
+            classe = Classe.objects.select_related("annee_scolaire").filter(
+                pk=serializer.validated_data["classe"], annee_scolaire__ecole_id=request.user.ecole_id,
+            ).first()
+            if classe is None:
+                raise ValidationError({"classe": "Classe introuvable dans votre établissement."})
+        archives.restaurer_eleve(eleve, request.user, classe=classe, motif=serializer.validated_data["motif"])
+        self._journaliser_statut(eleve, "Élève restauré")
+        return self._reponse_eleve(eleve)
+
+    @action(detail=True, methods=["get"], url_path="historique-statut", permission_classes=[IsAdminOrComptabilite])
+    def historique_statut(self, request, pk=None):
+        """Toutes les sorties, reclassements et restaurations de l'élève (plus récent d'abord)."""
+        eleve = self.get_object()
+        evenements = eleve.historique_statuts.select_related("classe", "annee_scolaire", "auteur")
+        return Response(HistoriqueStatutEleveSerializer(evenements, many=True).data)
+
+    @action(detail=False, methods=["get"], url_path="archives-resume", permission_classes=[IsAdminOrComptabilite])
+    def archives_resume(self, request):
+        """Nombre d'élèves inactifs par nature de sortie, pour les onglets de la page Archives."""
+        return Response(archives.resume_archives(request.user.ecole_id))
+
+    @action(detail=False, methods=["post"], url_path="sortie-groupee", permission_classes=[IsAdminOrComptabilite])
+    def sortie_groupee(self, request):
+        """Même sortie (`type_sortie`, `motif`...) appliquée aux élèves ACTIFS cochés (`ids`)."""
+        ids = request.data.get("ids")
+        if not isinstance(ids, list) or not ids:
+            raise ValidationError("Le paramètre 'ids' (liste d'identifiants d'élèves) est requis.")
+        serializer = SortieEleveSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        eleves = list(self.get_queryset().filter(id__in=[i for i in ids if str(i).isdigit()], actif=True))
+        for eleve in eleves:
+            archives.sortir_eleve(eleve, auteur=request.user, **serializer.validated_data)
+        if eleves:
+            from accounts.models import JournalUtilisateur
+            from accounts.services import journaliser
+
+            noms = [e.user.get_full_name() for e in eleves]
+            journaliser(
+                request.user, JournalUtilisateur.Categorie.ELEVE,
+                f"{len(noms)} élève(s) sorti(s) ({eleves[0].get_type_sortie_display()}) : {', '.join(noms[:20])}"
+                + (" …" if len(noms) > 20 else ""),
+                request,
+            )
+        return Response({"sortis": len(eleves)})
+
     @action(detail=True, methods=["post"], url_path="marquer-non-reinscrit", permission_classes=[IsAdminOrComptabilite])
     def marquer_non_reinscrit(self, request, pk=None):
-        """Marque un élève comme ne se réinscrivant pas (parti, changement d'école...)."""
+        """Ancienne API (avant la gestion des archives) : sortie de type « Archivé »."""
         eleve = self.get_object()
         serializer = MarquerNonReinscritSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
-        eleve.actif = False
-        eleve.date_sortie = date.today()
-        eleve.motif_sortie = serializer.validated_data.get("motif", "")
-        eleve.save(update_fields=["actif", "date_sortie", "motif_sortie"])
-        return Response(EleveProfileSerializer(eleve).data)
+        archives.sortir_eleve(eleve, archives.TypeSortie.ARCHIVE, request.user, motif=serializer.validated_data.get("motif", ""))
+        self._journaliser_statut(eleve, "Élève sorti (Archivé)")
+        return self._reponse_eleve(eleve)
 
     @action(detail=True, methods=["post"], url_path="reactiver", permission_classes=[IsAdminOrComptabilite])
     def reactiver(self, request, pk=None):
-        """Réactive un élève précédemment marqué comme non réinscrit."""
+        """Ancienne API : restauration dans la dernière classe de l'élève."""
         eleve = self.get_object()
-        eleve.actif = True
-        eleve.date_sortie = None
-        eleve.motif_sortie = ""
-        eleve.save(update_fields=["actif", "date_sortie", "motif_sortie"])
-        return Response(EleveProfileSerializer(eleve).data)
+        archives.restaurer_eleve(eleve, request.user)
+        self._journaliser_statut(eleve, "Élève restauré")
+        return self._reponse_eleve(eleve)
 
 
 class EnseignantProfileViewSet(viewsets.ModelViewSet):

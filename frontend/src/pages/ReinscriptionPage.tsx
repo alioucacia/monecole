@@ -3,9 +3,9 @@ import { useEffect, useState } from "react";
 import { classesApi, elevesApi, resultatsApi, typesFraisApi, unwrapList } from "../api/services";
 import { extractBlobErrorMessage, extractErrorMessage } from "../api/client";
 import { Badge, Button, EmptyState, Input, PageHeader, Select, Spinner } from "../components/ui";
+import { RestaurerEleveModal, SortieEleveModal, TypeSortieBadge } from "../components/ArchivesEleve";
 import { ClasseOptions } from "../components/CycleSelect";
 import { useAuth } from "../context/AuthContext";
-import { usePrompt } from "../context/ConfirmContext";
 import type { Classe, EleveProfile } from "../types";
 
 function money(value: number | string) {
@@ -18,7 +18,8 @@ export default function ReinscriptionPage() {
   // côté backend). Le Directeur Général (accès lecture seule, voir TeachersPage.tsx) garde
   // seulement la consultation/impression des élèves déjà réinscrits (section en bas).
   const peutGerer = user?.role === "admin" || user?.role === "comptabilite";
-  const demander = usePrompt();
+  const [sortieCible, setSortieCible] = useState<EleveProfile[] | null>(null);
+  const [restaurationCible, setRestaurationCible] = useState<EleveProfile | null>(null);
   const [classes, setClasses] = useState<Classe[]>([]);
   const [classeSourceId, setClasseSourceId] = useState("");
   const [classeDestId, setClasseDestId] = useState("");
@@ -165,18 +166,8 @@ export default function ReinscriptionPage() {
     }
   };
 
-  const handleNonReinscrit = async (eleve: EleveProfile) => {
-    const motif = await demander(`Vous pouvez préciser le motif du départ de ${eleve.user.first_name} ${eleve.user.last_name}.`, {
-      title: "Élève non réinscrit", label: "Motif (optionnel)", confirmLabel: "Confirmer",
-    }) || "";
-    await elevesApi.marquerNonReinscrit(eleve.id, motif);
-    loadEleves();
-  };
-
-  const handleReactiver = async (eleve: EleveProfile) => {
-    await elevesApi.reactiver(eleve.id);
-    loadEleves();
-  };
+  const handleNonReinscrit = (eleve: EleveProfile) => setSortieCible([eleve]);
+  const handleReactiver = (eleve: EleveProfile) => setRestaurationCible(eleve);
 
   const nbSelectionnes = Object.values(selected).filter(Boolean).length;
   // Même raccourci que côté backend (voir EleveProfileViewSet.reinscription) : un niveau
@@ -279,7 +270,7 @@ export default function ReinscriptionPage() {
                       {ficheEnCours === el.id ? "Génération…" : "🖨️ Fiche"}
                     </button>
                   )}
-                  <button onClick={() => handleNonReinscrit(el)} className="text-xs text-rose-600 hover:underline">Ne se réinscrit pas</button>
+                  <button onClick={() => handleNonReinscrit(el)} className="text-xs text-rose-600 hover:underline">Ne se réinscrit pas (sortie)</button>
                 </li>
               ))}
             </ul>
@@ -296,8 +287,9 @@ export default function ReinscriptionPage() {
                 {inactifs.map((el) => (
                   <li key={el.id} className="flex items-center gap-3 px-4 py-2.5">
                     <span className="flex-1 text-sm font-medium text-slate-500">{el.user.first_name} {el.user.last_name}</span>
+                    <TypeSortieBadge eleve={el} />
                     {el.motif_sortie && <Badge color="rose">{el.motif_sortie}</Badge>}
-                    <button onClick={() => handleReactiver(el)} className="text-xs text-emerald-600 hover:underline">Réactiver</button>
+                    <button onClick={() => handleReactiver(el)} className="text-xs text-emerald-600 hover:underline">Restaurer</button>
                   </li>
                 ))}
               </ul>
@@ -350,6 +342,14 @@ export default function ReinscriptionPage() {
           </>
         )}
       </div>
+      <SortieEleveModal
+        eleves={sortieCible} onClose={() => setSortieCible(null)}
+        onDone={() => { setSortieCible(null); loadEleves(); }}
+      />
+      <RestaurerEleveModal
+        eleve={restaurationCible} onClose={() => setRestaurationCible(null)}
+        onDone={() => { setRestaurationCible(null); loadEleves(); }}
+      />
     </div>
   );
 }

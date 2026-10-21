@@ -6,15 +6,16 @@ import {
   justificatifsApi, notesApi, periodesApi, presencesApi, unwrapList,
 } from "../api/services";
 import { extractBlobErrorMessage, extractErrorMessage } from "../api/client";
+import { RestaurerEleveModal, SortieEleveModal, TypeSortieBadge } from "../components/ArchivesEleve";
 import { PdfPreviewModal } from "../components/PdfPreviewModal";
 import { ExonereFratrieBadge } from "../components/StatutMensualite";
 import { Badge, Button, Card, EmptyState, PageHeader, Select, Spinner, StatCard, Table } from "../components/ui";
 import { useAnnee } from "../context/AnneeContext";
 import { useAuth } from "../context/AuthContext";
-import { useConfirm, usePrompt } from "../context/ConfirmContext";
+import { useConfirm } from "../context/ConfirmContext";
 import { useToast } from "../context/ToastContext";
 import type {
-  AffectationTransport, AnneeScolaire, BonusMode, Bulletin, CategoriePaiement, EleveProfile, Emprunt, Frais, JustificatifAbsence, Note, Periode, Presence, SuiviMensuelMois,
+  AffectationTransport, AnneeScolaire, BonusMode, Bulletin, CategoriePaiement, EleveProfile, HistoriqueStatutEleve, Emprunt, Frais, JustificatifAbsence, Note, Periode, Presence, SuiviMensuelMois,
 } from "../types";
 
 const CATEGORIE_LABELS: Record<CategoriePaiement, string> = {
@@ -89,11 +90,15 @@ export default function StudentDetailPage() {
   // Modifier le dossier élève : admin et comptabilité (backend
   // IsAdminOrComptabiliteReadWriteNoDelete, voir StudentsPage.tsx).
   const peutModifier = isAdmin || estComptabilite;
-  // Bascule Actif/Inactif (voir handleToggleActif) — mêmes droits que la réinscription (backend
-  // IsAdminOrComptabilite sur marquer-non-reinscrit/reactiver, voir ReinscriptionPage).
+  // Sortie (archivage, transfert...) / restauration — mêmes droits que la réinscription (backend
+  // IsAdminOrComptabilite sur sortie/restaurer/historique-statut, voir ReinscriptionPage).
   const peutGererStatut = isAdmin || estComptabilite;
+  const peutVoirArchives = peutGererStatut || user?.role === "directeur";
   const confirmer = useConfirm();
-  const demander = usePrompt();
+  const [sortieOuverte, setSortieOuverte] = useState(false);
+  const [restaurationOuverte, setRestaurationOuverte] = useState(false);
+  // Incrémenté après chaque sortie/restauration pour recharger l'historique affiché.
+  const [versionStatut, setVersionStatut] = useState(0);
 
   const [searchParams] = useSearchParams();
   const [eleve, setEleve] = useState<EleveProfile | null>(null);
@@ -132,6 +137,13 @@ export default function StudentDetailPage() {
   const [historiquePaiementsOpen, setHistoriquePaiementsOpen] = useState(false);
   const [categorieSaving, setCategorieSaving] = useState(false);
   const [bonusSaving, setBonusSaving] = useState(false);
+  // Sorties / reclassements / restaurations (journal conservé même après restauration).
+  const [evenementsStatut, setEvenementsStatut] = useState<HistoriqueStatutEleve[]>([]);
+
+  useEffect(() => {
+    if (!eleveId || !peutVoirArchives) return;
+    elevesApi.historiqueStatut(eleveId).then(({ data }) => setEvenementsStatut(data)).catch(() => {});
+  }, [eleveId, peutVoirArchives, versionStatut]);
 
   useEffect(() => {
     if (!eleveId) return;
@@ -205,20 +217,9 @@ export default function StudentDetailPage() {
     }
   };
 
-  const handleToggleActif = async () => {
-    if (!eleve) return;
-    if (eleve.actif) {
-      const motif = await demander(`Vous pouvez préciser le motif du départ de ${eleve.user.first_name} ${eleve.user.last_name}.`, {
-        title: "Rendre l'élève inactif", label: "Motif (optionnel)", confirmLabel: "Confirmer",
-      });
-      if (motif === null) return; // annulé
-      const { data } = await elevesApi.marquerNonReinscrit(eleve.id, motif);
-      setEleve(data);
-    } else {
-      if (!(await confirmer(`Réactiver ${eleve.user.first_name} ${eleve.user.last_name} ?`))) return;
-      const { data } = await elevesApi.reactiver(eleve.id);
-      setEleve(data);
-    }
+  const apresChangementStatut = (data: EleveProfile) => {
+    setEleve(data);
+    setVersionStatut((v) => v + 1);
   };
 
   const handleSuiviMensuelPdf = async () => {
@@ -358,7 +359,24 @@ export default function StudentDetailPage() {
       detail: a.point_montee ? `Point de montée : ${a.point_montee}` : undefined,
     });
   });
-  if (eleve.date_sortie) {
+  if (evenementsStatut.length) {
+    const ICONES = { sortie: "🚪", reclassement: "✏️", restauration: "✅" } as const;
+    evenementsStatut.forEach((ev) => {
+      const details = [
+        ev.classe_nom && `Classe : ${ev.classe_nom}${ev.annee_scolaire_libelle ? ` (${ev.annee_scolaire_libelle})` : ""}`,
+        ev.etablissement_destination && `Vers : ${ev.etablissement_destination}`,
+        ev.motif, ev.auteur_nom && `Par ${ev.auteur_nom}`,
+      ].filter(Boolean);
+      historique.push({
+        date: ev.evenement === "restauration" ? ev.cree_le : ev.date,
+        icone: ICONES[ev.evenement],
+        titre: ev.evenement === "restauration"
+          ? `Restauré(e)${ev.type_sortie_display ? ` (était : ${ev.type_sortie_display})` : ""}`
+          : `${ev.evenement === "reclassement" ? "Sortie modifiée" : "Sortie de l'établissement"}${ev.type_sortie_display ? ` — ${ev.type_sortie_display}` : ""}`,
+        detail: details.join(" · ") || undefined,
+      });
+    });
+  } else if (eleve.date_sortie) {
     historique.push({ date: eleve.date_sortie, icone: "🚪", titre: "Sortie de l'établissement", detail: eleve.motif_sortie || undefined });
   }
   historique.sort((a, b) => a.date.localeCompare(b.date));
@@ -410,20 +428,45 @@ export default function StudentDetailPage() {
       </div>
 
       <div className="flex flex-wrap items-center gap-2 mb-6">
-        <Badge color={eleve.actif ? "green" : "rose"}>{eleve.actif ? "Actif" : "Inactif"}</Badge>
-        {peutGererStatut && (
-          <button
-            className={`text-xs font-semibold hover:underline ${eleve.actif ? "text-rose-600" : "text-emerald-600"}`}
-            onClick={handleToggleActif}
-          >
-            {eleve.actif ? "🚪 Rendre inactif" : "✅ Réactiver"}
+        {eleve.actif ? <Badge color="green">Actif</Badge> : <TypeSortieBadge eleve={eleve} />}
+        {peutGererStatut && (eleve.actif ? (
+          <button className="text-xs font-semibold text-rose-600 hover:underline" onClick={() => setSortieOuverte(true)}>
+            🗄️ Sortie / archiver
           </button>
-        )}
+        ) : (
+          <>
+            <button className="text-xs font-semibold text-brand-700 hover:underline" onClick={() => setSortieOuverte(true)}>
+              ✏️ Modifier la sortie
+            </button>
+            <button className="text-xs font-semibold text-emerald-600 hover:underline" onClick={() => setRestaurationOuverte(true)}>
+              ✅ Restaurer
+            </button>
+          </>
+        ))}
         <Badge color="brand">{REGIME_LABELS[eleve.regime]}</Badge>
         <Badge color="slate">{STATUT_INSCRIPTION_LABELS[eleve.statut_inscription]}</Badge>
         <span className="text-sm text-slate-500">{eleve.user.email || eleve.user.phone || "—"}</span>
         <span className="text-sm text-slate-400">Inscrit le {new Date(eleve.date_inscription).toLocaleDateString("fr-FR")}</span>
       </div>
+
+      {!eleve.actif && (
+        <div className="mb-6 rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-600">
+          Sorti le {eleve.date_sortie ? new Date(eleve.date_sortie).toLocaleDateString("fr-FR") : "—"}
+          {eleve.type_sortie_display && <> · {eleve.type_sortie_display}</>}
+          {eleve.etablissement_destination && <> vers {eleve.etablissement_destination}</>}
+          {eleve.motif_sortie && <> — {eleve.motif_sortie}</>}
+          . Son historique (notes, paiements, présences) reste consultable ci-dessous.
+        </div>
+      )}
+
+      <SortieEleveModal
+        eleves={sortieOuverte ? [eleve] : null} onClose={() => setSortieOuverte(false)}
+        onDone={(data) => { setSortieOuverte(false); if (data) apresChangementStatut(data); toast.success("Sortie enregistrée."); }}
+      />
+      <RestaurerEleveModal
+        eleve={restaurationOuverte ? eleve : null} onClose={() => setRestaurationOuverte(false)}
+        onDone={(data) => { setRestaurationOuverte(false); apresChangementStatut(data); toast.success("Élève restauré."); }}
+      />
 
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-6">
         <StatCard

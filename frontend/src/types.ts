@@ -519,6 +519,32 @@ export interface MiniUser {
   sexe: "M" | "F" | "";
 }
 
+/** Nature de la sortie d'un élève — sépare les archives (voir backend people/archives.py). */
+export type TypeSortie = "archive" | "transfert" | "abandon" | "fin_cycle";
+
+export const TYPES_SORTIE: { value: TypeSortie; label: string; icon: string; color: "slate" | "brand" | "rose" | "teal" }[] = [
+  { value: "archive", label: "Archivé", icon: "🗄️", color: "slate" },
+  { value: "transfert", label: "Transféré", icon: "🔀", color: "brand" },
+  { value: "abandon", label: "Abandon", icon: "🚪", color: "rose" },
+  { value: "fin_cycle", label: "Cycle terminé", icon: "🎓", color: "teal" },
+];
+
+/** Sortie, reclassement ou restauration d'un élève — journal jamais effacé. */
+export interface HistoriqueStatutEleve {
+  id: number;
+  evenement: "sortie" | "reclassement" | "restauration";
+  evenement_display: string;
+  type_sortie: TypeSortie | "";
+  type_sortie_display: string;
+  date: string;
+  motif: string;
+  etablissement_destination: string;
+  classe_nom: string | null;
+  annee_scolaire_libelle: string | null;
+  auteur_nom: string | null;
+  cree_le: string;
+}
+
 export interface EleveProfile {
   id: number;
   user: MiniUser;
@@ -542,6 +568,11 @@ export interface EleveProfile {
   actif: boolean;
   date_sortie: string | null;
   motif_sortie: string;
+  /** Nature de la sortie d'un élève inactif ("" tant qu'il est actif). */
+  type_sortie: TypeSortie | "";
+  type_sortie_display: string;
+  /** Établissement d'accueil (élève transféré). */
+  etablissement_destination: string;
   categorie_paiement: CategoriePaiement;
   categorie_paiement_display: string;
   reduction_fidelite_mensualite: boolean;

@@ -248,3 +248,86 @@ class FratrieTests(TestCase):
         r = client.patch(f"/api/people/eleves/{auto.id}/bonus/", {"bonus_mode": "oui"}, format="json")
         self.assertEqual(r.status_code, 400)
         self.assertFalse(EleveProfile.objects.filter(exonere_fratrie=True).exists())
+
+
+class ArchivesElevesTests(TestCase):
+    """Sortie (archivé / transféré / abandon / cycle terminé), reclassement et restauration d'un
+    élève : rien n'est supprimé et l'historique survit à la restauration."""
+
+    def setUp(self):
+        from rest_framework.test import APIClient
+
+        self.ecole = Ecole.objects.create(nom="Test", slug="test-archives")
+        self.annee = AnneeScolaire.objects.create(
+            ecole=self.ecole, libelle="2026-2027", date_debut=date(2026, 9, 1), date_fin=date(2027, 6, 30), active=True,
+        )
+        self.classe = Classe.objects.create(nom="7e A", niveau="7ème", cycle="college", annee_scolaire=self.annee)
+        self.autre_classe = Classe.objects.create(nom="8e A", niveau="8ème", cycle="college", annee_scolaire=self.annee)
+        self.admin = User.objects.create_user(username="adm", password="x", role="admin", ecole=self.ecole)
+        u = User.objects.create_user(username="el1", password="x", role="student", ecole=self.ecole)
+        self.eleve = EleveProfile.objects.create(user=u, matricule="EL1", classe=self.classe)
+        self.client = APIClient()
+        self.client.force_authenticate(self.admin)
+
+    def _url(self, action):
+        return f"/api/people/eleves/{self.eleve.id}/{action}/"
+
+    def test_transfert_puis_restauration_conserve_historique(self):
+        r = self.client.post(self._url("sortie"), {
+            "type_sortie": "transfert", "motif": "Déménagement", "etablissement_destination": "Lycée X",
+        }, format="json")
+        self.assertEqual(r.status_code, 200, r.content)
+        self.assertFalse(r.data["actif"])
+        self.assertEqual(r.data["type_sortie"], "transfert")
+        self.assertEqual(r.data["etablissement_destination"], "Lycée X")
+        self.assertEqual(r.data["classe"], self.classe.id)  # la classe n'est pas perdue
+
+        r = self.client.get("/api/people/eleves/", {"actif": "false", "type_sortie": "transfert"})
+        resultats = r.data["results"] if isinstance(r.data, dict) else r.data
+        self.assertEqual([e["id"] for e in resultats], [self.eleve.id])
+        self.assertEqual(self.client.get("/api/people/eleves/archives-resume/").data["transfert"], 1)
+
+        r = self.client.post(self._url("restaurer"), {"classe": self.autre_classe.id}, format="json")
+        self.assertEqual(r.status_code, 200, r.content)
+        self.assertTrue(r.data["actif"])
+        self.assertEqual(r.data["type_sortie"], "")
+        self.assertEqual(r.data["classe"], self.autre_classe.id)
+
+        historique = self.client.get(self._url("historique-statut")).data
+        self.assertEqual([h["evenement"] for h in historique], ["restauration", "sortie"])
+        self.assertEqual(historique[1]["etablissement_destination"], "Lycée X")
+        self.assertEqual(historique[1]["classe_nom"], "7e A")
+        self.assertEqual(historique[0]["type_sortie"], "transfert")
+
+    def test_reclassement_garde_la_date_de_sortie(self):
+        self.client.post(self._url("sortie"), {"type_sortie": "archive", "date_sortie": "2027-01-15"}, format="json")
+        r = self.client.post(self._url("sortie"), {"type_sortie": "abandon", "motif": "Abandon en cours d'année"}, format="json")
+        self.assertEqual(r.data["type_sortie"], "abandon")
+        self.assertEqual(r.data["date_sortie"], "2027-01-15")
+        evenements = list(self.eleve.historique_statuts.values_list("evenement", flat=True))
+        self.assertEqual(evenements, ["reclassement", "sortie"])
+
+    def test_restaurer_un_eleve_actif_refuse(self):
+        r = self.client.post(self._url("restaurer"), {}, format="json")
+        self.assertEqual(r.status_code, 400)
+
+    def test_type_de_sortie_invalide(self):
+        r = self.client.post(self._url("sortie"), {"type_sortie": "expulse"}, format="json")
+        self.assertEqual(r.status_code, 400)
+
+    def test_ancienne_api_marquer_non_reinscrit(self):
+        r = self.client.post(self._url("marquer-non-reinscrit"), {"motif": "Parti"}, format="json")
+        self.assertEqual(r.data["type_sortie"], "archive")
+        r = self.client.post(self._url("reactiver"))
+        self.assertTrue(r.data["actif"])
+        self.assertEqual(self.eleve.historique_statuts.count(), 2)
+
+    def test_sortie_groupee_ignore_les_inactifs(self):
+        u = User.objects.create_user(username="el2", password="x", role="student", ecole=self.ecole)
+        autre = EleveProfile.objects.create(user=u, matricule="EL2", classe=self.classe, actif=False, type_sortie="archive")
+        r = self.client.post("/api/people/eleves/sortie-groupee/", {
+            "ids": [self.eleve.id, autre.id], "type_sortie": "fin_cycle",
+        }, format="json")
+        self.assertEqual(r.data["sortis"], 1)
+        autre.refresh_from_db()
+        self.assertEqual(autre.type_sortie, "archive")

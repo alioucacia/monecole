@@ -51,7 +51,16 @@ def generer_matricule_enseignant(first_name: str, last_name: str, ecole) -> str:
     return matricule
 
 
+class TypeSortie(models.TextChoices):
+    ARCHIVE = "archive", "Archivé"
+    TRANSFERT = "transfert", "Transféré"
+    ABANDON = "abandon", "Abandon"
+    FIN_CYCLE = "fin_cycle", "Cycle terminé"
+
+
 class EleveProfile(models.Model):
+    TypeSortie = TypeSortie
+
     class Regime(models.TextChoices):
         EXTERNE = "externe", "Externe"
         DEMI_PENSION = "demi_pension", "Demi-pension"
@@ -104,6 +113,14 @@ class EleveProfile(models.Model):
     actif = models.BooleanField(default=True, help_text="Faux si l'élève ne se réinscrit pas (parti, changé d'école...)")
     date_sortie = models.DateField(null=True, blank=True)
     motif_sortie = models.CharField(max_length=255, blank=True)
+    # Nature de la sortie d'un élève inactif (vide tant qu'il est actif) — sépare les archives en
+    # archivés / transférés / abandons / cycle terminé. Chaque sortie et chaque restauration est
+    # aussi tracée dans `HistoriqueStatutEleve`, qui n'est jamais effacé (la restauration remet ces
+    # champs à vide sans perdre l'historique).
+    type_sortie = models.CharField(max_length=15, choices=[("", "—")] + list(TypeSortie.choices), blank=True, default="")
+    etablissement_destination = models.CharField(
+        max_length=150, blank=True, help_text="Établissement d'accueil (élève transféré).",
+    )
 
     # Prise en charge de la mensualité (scolarité) — n'affecte que les frais marqués « mensuel »
     # (TypeFrais.est_mensuel) ; les autres frais (cantine, transport, inscription...) restent
@@ -203,6 +220,37 @@ def enregistrer_historique_classe(eleve, classe):
     HistoriqueClasse.objects.update_or_create(
         eleve=eleve, annee_scolaire=classe.annee_scolaire, defaults={"classe": classe},
     )
+
+
+class HistoriqueStatutEleve(models.Model):
+    """Journal des sorties (archivage, transfert, abandon, fin de cycle), reclassements et
+    restaurations d'un élève — conservé intégralement : restaurer un élève remet sa fiche en
+    activité sans effacer ses sorties précédentes. La classe et l'année au moment de l'événement
+    sont figées ici (la classe actuelle de l'élève peut changer à la restauration)."""
+
+    class Evenement(models.TextChoices):
+        SORTIE = "sortie", "Sortie"
+        RECLASSEMENT = "reclassement", "Reclassement"
+        RESTAURATION = "restauration", "Restauration"
+
+    eleve = models.ForeignKey(EleveProfile, on_delete=models.CASCADE, related_name="historique_statuts")
+    evenement = models.CharField(max_length=15, choices=Evenement.choices)
+    type_sortie = models.CharField(max_length=15, choices=TypeSortie.choices, blank=True)
+    date = models.DateField()
+    motif = models.CharField(max_length=255, blank=True)
+    etablissement_destination = models.CharField(max_length=150, blank=True)
+    classe = models.ForeignKey(Classe, on_delete=models.SET_NULL, null=True, blank=True, related_name="+")
+    annee_scolaire = models.ForeignKey(AnneeScolaire, on_delete=models.SET_NULL, null=True, blank=True, related_name="+")
+    auteur = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, blank=True, related_name="+")
+    cree_le = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["-cree_le", "-id"]
+        verbose_name = "Historique de statut élève"
+        verbose_name_plural = "Historique des statuts élèves"
+
+    def __str__(self):
+        return f"{self.eleve} — {self.get_evenement_display()} ({self.date})"
 
 
 class EnseignantProfile(models.Model):

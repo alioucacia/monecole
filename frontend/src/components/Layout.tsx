@@ -54,6 +54,7 @@ const NAV_CATEGORIES: NavCategory[] = [
     items: [
       { to: "/eleves", label: "Élèves", icon: "🎓", roles: ["admin", "directeur", "teacher", "comptabilite", "surveillance"] },
       { to: "/reinscription", label: "Réinscription", icon: "🔄", roles: ["admin", "directeur", "comptabilite"] },
+      { to: "/archives-eleves", label: "Archives élèves", icon: "🗄️", roles: ["admin", "directeur", "comptabilite"] },
       { to: "/enseignants", label: "Enseignants", icon: "🧑‍🏫", roles: ["admin", "directeur", "surveillance"] },
       { to: "/classes", label: "Classes", icon: "🏫", roles: ["admin", "directeur", "teacher", "surveillance"] },
       { to: "/matieres", label: "Matières", icon: "📚", roles: ["admin", "directeur", "surveillance"] },

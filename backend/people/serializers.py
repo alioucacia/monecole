@@ -9,7 +9,7 @@ from tenants.quotas import verifier_quota_plan
 from .models import (
     RendezVous,
     AlerteParent, EleveBadge, EleveProfile, EnseignantBadge, EnseignantProfile,
-    GroupeRevision, MessageIA, PaieEnseignant, PointageEnseignant,
+    GroupeRevision, HistoriqueStatutEleve, MessageIA, PaieEnseignant, PointageEnseignant, TypeSortie,
     enregistrer_historique_classe, generer_matricule_eleve, generer_matricule_enseignant,
 )
 
@@ -97,6 +97,7 @@ class EleveProfileSerializer(serializers.ModelSerializer):
     categorie_paiement_display = serializers.CharField(source="get_categorie_paiement_display", read_only=True)
     facteur_mensualite = serializers.DecimalField(max_digits=4, decimal_places=3, read_only=True)
     bonus_mode_display = serializers.CharField(source="get_bonus_mode_display", read_only=True)
+    type_sortie_display = serializers.CharField(source="get_type_sortie_display", read_only=True)
 
     class Meta:
         model = EleveProfile
@@ -105,6 +106,7 @@ class EleveProfileSerializer(serializers.ModelSerializer):
             "parent", "parent_nom", "parent_telephone", "parent_email", "parent_username",
             "date_inscription", "lieu_naissance", "nom_pere", "nom_mere", "nom_tuteur",
             "regime", "statut_inscription", "actif", "date_sortie", "motif_sortie",
+            "type_sortie", "type_sortie_display", "etablissement_destination",
             "categorie_paiement", "categorie_paiement_display", "reduction_fidelite_mensualite", "facteur_mensualite",
             "exonere_fratrie", "bonus_mode", "bonus_mode_display", "categorie_figee",
         ]
@@ -365,7 +367,35 @@ class ReinscriptionSerializer(serializers.Serializer):
 
 
 class MarquerNonReinscritSerializer(serializers.Serializer):
-    motif = serializers.CharField(required=False, allow_blank=True, default="")
+    motif = serializers.CharField(required=False, allow_blank=True, default="", max_length=255)
+
+
+class SortieEleveSerializer(serializers.Serializer):
+    """Sortie d'un élève (ou reclassement d'une sortie) — voir people/archives.py."""
+    type_sortie = serializers.ChoiceField(choices=TypeSortie.choices)
+    motif = serializers.CharField(required=False, allow_blank=True, default="", max_length=255)
+    date_sortie = serializers.DateField(required=False, allow_null=True, default=None)
+    etablissement_destination = serializers.CharField(required=False, allow_blank=True, default="", max_length=150)
+
+
+class RestaurationEleveSerializer(serializers.Serializer):
+    classe = serializers.IntegerField(required=False, allow_null=True, default=None)
+    motif = serializers.CharField(required=False, allow_blank=True, default="", max_length=255)
+
+
+class HistoriqueStatutEleveSerializer(serializers.ModelSerializer):
+    evenement_display = serializers.CharField(source="get_evenement_display", read_only=True)
+    type_sortie_display = serializers.CharField(source="get_type_sortie_display", read_only=True)
+    classe_nom = serializers.CharField(source="classe.nom", read_only=True, default=None)
+    annee_scolaire_libelle = serializers.CharField(source="annee_scolaire.libelle", read_only=True, default=None)
+    auteur_nom = serializers.CharField(source="auteur.get_full_name", read_only=True, default=None)
+
+    class Meta:
+        model = HistoriqueStatutEleve
+        fields = [
+            "id", "evenement", "evenement_display", "type_sortie", "type_sortie_display", "date", "motif",
+            "etablissement_destination", "classe_nom", "annee_scolaire_libelle", "auteur_nom", "cree_le",
+        ]
 
 
 class EnseignantProfileSerializer(serializers.ModelSerializer):

@@ -40,6 +40,7 @@ import ProfilePage from "./pages/ProfilePage";
 import RechercheGlobalePage from "./pages/RechercheGlobalePage";
 import RechercheMatriculePage from "./pages/RechercheMatriculePage";
 import ReinscriptionPage from "./pages/ReinscriptionPage";
+import ArchivesElevesPage from "./pages/ArchivesElevesPage";
 import ResetPasswordPage from "./pages/ResetPasswordPage";
 import ResultsPage from "./pages/ResultsPage";
 import SauvegardesPage from "./pages/SauvegardesPage";
@@ -307,6 +308,14 @@ export default function App() {
           element={
             <ProtectedRoute roles={["admin", "directeur", "teacher", "comptabilite", "surveillance"]}>
               <StudentDetailPage />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/archives-eleves"
+          element={
+            <ProtectedRoute roles={["admin", "directeur", "comptabilite"]}>
+              <ArchivesElevesPage />
             </ProtectedRoute>
           }
         />

@@ -1,7 +1,7 @@
 import { api } from "./client";
 import type {
   AffectationTransport, AgentCantineInfo, Annonce, AnneeScolaire, BonusMode, Bulletin, CaisseRapport, CategorieDepense, CategoriePaiement, Classe, Creneau, Depense, Ecole, EcoleStatsDetail,
-  EcoleStatsGlobales, EcoleUtilisateur, EleveProfile,
+  EcoleStatsGlobales, EcoleUtilisateur, EleveProfile, HistoriqueStatutEleve, TypeSortie,
   Emprunt, Enseignement, EnseignantProfile, Fonctionnalite, Formule, Frais, InscriptionCantine, JournalActiviteEntry, JournalUtilisateurEntry, Livre, Matiere, Message, ModeleMessage, Note, 
   Paginated,AlerteParent, AnalysePerformance, ChauffeurInfo, EleveBadge, EnseignantBadge, GroupeRevision, JustificatifAbsence, MessageIA, PaiementEcole, Paiement, PaieEnseignant,
   ParametresPlateforme, Periode, PlanAbonnement, PlateformeBranding,PointageEnseignant, Presence, RechercheGlobaleResult, Reunion, Participant, Resultats, OperationSauvegardeEcole, SauvegardeLog, SuiviMensuelClasse,
@@ -365,6 +365,16 @@ export const elevesApi = {
   marquerNonReinscrit: (id: number, motif?: string) =>
     api.post<EleveProfile>(`/people/eleves/${id}/marquer-non-reinscrit/`, { motif: motif || "" }),
   reactiver: (id: number) => api.post<EleveProfile>(`/people/eleves/${id}/reactiver/`),
+  /** Sortie d'un élève (archivé / transféré / abandon / cycle terminé) ; sur un élève déjà sorti,
+   * change la nature de sa sortie. Rien n'est supprimé. */
+  sortie: (id: number, data: SortieEleve) => api.post<EleveProfile>(`/people/eleves/${id}/sortie/`, data),
+  sortieGroupee: (ids: number[], data: SortieEleve) =>
+    api.post<{ sortis: number }>("/people/eleves/sortie-groupee/", { ids, ...data }),
+  /** Remet l'élève en activité (dans `classe` si fournie, sinon sa dernière classe), historique conservé. */
+  restaurer: (id: number, data: { classe?: number | null; motif?: string } = {}) =>
+    api.post<EleveProfile>(`/people/eleves/${id}/restaurer/`, data),
+  historiqueStatut: (id: number) => api.get<HistoriqueStatutEleve[]>(`/people/eleves/${id}/historique-statut/`),
+  archivesResume: () => api.get<Record<TypeSortie | "total", number>>("/people/eleves/archives-resume/"),
   recuInscription: (id: number, filename: string) => downloadFile(`/people/eleves/${id}/recu-inscription/`, {}, filename),
   ficheReinscription: (id: number, filename: string) => downloadFile(`/people/eleves/${id}/fiche-reinscription/`, {}, filename),
   certificatScolarite: (id: number, filename: string) => downloadFile(`/people/eleves/${id}/certificat-scolarite/`, {}, filename),
@@ -400,6 +410,13 @@ export const elevesApi = {
     );
   },
 };
+
+export interface SortieEleve {
+  type_sortie: TypeSortie;
+  motif?: string;
+  date_sortie?: string | null;
+  etablissement_destination?: string;
+}
 
 /** Ligne d'un import Excel correspondant à un élève déjà inscrit (même nom, prénom, filiation
  * et contact) — `matricule` : celui de l'élève existant, ou « ligne N du fichier ». */

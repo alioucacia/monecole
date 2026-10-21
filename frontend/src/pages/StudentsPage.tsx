@@ -7,9 +7,10 @@ import { extractBlobErrorMessage, extractErrorMessage } from "../api/client";
 import { Badge, Button, DeleteButton, EditButton, EmptyState, Input, Modal, PageHeader, RowActions, Select, Spinner, StatCard, Table } from "../components/ui";
 import { ClasseOptions, CycleSelect } from "../components/CycleSelect";
 import { ElevesSansPaiementTable } from "../components/ElevesSansPaiement";
+import { RestaurerEleveModal, SortieEleveModal, TypeSortieBadge } from "../components/ArchivesEleve";
 import { StatutMensualiteBadge } from "../components/StatutMensualite";
 import { useAuth } from "../context/AuthContext";
-import { useConfirm, usePrompt } from "../context/ConfirmContext";
+import { useConfirm } from "../context/ConfirmContext";
 import { useToast } from "../context/ToastContext";
 import { usePaginated } from "../hooks/usePaginated";
 import type { Classe, Cycle, EleveProfile, User } from "../types";
@@ -40,11 +41,12 @@ export default function StudentsPage() {
   // IsAdminOrComptabiliteReadWriteNoDelete) — la suppression et l'export/import en masse restent
   // admin uniquement, voir plus bas.
   const peutModifier = isAdmin || estComptabilite;
-  // Bascule Actif/Inactif (voir handleToggleActif) : mêmes droits que la réinscription
-  // (backend IsAdminOrComptabilite sur marquer-non-reinscrit/reactiver, voir ReinscriptionPage).
+  // Sortie (archivage, transfert...) / restauration (voir handleToggleActif) : mêmes droits que
+  // la réinscription (backend IsAdminOrComptabilite sur sortie/restaurer).
   const peutGererStatut = isAdmin || estComptabilite;
+  const [sortieCible, setSortieCible] = useState<EleveProfile[] | null>(null);
+  const [restaurationCible, setRestaurationCible] = useState<EleveProfile | null>(null);
   const confirmer = useConfirm();
-  const demander = usePrompt();
   const toast = useToast();
   const [search, setSearch] = useState("");
   const [classeFilter, setClasseFilter] = useState("");
@@ -284,8 +286,8 @@ export default function StudentsPage() {
         toast.error(`${extractErrorMessage(err)} (L'élève est déjà inactif.)`);
         return;
       }
-      if (await confirmer(`${extractErrorMessage(err)}\n\nRendre ${eleve.user.first_name} ${eleve.user.last_name} inactif maintenant ?`, {
-        title: "Suppression impossible", confirmLabel: "🚪 Rendre inactif",
+      if (await confirmer(`${extractErrorMessage(err)}\n\nPlacer ${eleve.user.first_name} ${eleve.user.last_name} dans les archives maintenant ?`, {
+        title: "Suppression impossible", confirmLabel: "🗄️ Archiver",
       })) {
         await handleToggleActif(eleve);
       }
@@ -321,16 +323,11 @@ export default function StudentsPage() {
         const actifs = data.proteges.filter((e) => e.actif);
         if (actifs.length && await confirmer(
           `${data.proteges.length} élève(s) non supprimé(s) car des paiements sont enregistrés à leur nom : ${noms}.\n\n`
-          + `Rendre inactif(s) (parti / transféré) le(s) ${actifs.length} élève(s) encore actif(s) pour conserver leur historique ?`,
-          { title: "Suppression partielle", confirmLabel: "🚪 Rendre inactif(s)" },
+          + `Archiver (ou marquer transféré / abandon / cycle terminé) le(s) ${actifs.length} élève(s) encore actif(s) pour conserver leur historique ?`,
+          { title: "Suppression partielle", confirmLabel: "🗄️ Archiver" },
         )) {
-          const motif = await demander("Vous pouvez préciser le motif du départ.", {
-            title: "Rendre les élèves inactifs", label: "Motif (optionnel)", confirmLabel: "Confirmer",
-          });
-          if (motif !== null) {
-            await Promise.all(actifs.map((e) => elevesApi.marquerNonReinscrit(e.id, motif)));
-            toast.success(`${actifs.length} élève(s) rendu(s) inactif(s).`);
-          }
+          const ids = new Set(actifs.map((e) => e.id));
+          setSortieCible(items.filter((e) => ids.has(e.id)));
         } else if (!actifs.length) {
           toast.error(`Non supprimé(s) car des paiements sont enregistrés à leur nom (déjà inactifs) : ${noms}.`);
         }
@@ -343,18 +340,9 @@ export default function StudentsPage() {
     }
   };
 
-  const handleToggleActif = async (eleve: EleveProfile) => {
-    if (eleve.actif) {
-      const motif = await demander(`Vous pouvez préciser le motif du départ de ${eleve.user.first_name} ${eleve.user.last_name}.`, {
-        title: "Rendre l'élève inactif", label: "Motif (optionnel)", confirmLabel: "Confirmer",
-      });
-      if (motif === null) return; // annulé
-      await elevesApi.marquerNonReinscrit(eleve.id, motif);
-    } else {
-      if (!(await confirmer(`Réactiver ${eleve.user.first_name} ${eleve.user.last_name} ?`))) return;
-      await elevesApi.reactiver(eleve.id);
-    }
-    reload();
+  const handleToggleActif = (eleve: EleveProfile) => {
+    if (eleve.actif) setSortieCible([eleve]);
+    else setRestaurationCible(eleve);
   };
 
   const handleRecu = async (eleve: EleveProfile) => {
@@ -494,7 +482,7 @@ export default function StudentsPage() {
           <StatCard label="Réinscrits" value={stats ? String(stats.reinscrits) : "…"} icon="🔁" accent="teal" />
         </button>
         <button className="text-left" onClick={() => setStatutFilter("inactif")}>
-          <StatCard label="Partis / transférés" value={stats ? String(stats.inactifs) : "…"} icon="🚪" accent="rose" />
+          <StatCard label="Sortis (archives)" value={stats ? String(stats.inactifs) : "…"} icon="🗄️" accent="rose" />
         </button>
       </div>
 
@@ -511,7 +499,7 @@ export default function StudentsPage() {
         </Select>
         <Select value={statutFilter} onChange={(e) => setStatutFilter(e.target.value as typeof statutFilter)} className="max-w-xs">
           <option value="">Tous les statuts</option>
-          <option value="inactif">Partis / transférés (inactifs)</option>
+          <option value="inactif">Sortis (archivés, transférés, abandons, cycle terminé)</option>
           <option value="reinscription">Réinscrits</option>
           <option value="transfert">Arrivés par transfert</option>
         </Select>
@@ -580,7 +568,7 @@ export default function StudentsPage() {
                 <td className="px-4 py-3">{eleve.classe_nom || <span className="text-slate-400">Non assignée</span>}</td>
                 <td className="px-4 py-3">
                   {!eleve.actif ? (
-                    <Badge color="rose">Inactif</Badge>
+                    <TypeSortieBadge eleve={eleve} />
                   ) : eleve.statut_inscription === "reinscription" ? (
                     <Badge color="teal">Réinscrit</Badge>
                   ) : eleve.statut_inscription === "transfert" ? (
@@ -591,7 +579,8 @@ export default function StudentsPage() {
                 </td>
                 {statutFilter === "inactif" ? (
                   <td className="px-4 py-3 text-slate-500">
-                    {eleve.motif_sortie || <span className="text-slate-400">—</span>}
+                    {eleve.etablissement_destination && <span className="block">→ {eleve.etablissement_destination}</span>}
+                    {eleve.motif_sortie || (!eleve.etablissement_destination && <span className="text-slate-400">—</span>)}
                     {eleve.date_sortie && <span className="block text-xs text-slate-400">{new Date(eleve.date_sortie).toLocaleDateString("fr-FR")}</span>}
                   </td>
                 ) : (
@@ -620,7 +609,7 @@ export default function StudentsPage() {
                         className={`text-xs font-semibold hover:underline ${eleve.actif ? "text-rose-600" : "text-emerald-600"}`}
                         onClick={() => handleToggleActif(eleve)}
                       >
-                        {eleve.actif ? "🚪 Rendre inactif" : "✅ Réactiver"}
+                        {eleve.actif ? "🗄️ Sortie / archiver" : "✅ Restaurer"}
                       </button>
                     )}
                     {peutModifier && <EditButton onClick={() => openEdit(eleve)} />}
@@ -639,6 +628,20 @@ export default function StudentsPage() {
           </div>
         </>
       )}
+
+      <SortieEleveModal
+        eleves={sortieCible} onClose={() => setSortieCible(null)}
+        onDone={() => {
+          const n = sortieCible?.length ?? 0;
+          setSortieCible(null);
+          toast.success(n > 1 ? `${n} élèves déplacés dans les archives.` : "Élève déplacé dans les archives.");
+          reload();
+        }}
+      />
+      <RestaurerEleveModal
+        eleve={restaurationCible} onClose={() => setRestaurationCible(null)}
+        onDone={() => { setRestaurationCible(null); toast.success("Élève restauré."); reload(); }}
+      />
 
       <Modal open={sansPaiement !== null} onClose={() => setSansPaiement(null)} wide title="Élèves sans aucun paiement">
         {sansPaiement && (

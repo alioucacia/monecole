@@ -352,7 +352,9 @@ def eleves_hors_liste(ecole_id, annee) -> list[dict]:
         ligne = par_eleve.get(eleve.id)
         if ligne is None:
             if not eleve.actif:
-                motif = "Inactif (parti / transféré)" + (f" — {eleve.motif_sortie}" if eleve.motif_sortie else "")
+                motif = f"Inactif ({eleve.get_type_sortie_display() if eleve.type_sortie else 'parti / transféré'})" + (
+                    f" — {eleve.motif_sortie}" if eleve.motif_sortie else ""
+                )
             elif eleve.classe is None:
                 motif = "Sans classe"
             else:
@@ -395,7 +397,7 @@ def paiements_hors_liste(ecole_id, annee) -> list[dict]:
     for p in paiements_hors_liste_qs(ecole_id, annee):
         eleve = p.frais.eleve
         if not eleve.actif:
-            motif = "Inactif (parti / transféré)"
+            motif = f"Inactif ({eleve.get_type_sortie_display() if eleve.type_sortie else 'parti / transféré'})"
         elif eleve.classe is None:
             motif = "Sans classe"
         else:
