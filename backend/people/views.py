@@ -35,11 +35,12 @@ from accounts.permissions import (
     IsAdminOrSurveillanceOrReadOnly,
     IsAdminOrSurveillanceReadWriteNoDelete,
     IsAdminOrTeacherOrReadOnly,
+    IsAdminSeulement,
     IsStudent,
 )
 from tenants.permissions import fonctionnalite_requise
 
-from . import archives, assistant_ia
+from . import archives, assistant_ia, corbeille
 from .models import (
     AlerteParent, EleveBadge, EleveProfile, EnseignantBadge, EnseignantProfile,
     GroupeRevision, MessageIA, PaieEnseignant, PointageEnseignant, RendezVous,
@@ -101,9 +102,9 @@ def eleves_sans_paiement(ecole_id) -> list[dict]:
 
 
 def supprimer_eleves_sans_paiement(ecole_id, ids, request) -> dict:
-    """Supprime définitivement, parmi `ids`, les élèves de l'école sans aucun paiement (avec leur
-    compte de connexion, comme `perform_destroy`). Un élève qui a un paiement, ou d'une autre
-    école, est ignoré même si son id est envoyé."""
+    """Met à la corbeille (voir people/corbeille.py), parmi `ids`, les élèves de l'école sans aucun
+    paiement. Un élève qui a un paiement, ou d'une autre école, est ignoré même si son id est
+    envoyé."""
     from accounts.models import JournalUtilisateur
     from accounts.services import journaliser
 
@@ -118,12 +119,11 @@ def supprimer_eleves_sans_paiement(ecole_id, ids, request) -> dict:
         # ne peut donc pas être enregistré entre la vérification et la suppression.
         list(EleveProfile.objects.select_for_update().filter(id__in=ids, user__ecole_id=ecole_id).values_list("id", flat=True))
         eleves = list(_eleves_sans_paiement_qs(ecole_id).filter(id__in=ids).select_related("user"))
-        noms = [e.user.get_full_name() for e in eleves]
-        User.objects.filter(eleve_profile__in=eleves).delete()
+        noms = corbeille.mettre_a_la_corbeille(eleves, request.user)
     if noms:
         journaliser(
             request.user, JournalUtilisateur.Categorie.ELEVE,
-            f"{len(noms)} élève(s) sans paiement supprimé(s) : {', '.join(noms[:20])}"
+            f"{len(noms)} élève(s) sans paiement mis à la corbeille : {', '.join(noms[:20])}"
             + (" …" if len(noms) > 20 else ""),
             request,
         )
@@ -190,11 +190,10 @@ class EleveProfileViewSet(viewsets.ModelViewSet):
         # payments.Frais.eleve) : de l'argent réellement encaissé disparaîtrait de la Caisse et
         # des rapports. Dès qu'un paiement existe, on refuse — l'élève doit être rendu inactif
         # (parti/transféré), ce qui garde son historique (visible dans Paiements → « Élèves hors
-        # liste »). Un élève sans paiement (créé par erreur...) reste supprimable.
-        from payments.models import Paiement
-
+        # liste »). Un élève sans paiement (créé par erreur...) va dans la corbeille, d'où
+        # l'administrateur peut le restaurer ou le supprimer définitivement.
         eleve = self.get_object()
-        if Paiement.objects.filter(frais__eleve=eleve).exists():
+        if corbeille.eleves_avec_paiements([eleve.id]):
             return Response(
                 {
                     "detail": (
@@ -211,14 +210,12 @@ class EleveProfileViewSet(viewsets.ModelViewSet):
         from accounts.models import JournalUtilisateur
         from accounts.services import journaliser
 
-        nom = instance.user.get_full_name()
-        # Le compte de connexion part avec la fiche (qu'il entraîne en cascade) : supprimer
-        # seulement la fiche laissait avant un compte élève orphelin, toujours capable de se
-        # connecter.
-        instance.user.delete()
+        # Corbeille plutôt qu'effacement : le compte de connexion est désactivé, et ne sera
+        # supprimé avec la fiche que depuis la corbeille (corbeille.supprimer_definitivement).
+        nom, = corbeille.mettre_a_la_corbeille([instance], self.request.user)
         journaliser(
             self.request.user, JournalUtilisateur.Categorie.ELEVE,
-            f"Fiche élève supprimée : {nom}", self.request,
+            f"Fiche élève mise à la corbeille : {nom}", self.request,
         )
 
     @action(detail=False, methods=["get"], url_path="export")
@@ -712,9 +709,9 @@ class EleveProfileViewSet(viewsets.ModelViewSet):
 
     @action(detail=False, methods=["post"], url_path="suppression-groupee", permission_classes=[IsAdmin])
     def suppression_groupee(self, request):
-        """Supprime définitivement plusieurs élèves cochés dans la liste (`ids`), avec leur
-        compte de connexion — même effet que `perform_destroy`, en une requête. Les ids
-        d'une autre école sont ignorés (filtrés par `get_queryset`)."""
+        """Met à la corbeille plusieurs élèves cochés dans la liste (`ids`) — même effet que
+        `perform_destroy`, en une requête. Les ids d'une autre école sont ignorés (filtrés par
+        `get_queryset`)."""
         from accounts.models import JournalUtilisateur
         from accounts.services import journaliser
 
@@ -725,26 +722,20 @@ class EleveProfileViewSet(viewsets.ModelViewSet):
             ids = [int(i) for i in ids]
         except (TypeError, ValueError):
             raise ValidationError("Le paramètre 'ids' ne doit contenir que des identifiants numériques.")
-        from payments.models import Paiement
-
         # Élèves ayant au moins un paiement : jamais supprimés (voir `destroy`), seulement
         # signalés pour être rendus inactifs.
-        avec_paiements = set(
-            Paiement.objects.filter(frais__eleve_id__in=ids).values_list("frais__eleve_id", flat=True)
-        )
+        avec_paiements = corbeille.eleves_avec_paiements(ids)
         selection = list(self.get_queryset().filter(id__in=ids))
         eleves = [e for e in selection if e.id not in avec_paiements]
         proteges = [
             {"id": e.id, "nom": e.user.get_full_name(), "actif": e.actif}
             for e in selection if e.id in avec_paiements
         ]
-        noms = [e.user.get_full_name() for e in eleves]
-        with transaction.atomic():
-            User.objects.filter(eleve_profile__in=eleves).delete()
+        noms = corbeille.mettre_a_la_corbeille(eleves, request.user)
         if noms:
             journaliser(
                 request.user, JournalUtilisateur.Categorie.ELEVE,
-                f"{len(noms)} fiche(s) élève supprimée(s) : {', '.join(noms[:20])}"
+                f"{len(noms)} fiche(s) élève mise(s) à la corbeille : {', '.join(noms[:20])}"
                 + (" …" if len(noms) > 20 else ""),
                 request,
             )
@@ -759,6 +750,68 @@ class EleveProfileViewSet(viewsets.ModelViewSet):
     def supprimer_sans_paiement(self, request):
         """Supprime définitivement les élèves sans paiement cochés (`ids`)."""
         return Response(supprimer_eleves_sans_paiement(request.user.ecole_id, request.data.get("ids"), request))
+
+    # Corbeille (voir people/corbeille.py) — administrateur de l'école uniquement, sans même la
+    # lecture seule du Directeur Général.
+
+    @action(detail=False, methods=["get"], url_path="corbeille", permission_classes=[IsAdminSeulement])
+    def corbeille_liste(self, request):
+        """Élèves supprimés, en attente de restauration ou de suppression définitive."""
+        eleves = (
+            corbeille.corbeille_qs(request.user.ecole_id)
+            .select_related("user", "classe__annee_scolaire", "parent", "supprime_par")
+            .order_by("-supprime_le")
+        )
+        return Response([{
+            "id": e.id, "nom": e.user.get_full_name(), "matricule": e.matricule,
+            "classe": e.classe.nom if e.classe else "",
+            "annee": e.classe.annee_scolaire.libelle if e.classe else "",
+            "parent": e.parent.get_full_name() if e.parent else "",
+            "actif_avant_corbeille": e.actif_avant_corbeille,
+            "supprime_le": e.supprime_le,
+            "supprime_par": e.supprime_par.get_full_name() if e.supprime_par else "",
+        } for e in eleves])
+
+    def _ids_corbeille(self, request):
+        ids = request.data.get("ids")
+        if not isinstance(ids, list) or not ids:
+            raise ValidationError("Le paramètre 'ids' (liste d'identifiants d'élèves) est requis.")
+        try:
+            return [int(i) for i in ids]
+        except (TypeError, ValueError):
+            raise ValidationError("Le paramètre 'ids' ne doit contenir que des identifiants numériques.")
+
+    def _journaliser_corbeille(self, noms, texte):
+        from accounts.models import JournalUtilisateur
+        from accounts.services import journaliser
+
+        if noms:
+            journaliser(
+                self.request.user, JournalUtilisateur.Categorie.ELEVE,
+                f"{len(noms)} élève(s) {texte} : {', '.join(noms[:20])}" + (" …" if len(noms) > 20 else ""),
+                self.request,
+            )
+
+    @action(detail=False, methods=["post"], url_path="corbeille/restaurer", permission_classes=[IsAdminSeulement])
+    def corbeille_restaurer(self, request):
+        """Sort les élèves cochés (`ids`) de la corbeille, dans leur état d'avant la suppression."""
+        noms = corbeille.restaurer(request.user.ecole_id, self._ids_corbeille(request))
+        self._journaliser_corbeille(noms, "restauré(s) depuis la corbeille")
+        return Response({"restaures": len(noms)})
+
+    @action(detail=False, methods=["post"], url_path="corbeille/supprimer", permission_classes=[IsAdminSeulement])
+    def corbeille_supprimer(self, request):
+        """Supprime définitivement les élèves cochés (`ids`) de la corbeille. Irréversible."""
+        noms = corbeille.supprimer_definitivement(request.user.ecole_id, self._ids_corbeille(request))
+        self._journaliser_corbeille(noms, "supprimé(s) définitivement de la corbeille")
+        return Response({"supprimes": len(noms)})
+
+    @action(detail=False, methods=["post"], url_path="corbeille/vider", permission_classes=[IsAdminSeulement])
+    def corbeille_vider(self, request):
+        """Supprime définitivement tous les élèves de la corbeille. Irréversible."""
+        noms = corbeille.supprimer_definitivement(request.user.ecole_id)
+        self._journaliser_corbeille(noms, "supprimé(s) définitivement (corbeille vidée)")
+        return Response({"supprimes": len(noms)})
 
     def _journaliser_statut(self, eleve, texte):
         from accounts.models import JournalUtilisateur

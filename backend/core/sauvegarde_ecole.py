@@ -223,7 +223,8 @@ def _modele(label: str):
 
 
 def _queryset(label: str, chemins: tuple[str, ...], ecole):
-    return _modele(label).objects.filter(**{chemin: ecole for chemin in chemins})
+    # Manager de base : inclut les lignes que le manager par défaut masque (élèves à la corbeille).
+    return _modele(label)._base_manager.filter(**{chemin: ecole for chemin in chemins})
 
 
 def _champs_fichier(modele) -> list[str]:
@@ -464,7 +465,7 @@ def restaurer_ecole(ecole, chemin: Path) -> dict:
         for label, liste in par_modele.items():
             if label == "accounts.User" or not liste:
                 continue
-            if _modele(label).objects.filter(pk__in=[objet.object.pk for objet in liste]).exists():
+            if _modele(label)._base_manager.filter(pk__in=[objet.object.pk for objet in liste]).exists():
                 raise ArchiveInvalide(
                     "Restauration impossible : certaines données de la sauvegarde sont en conflit avec "
                     "celles d'un autre établissement."

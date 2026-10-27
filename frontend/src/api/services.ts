@@ -349,12 +349,17 @@ export const elevesApi = {
   create: (data: Record<string, unknown>) => api.post<EleveProfile>("/people/eleves/", toFormData(data), multipartHeaders),
   update: (id: number, data: Record<string, unknown>) => api.patch<EleveProfile>(`/people/eleves/${id}/`, toFormData(data), multipartHeaders),
   remove: (id: number) => api.delete(`/people/eleves/${id}/`),
-  /** Suppression définitive de plusieurs élèves cochés dans la liste (admin uniquement). */
   /** Admin : élèves de l'école (toutes années) sans aucun paiement enregistré. */
   sansPaiement: () => api.get<EleveSansPaiement[]>("/people/eleves/sans-paiement/"),
-  /** Suppression définitive d'élèves sans paiement (ceux qui en ont un sont ignorés). */
+  /** Mise à la corbeille d'élèves sans paiement (ceux qui en ont un sont ignorés). */
   supprimerSansPaiement: (ids: number[]) => api.post<{ supprimes: number }>("/people/eleves/supprimer-sans-paiement/", { ids }),
+  /** Mise à la corbeille de plusieurs élèves cochés dans la liste (admin uniquement). */
   removeMany: (ids: number[]) => api.post<{ supprimes: number; proteges: { id: number; nom: string; actif: boolean }[] }>("/people/eleves/suppression-groupee/", { ids }),
+  /** Corbeille (administrateur uniquement) : élèves supprimés, restaurables ou à supprimer définitivement. */
+  corbeille: () => api.get<EleveCorbeille[]>("/people/eleves/corbeille/"),
+  restaurerCorbeille: (ids: number[]) => api.post<{ restaures: number }>("/people/eleves/corbeille/restaurer/", { ids }),
+  supprimerDefinitivement: (ids: number[]) => api.post<{ supprimes: number }>("/people/eleves/corbeille/supprimer/", { ids }),
+  viderCorbeille: () => api.post<{ supprimes: number }>("/people/eleves/corbeille/vider/"),
   exportCsv: (params?: Record<string, unknown>) => downloadFile("/people/eleves/export/", params || {}, "eleves.csv"),
   exportPdf: (params?: Record<string, unknown>) => downloadFile("/people/eleves/export-pdf/", params || {}, "eleves.pdf"),
   // Le frais de réinscription (s'il y en a un) est désormais résolu et créé automatiquement côté
@@ -663,6 +668,20 @@ export interface EleveSansPaiement {
   actif: boolean;
   date_inscription: string;
   nombre_frais: number;
+}
+
+/** Élève dans la corbeille (voir people/corbeille.py). */
+export interface EleveCorbeille {
+  id: number;
+  nom: string;
+  matricule: string;
+  classe: string;
+  annee: string;
+  parent: string;
+  /** Statut d'avant la suppression, retrouvé à la restauration. */
+  actif_avant_corbeille: boolean;
+  supprime_le: string;
+  supprime_par: string;
 }
 
 /** Paiement encaissé pour un élève absent de la liste Élèves (voir payments.views.paiements_hors_liste). */

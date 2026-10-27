@@ -331,3 +331,102 @@ class ArchivesElevesTests(TestCase):
         self.assertEqual(r.data["sortis"], 1)
         autre.refresh_from_db()
         self.assertEqual(autre.type_sortie, "archive")
+
+
+class CorbeilleElevesTests(TestCase):
+    """Supprimer un élève le met à la corbeille (masqué partout, compte désactivé) ; seul
+    l'administrateur la consulte, restaure ou supprime définitivement."""
+
+    def setUp(self):
+        from rest_framework.test import APIClient
+
+        self.ecole = Ecole.objects.create(nom="Test", slug="test-corbeille")
+        self.annee = AnneeScolaire.objects.create(
+            ecole=self.ecole, libelle="2026-2027", date_debut=date(2026, 9, 1), date_fin=date(2027, 6, 30), active=True,
+        )
+        self.classe = Classe.objects.create(nom="7e A", niveau="7ème", cycle="college", annee_scolaire=self.annee)
+        self.admin = User.objects.create_user(username="adm", password="x", role="admin", ecole=self.ecole)
+        u = User.objects.create_user(username="el1", password="x", role="student", ecole=self.ecole)
+        self.eleve = EleveProfile.objects.create(user=u, matricule="EL1", classe=self.classe)
+        self.client = APIClient()
+        self.client.force_authenticate(self.admin)
+
+    def _ids_liste(self):
+        r = self.client.get("/api/people/eleves/")
+        return [e["id"] for e in (r.data["results"] if isinstance(r.data, dict) else r.data)]
+
+    def test_suppression_puis_restauration(self):
+        r = self.client.delete(f"/api/people/eleves/{self.eleve.id}/")
+        self.assertEqual(r.status_code, 204, r.content)
+        self.assertNotIn(self.eleve.id, self._ids_liste())
+        self.assertFalse(self.classe.eleves.exists())
+        self.assertFalse(User.objects.get(username="el1").is_active)
+        self.assertEqual([e["id"] for e in self.client.get("/api/people/eleves/corbeille/").data], [self.eleve.id])
+
+        r = self.client.post("/api/people/eleves/corbeille/restaurer/", {"ids": [self.eleve.id]}, format="json")
+        self.assertEqual(r.data["restaures"], 1)
+        self.assertIn(self.eleve.id, self._ids_liste())
+        self.eleve.refresh_from_db()
+        self.assertTrue(self.eleve.actif)
+        self.assertTrue(self.eleve.user.is_active)
+        self.assertEqual(self.client.get("/api/people/eleves/corbeille/").data, [])
+
+    def test_restauration_garde_le_statut_d_origine(self):
+        self.eleve.actif = False
+        self.eleve.save()
+        User.objects.filter(pk=self.eleve.user_id).update(is_active=False)
+        self.client.delete(f"/api/people/eleves/{self.eleve.id}/")
+        self.client.post("/api/people/eleves/corbeille/restaurer/", {"ids": [self.eleve.id]}, format="json")
+        self.eleve.refresh_from_db()
+        self.assertFalse(self.eleve.actif)
+        self.assertFalse(self.eleve.user.is_active)
+
+    def test_suppression_definitive_et_vider(self):
+        u = User.objects.create_user(username="el2", password="x", role="student", ecole=self.ecole)
+        autre = EleveProfile.objects.create(user=u, matricule="EL2", classe=self.classe)
+        r = self.client.post("/api/people/eleves/suppression-groupee/", {"ids": [self.eleve.id, autre.id]}, format="json")
+        self.assertEqual(r.data["supprimes"], 2)
+
+        r = self.client.post("/api/people/eleves/corbeille/supprimer/", {"ids": [self.eleve.id]}, format="json")
+        self.assertEqual(r.data["supprimes"], 1)
+        self.assertFalse(EleveProfile.tous.filter(pk=self.eleve.pk).exists())
+        self.assertFalse(User.objects.filter(username="el1").exists())
+
+        r = self.client.post("/api/people/eleves/corbeille/vider/")
+        self.assertEqual(r.data["supprimes"], 1)
+        self.assertFalse(User.objects.filter(username="el2").exists())
+
+    def test_eleve_avec_paiement_jamais_a_la_corbeille(self):
+        from payments.models import Frais, Paiement, TypeFrais
+
+        type_frais = TypeFrais.objects.create(ecole=self.ecole, nom="Cantine", montant_standard=1000, periodicite="annuel")
+        frais = Frais.objects.create(
+            eleve=self.eleve, type_frais=type_frais, annee_scolaire=self.annee, montant=1000, date_echeance=date(2026, 10, 1),
+        )
+        Paiement.objects.create(frais=frais, montant=500)
+        r = self.client.delete(f"/api/people/eleves/{self.eleve.id}/")
+        self.assertEqual(r.status_code, 409)
+        self.assertEqual(self.client.get("/api/people/eleves/corbeille/").data, [])
+
+    def test_corbeille_reservee_a_l_administrateur(self):
+        from rest_framework.test import APIClient
+
+        self.client.delete(f"/api/people/eleves/{self.eleve.id}/")
+        for role in ("directeur", "comptabilite"):
+            client = APIClient()
+            client.force_authenticate(User.objects.create_user(username=role, password="x", role=role, ecole=self.ecole))
+            self.assertEqual(client.get("/api/people/eleves/corbeille/").status_code, 403)
+            r = client.post("/api/people/eleves/corbeille/restaurer/", {"ids": [self.eleve.id]}, format="json")
+            self.assertEqual(r.status_code, 403)
+
+    def test_corbeille_limitee_a_l_ecole(self):
+        from rest_framework.test import APIClient
+
+        self.client.delete(f"/api/people/eleves/{self.eleve.id}/")
+        autre_ecole = Ecole.objects.create(nom="Autre", slug="autre-corbeille")
+        client = APIClient()
+        client.force_authenticate(User.objects.create_user(username="adm2", password="x", role="admin", ecole=autre_ecole))
+        self.assertEqual(client.get("/api/people/eleves/corbeille/").data, [])
+        r = client.post("/api/people/eleves/corbeille/supprimer/", {"ids": [self.eleve.id]}, format="json")
+        self.assertEqual(r.data["supprimes"], 0)
+        self.assertTrue(EleveProfile.tous.filter(pk=self.eleve.pk).exists())

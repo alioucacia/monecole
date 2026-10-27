@@ -7,7 +7,7 @@ import { useConfirm } from "../context/ConfirmContext";
 import { useToast } from "../context/ToastContext";
 
 /** Élèves sur lesquels aucun paiement n'a été enregistré, avec filtres, cases à cocher et
- * suppression définitive — partagé par l'admin (Élèves) et le Super Admin (Écoles). */
+ * mise à la corbeille — partagé par l'admin (Élèves) et le Super Admin (Écoles). */
 export function ElevesSansPaiementTable({ eleves, onSupprimer }: {
   eleves: EleveSansPaiement[];
   /** Supprime les élèves `ids` ; la liste est rechargée par l'appelant. Absent : consultation
@@ -47,13 +47,13 @@ export function ElevesSansPaiementTable({ eleves, onSupprimer }: {
   });
 
   const supprimer = async (ids: number[]) => {
-    const message = `Supprimer définitivement ${ids.length} élève(s) et leur compte de connexion ? `
-      + "Leurs frais, notes et présences seront aussi supprimés. Cette action est irréversible.";
+    const message = `Mettre ${ids.length} élève(s) à la corbeille ? Leur compte de connexion sera désactivé. `
+      + "L'administrateur de l'école pourra les restaurer ou les supprimer définitivement depuis la Corbeille.";
     if (!onSupprimer || !(await confirmer(message, { danger: true }))) return;
     setSuppression(true);
     try {
       const { supprimes } = await onSupprimer(ids);
-      toast.success(`${supprimes} élève(s) supprimé(s).`);
+      toast.success(`${supprimes} élève(s) mis à la corbeille.`);
       setCoches(new Set());
     } catch (err) {
       toast.error(extractErrorMessage(err));

@@ -26,9 +26,9 @@ def generer_matricule_eleve(first_name: str, last_name: str, ecole) -> str:
     from accounts.models import User
 
     prefixe = _deux_lettres(first_name) + _deux_lettres(last_name)
-    rang = EleveProfile.objects.filter(user__ecole=ecole).count() + 1
+    rang = EleveProfile.tous.filter(user__ecole=ecole).count() + 1
     matricule = f"{prefixe}{rang}"
-    while EleveProfile.objects.filter(matricule=matricule).exists() or User.objects.filter(username=matricule).exists():
+    while EleveProfile.tous.filter(matricule=matricule).exists() or User.objects.filter(username=matricule).exists():
         rang += 1
         matricule = f"{prefixe}{rang}"
     return matricule
@@ -56,6 +56,17 @@ class TypeSortie(models.TextChoices):
     TRANSFERT = "transfert", "Transféré"
     ABANDON = "abandon", "Abandon"
     FIN_CYCLE = "fin_cycle", "Cycle terminé"
+
+
+class ElevesHorsCorbeilleManager(models.Manager):
+    """Manager par défaut d'`EleveProfile` : un élève mis à la corbeille (voir people/corbeille.py)
+    disparaît de toutes les listes, recherches, statistiques et de `classe.eleves`, sans qu'il
+    faille filtrer chaque requête de la plateforme. `EleveProfile.tous` les inclut (corbeille,
+    sauvegardes), et l'accès par clé étrangère (`frais.eleve`, `user.eleve_profile`) passe par le
+    manager de base, non filtré."""
+
+    def get_queryset(self):
+        return super().get_queryset().filter(supprime_le__isnull=True)
 
 
 class EleveProfile(models.Model):
@@ -149,6 +160,19 @@ class EleveProfile(models.Model):
         help_text="Choix de l'administrateur : laisser la règle décider, désigner cet élève comme Bonus, "
                   "ou l'exclure du Bonus.",
     )
+
+    # Corbeille (voir people/corbeille.py) : un élève supprimé y reste jusqu'à ce que
+    # l'administrateur le restaure ou le supprime définitivement. Pendant ce temps il est rendu
+    # inactif et son compte désactivé ; les deux états d'origine sont gardés pour la restauration.
+    supprime_le = models.DateTimeField(null=True, blank=True, editable=False)
+    supprime_par = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, blank=True, editable=False, related_name="+",
+    )
+    actif_avant_corbeille = models.BooleanField(default=True, editable=False)
+    compte_actif_avant_corbeille = models.BooleanField(default=True, editable=False)
+
+    objects = ElevesHorsCorbeilleManager()
+    tous = models.Manager()
 
     class Meta:
         ordering = ["user__last_name", "user__first_name"]

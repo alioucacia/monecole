@@ -35,6 +35,14 @@ class IsAdmin(BasePermission):
         return bool(request.user and request.user.is_authenticated and _role(request) == "admin")
 
 
+class IsAdminSeulement(BasePermission):
+    """Administrateur de l'école uniquement — SANS la lecture seule du Directeur Général
+    (ex : corbeille des élèves)."""
+
+    def has_permission(self, request, view):
+        return bool(request.user and request.user.is_authenticated and _role(request) == "admin")
+
+
 class IsTeacher(BasePermission):
     def has_permission(self, request, view):
         return bool(request.user and request.user.is_authenticated and _role(request) == "teacher")

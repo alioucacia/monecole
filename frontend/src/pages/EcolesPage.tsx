@@ -411,7 +411,8 @@ export default function EcolesPage() {
           </div>
           <p className="text-sm text-slate-500">
             Élèves de chaque école, toutes années confondues, sur lesquels aucun paiement n'a été enregistré. Leur
-            suppression n'efface aucun montant de la Caisse.
+            suppression n'efface aucun montant de la Caisse : ils vont dans la Corbeille de l'école, où l'administrateur
+            peut les restaurer ou les supprimer définitivement.
           </p>
           {sansPaiement && (sansPaiement.every((g) => g.eleves.length === 0) ? (
             <EmptyState title="Aucun élève sans paiement" description="Chaque élève a au moins un paiement enregistré." />

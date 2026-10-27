@@ -503,6 +503,10 @@ class UserViewSet(viewsets.ModelViewSet):
             # Comptes élèves dont l'accès a été supprimé : plus affichés (voir User.acces_supprime),
             # mais toujours accessibles individuellement pour leur rendre un mot de passe.
             qs = qs.filter(acces_supprime=False)
+            # Élèves à la corbeille (people/corbeille.py) : leur compte désactivé n'apparaît pas non plus.
+            from people.models import EleveProfile
+
+            qs = qs.exclude(pk__in=EleveProfile.tous.filter(supprime_le__isnull=False).values("user_id"))
         return qs
 
     def get_serializer_class(self):

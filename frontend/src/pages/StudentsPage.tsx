@@ -270,9 +270,13 @@ export default function StudentsPage() {
   };
 
   const handleDelete = async (eleve: EleveProfile) => {
-    if (!(await confirmer(`Supprimer définitivement ${eleve.user.first_name} ${eleve.user.last_name} ?`, { danger: true }))) return;
+    if (!(await confirmer(
+      `Mettre ${eleve.user.first_name} ${eleve.user.last_name} à la corbeille ? Son compte sera désactivé ; l'administrateur peut le restaurer depuis la Corbeille.`,
+      { danger: true },
+    ))) return;
     try {
       await elevesApi.remove(eleve.id);
+      toast.success(`${eleve.user.first_name} ${eleve.user.last_name} a été mis(e) à la corbeille.`);
       reload();
     } catch (err) {
       // Élève ayant déjà des paiements : suppression refusée (voir EleveProfileViewSet.destroy),
@@ -313,11 +317,11 @@ export default function StudentsPage() {
   const handleDeleteSelection = async () => {
     const n = selection.size;
     if (!n) return;
-    if (!(await confirmer(`Supprimer définitivement ${n} élève${n > 1 ? "s" : ""} sélectionné${n > 1 ? "s" : ""} ? Leurs comptes, notes et historiques seront supprimés. Les élèves ayant déjà des paiements ne seront pas supprimés.`, { danger: true }))) return;
+    if (!(await confirmer(`Mettre ${n} élève${n > 1 ? "s" : ""} sélectionné${n > 1 ? "s" : ""} à la corbeille ? Leurs comptes seront désactivés ; l'administrateur peut les restaurer depuis la Corbeille. Les élèves ayant déjà des paiements ne seront pas supprimés.`, { danger: true }))) return;
     setSuppressionEnCours(true);
     try {
       const { data } = await elevesApi.removeMany([...selection]);
-      if (data.supprimes) toast.success(`${data.supprimes} élève${data.supprimes > 1 ? "s" : ""} supprimé${data.supprimes > 1 ? "s" : ""}.`);
+      if (data.supprimes) toast.success(`${data.supprimes} élève${data.supprimes > 1 ? "s" : ""} mis à la corbeille.`);
       if (data.proteges.length) {
         const noms = data.proteges.map((e) => e.nom).join(", ");
         const actifs = data.proteges.filter((e) => e.actif);
@@ -461,6 +465,7 @@ export default function StudentsPage() {
             {isAdmin && (
               <>
                 <Button variant="secondary" onClick={handleExport} disabled={exporting}>{exporting ? "Export…" : "📤 Exporter CSV"}</Button>
+                <Link to="/corbeille-eleves"><Button variant="secondary">🗑️ Corbeille</Button></Link>
               </>
             )}
             <Button variant="secondary" onClick={handleExportPdf} disabled={exportingPdf}>{exportingPdf ? "Génération…" : classeFilter ? "🖨️ Imprimer la liste de la classe" : "🖨️ Imprimer les listes par classe"}</Button>

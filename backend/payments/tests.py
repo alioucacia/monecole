@@ -245,8 +245,10 @@ class ElevesSansPaiementTests(BaseTests):
         r = self.client.post("/api/people/eleves/supprimer-sans-paiement/", {"ids": [self.sans.id, self.payeur.id]}, format="json")
         self.assertEqual(r.status_code, 200, r.content)
         self.assertEqual(r.json()["supprimes"], 1)
+        # Mis à la corbeille (people/corbeille.py) : masqué partout, compte désactivé.
         self.assertFalse(EleveProfile.objects.filter(pk=self.sans.pk).exists())
-        self.assertFalse(User.objects.filter(username="e2").exists())
+        self.assertTrue(EleveProfile.tous.filter(pk=self.sans.pk, supprime_le__isnull=False).exists())
+        self.assertFalse(User.objects.get(username="e2").is_active)
         self.assertTrue(EleveProfile.objects.filter(pk=self.payeur.pk).exists())
 
     def test_super_admin_par_ecole(self):
