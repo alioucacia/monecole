@@ -461,8 +461,12 @@ export default function StudentsPage() {
             {isAdmin && (
               <>
                 <Button variant="secondary" onClick={handleExport} disabled={exporting}>{exporting ? "Export…" : "📤 Exporter CSV"}</Button>
-                <Button variant="secondary" onClick={handleExportPdf} disabled={exportingPdf}>{exportingPdf ? "Génération…" : classeFilter ? "🖨️ Imprimer la liste de la classe" : "🖨️ Imprimer les listes par classe"}</Button>
-                <Button variant="secondary" onClick={openSansPaiement} disabled={sansPaiementLoading}>{sansPaiementLoading ? "Recherche…" : "🚫 Élèves sans paiement"}</Button>
+              </>
+            )}
+            <Button variant="secondary" onClick={handleExportPdf} disabled={exportingPdf}>{exportingPdf ? "Génération…" : classeFilter ? "🖨️ Imprimer la liste de la classe" : "🖨️ Imprimer les listes par classe"}</Button>
+            <Button variant="secondary" onClick={openSansPaiement} disabled={sansPaiementLoading}>{sansPaiementLoading ? "Recherche…" : "🚫 Élèves sans paiement"}</Button>
+            {isAdmin && (
+              <>
                 <Button variant="secondary" onClick={() => { setImportRapport(null); setImportError(""); setImportEnAttente(null); setImportModalOpen(true); }}>📥 Importer Excel</Button>
               </>
             )}
@@ -650,7 +654,7 @@ export default function StudentsPage() {
               Élèves de l'école, toutes années confondues, sur lesquels aucun paiement n'a été enregistré (élèves créés par
               erreur, doublons, inscriptions abandonnées…). Leur suppression n'efface aucun montant de la Caisse.
             </p>
-            <ElevesSansPaiementTable eleves={sansPaiement} onSupprimer={supprimerSansPaiement} />
+            <ElevesSansPaiementTable eleves={sansPaiement} onSupprimer={isAdmin ? supprimerSansPaiement : undefined} />
           </div>
         )}
       </Modal>

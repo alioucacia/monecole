@@ -10,8 +10,9 @@ import { useToast } from "../context/ToastContext";
  * suppression définitive — partagé par l'admin (Élèves) et le Super Admin (Écoles). */
 export function ElevesSansPaiementTable({ eleves, onSupprimer }: {
   eleves: EleveSansPaiement[];
-  /** Supprime les élèves `ids` ; la liste est rechargée par l'appelant. */
-  onSupprimer: (ids: number[]) => Promise<{ supprimes: number }>;
+  /** Supprime les élèves `ids` ; la liste est rechargée par l'appelant. Absent : consultation
+   * seule (comptable), sans cases à cocher ni bouton de suppression. */
+  onSupprimer?: (ids: number[]) => Promise<{ supprimes: number }>;
 }) {
   const confirmer = useConfirm();
   const toast = useToast();
@@ -48,7 +49,7 @@ export function ElevesSansPaiementTable({ eleves, onSupprimer }: {
   const supprimer = async (ids: number[]) => {
     const message = `Supprimer définitivement ${ids.length} élève(s) et leur compte de connexion ? `
       + "Leurs frais, notes et présences seront aussi supprimés. Cette action est irréversible.";
-    if (!(await confirmer(message, { danger: true }))) return;
+    if (!onSupprimer || !(await confirmer(message, { danger: true }))) return;
     setSuppression(true);
     try {
       const { supprimes } = await onSupprimer(ids);
@@ -71,27 +72,28 @@ export function ElevesSansPaiementTable({ eleves, onSupprimer }: {
           <option value="inactifs">Inactifs seulement</option>
         </Select>
         <span className="text-sm text-slate-500">{visibles.length} / {eleves.length} élève(s)</span>
-        <Button variant="danger" className="ml-auto" disabled={coches.size === 0 || suppression} onClick={() => supprimer([...coches])}>
+        {onSupprimer && <Button variant="danger" className="ml-auto" disabled={coches.size === 0 || suppression} onClick={() => supprimer([...coches])}>
           {suppression ? "Suppression…" : `🗑️ Supprimer la sélection${coches.size ? ` (${coches.size})` : ""}`}
-        </Button>
+        </Button>}
       </div>
       <Table headers={[
-        <input key="tous" type="checkbox" checked={tousCoches} onChange={basculerTous} aria-label="Tout cocher" />,
-        "Élève", "Matricule", "Classe", "Statut", "Inscrit le", "Frais", "",
+        ...(onSupprimer ? [<input key="tous" type="checkbox" checked={tousCoches} onChange={basculerTous} aria-label="Tout cocher" />] : []),
+        "Élève", "Matricule", "Classe", "Statut", "Inscrit le", "Frais",
+        ...(onSupprimer ? [""] : []),
       ]}>
         {visibles.map((e) => (
           <tr key={e.id}>
-            <td className="px-4 py-2"><input type="checkbox" checked={coches.has(e.id)} onChange={() => basculer(e.id)} aria-label={`Cocher ${e.nom}`} /></td>
+            {onSupprimer && <td className="px-4 py-2"><input type="checkbox" checked={coches.has(e.id)} onChange={() => basculer(e.id)} aria-label={`Cocher ${e.nom}`} /></td>}
             <td className="px-4 py-2 font-medium">{e.nom}</td>
             <td className="px-4 py-2 text-slate-500">{e.matricule}</td>
             <td className="px-4 py-2">{e.classe ? `${e.classe} (${e.annee})` : <span className="text-slate-400">Sans classe</span>}</td>
             <td className="px-4 py-2"><Badge color={e.actif ? "green" : "rose"}>{e.actif ? "Actif" : "Inactif"}</Badge></td>
             <td className="px-4 py-2 whitespace-nowrap">{new Date(e.date_inscription).toLocaleDateString("fr-FR")}</td>
             <td className="px-4 py-2">{e.nombre_frais}</td>
-            <td className="px-4 py-2">
+            {onSupprimer && <td className="px-4 py-2">
               <button type="button" className="text-xs font-semibold text-rose-600 hover:underline disabled:opacity-50"
                 disabled={suppression} onClick={() => supprimer([e.id])}>Supprimer</button>
-            </td>
+            </td>}
           </tr>
         ))}
       </Table>

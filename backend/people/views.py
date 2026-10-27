@@ -750,7 +750,7 @@ class EleveProfileViewSet(viewsets.ModelViewSet):
             )
         return Response({"supprimes": len(noms), "proteges": proteges})
 
-    @action(detail=False, methods=["get"], url_path="sans-paiement", permission_classes=[IsAdmin])
+    @action(detail=False, methods=["get"], url_path="sans-paiement", permission_classes=[IsAdminOrComptabilite])
     def sans_paiement(self, request):
         """Élèves de l'école (toutes années) sur lesquels aucun paiement n'a été enregistré."""
         return Response(eleves_sans_paiement(request.user.ecole_id))
