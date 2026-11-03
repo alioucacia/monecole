@@ -754,6 +754,9 @@ export const fraisApi = {
    * détail de chaque versement, récapitulatif par frais et situation mensuelle. */
   previewHistoriquePaiementsPdf: (eleveId: number, filename: string, anneeScolaireId?: number) =>
     fetchBlob("/payments/frais/historique-paiements-pdf/", { eleve: eleveId, annee_scolaire: anneeScolaireId }, filename),
+  /** Fiches d'historique des paiements de tous les élèves d'une classe, une par page (PDF). */
+  historiquePaiementsClassePdf: (classeId: number, filename: string) =>
+    downloadFile("/payments/frais/historique-paiements-classe-pdf/", { classe: classeId }, filename),
   impayesParClasse: (params?: Record<string, unknown>) =>
     api.get<{
       classe_id: number | null; classe_nom: string; nb_impayes: number; nb_a_jour: number; total_solde: string;

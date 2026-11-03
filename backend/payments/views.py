@@ -14,7 +14,7 @@ from django.template.loader import render_to_string
 from django.utils import timezone
 from rest_framework import viewsets
 from rest_framework.decorators import action
-from rest_framework.exceptions import ValidationError
+from rest_framework.exceptions import PermissionDenied, ValidationError
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.views import APIView
@@ -1478,39 +1478,12 @@ class FraisViewSet(viewsets.ModelViewSet):
         response["Content-Disposition"] = f'attachment; filename="proforma_{eleve.matricule}_{annee.libelle}.pdf"'
         return response
 
-    @action(detail=False, methods=["get"], url_path="historique-paiements-pdf")
-    def historique_paiements_pdf(self, request):
-        """Fiche d'historique des paiements (PDF) d'un élève sur une année scolaire : synthèse
-        (dû / payé / reste), récapitulatif par frais, détail chronologique de chaque versement
-        (date, objet, mode, référence, agent) et situation mensuelle de la scolarité — document
-        officiel à remettre au parent, avec visas de la comptabilité et de la direction."""
-        from academics.models import AnneeScolaire
-        from people.models import EleveProfile
-
+    @staticmethod
+    def _historique_eleve(eleve, annee, frais, aujourd_hui, cache_tarifs=None) -> dict:
+        """Contenu de la fiche d'historique des paiements d'un élève sur `annee` (voir
+        `historique_paiements_pdf`) : synthèse, récapitulatif par frais, versements et situation
+        mensuelle. `cache_tarifs` : partagé entre les élèves d'une même classe."""
         from .serializers import MOIS_FR
-
-        eleve_id = request.query_params.get("eleve")
-        if not eleve_id:
-            raise ValidationError("Le paramètre 'eleve' est requis.")
-        eleve = get_object_or_404(
-            EleveProfile.objects.select_related("user", "classe", "parent"), pk=eleve_id, user__ecole_id=request.user.ecole_id,
-        )
-        if request.user.role == "student" and getattr(request.user, "eleve_profile", None) != eleve:
-            raise ValidationError("Vous ne pouvez consulter que votre propre historique de paiement.")
-        if request.user.role == "parent" and eleve.parent_id != request.user.id:
-            raise ValidationError("Vous ne pouvez consulter que l'historique de paiement de vos enfants.")
-
-        annee_id = request.query_params.get("annee_scolaire")
-        if annee_id:
-            annee = get_object_or_404(AnneeScolaire, pk=annee_id, ecole_id=request.user.ecole_id)
-        else:
-            annee = annee_courante(request)
-        if not annee:
-            raise ValidationError("Aucune année scolaire active pour votre établissement.")
-
-        frais = _frais_suivi_par_eleve([eleve], annee)[eleve.id]
-        if not frais:
-            raise ValidationError("Aucun frais enregistré pour cet élève sur cette année scolaire.")
 
         def libelle_mois(mois):
             return f"{MOIS_FR[mois.month - 1].capitalize()} {mois.year}"
@@ -1522,7 +1495,7 @@ class FraisViewSet(viewsets.ModelViewSet):
                 return libelle_mois(f.mois_reference)
             return f"Tranche {f.type_frais.numero_tranche}" if f.type_frais.numero_tranche else "Par tranche"
 
-        suivi = _calculer_suivi_mensuel(eleve, annee, frais=frais)
+        suivi = _calculer_suivi_mensuel(eleve, annee, frais=frais, cache_tarifs=cache_tarifs)
         recap, versements = [], []
         paye_scolarite = Decimal("0")
         for f in frais:
@@ -1577,20 +1550,27 @@ class FraisViewSet(viewsets.ModelViewSet):
         abreviations = ["Janv.", "Févr.", "Mars", "Avr.", "Mai", "Juin", "Juil.", "Août", "Sept.", "Oct.", "Nov.", "Déc."]
         suivi = [{**m, "libelle": abreviations[int(m["mois"][5:]) - 1]} for m in suivi]
 
-        ecole = eleve.user.ecole
-        aujourd_hui = timezone.localdate()
-        html = render_to_string("payments/historique_paiements_pdf.html", {
+        return {
             "eleve": eleve,
             "classe": getattr(
                 (eleve.historique_classes.filter(annee_scolaire=annee).select_related("classe").first() or eleve).classe, "nom", "",
             ),
             "parent_nom": eleve.parent.get_full_name() if eleve.parent else (eleve.nom_tuteur or eleve.nom_pere or eleve.nom_mere),
             "parent_telephone": eleve.parent.phone if eleve.parent else "",
-            "annee_scolaire": annee.libelle,
             "recap": recap, "versements": versements, "suivi": suivi,
             "total_du": total_du, "total_paye": total_paye, "total_reste": total_reste,
             "taux": min(int((total_paye * 100 / total_du).quantize(Decimal("1"))), 100) if total_du > 0 else 100,
             "reference": f"HP-{eleve.matricule}-{aujourd_hui:%Y%m%d}",
+        }
+
+    @staticmethod
+    def _historiques_pdf(request, historiques, annee, ecole, pied_page, filename):
+        """PDF des fiches d'historique `historiques` (une par élève, chacune sur sa propre page)."""
+        aujourd_hui = timezone.localdate()
+        html = render_to_string("payments/historique_paiements_pdf.html", {
+            "historiques": historiques,
+            "pied_page": pied_page,
+            "annee_scolaire": annee.libelle,
             "date_edition": aujourd_hui,
             "edite_par": request.user.get_full_name() or request.user.username,
             # Signataires paramétrés par le Super Admin (Ecole.signataire_*) — le Fondateur
@@ -1611,8 +1591,85 @@ class FraisViewSet(viewsets.ModelViewSet):
         buffer = BytesIO()
         pisa.CreatePDF(html, dest=buffer, encoding="utf-8")
         response = HttpResponse(buffer.getvalue(), content_type="application/pdf")
-        response["Content-Disposition"] = f'attachment; filename="historique_paiements_{eleve.matricule}_{annee.libelle}.pdf"'
+        response["Content-Disposition"] = f'attachment; filename="{filename}"'
         return response
+
+    @action(detail=False, methods=["get"], url_path="historique-paiements-pdf")
+    def historique_paiements_pdf(self, request):
+        """Fiche d'historique des paiements (PDF) d'un élève sur une année scolaire : synthèse
+        (dû / payé / reste), récapitulatif par frais, détail chronologique de chaque versement
+        (date, objet, mode, référence, agent) et situation mensuelle de la scolarité — document
+        officiel à remettre au parent, avec visas de la comptabilité et de la direction."""
+        from academics.models import AnneeScolaire
+        from people.models import EleveProfile
+
+        eleve_id = request.query_params.get("eleve")
+        if not eleve_id:
+            raise ValidationError("Le paramètre 'eleve' est requis.")
+        eleve = get_object_or_404(
+            EleveProfile.objects.select_related("user", "classe", "parent"), pk=eleve_id, user__ecole_id=request.user.ecole_id,
+        )
+        if request.user.role == "student" and getattr(request.user, "eleve_profile", None) != eleve:
+            raise ValidationError("Vous ne pouvez consulter que votre propre historique de paiement.")
+        if request.user.role == "parent" and eleve.parent_id != request.user.id:
+            raise ValidationError("Vous ne pouvez consulter que l'historique de paiement de vos enfants.")
+
+        annee_id = request.query_params.get("annee_scolaire")
+        if annee_id:
+            annee = get_object_or_404(AnneeScolaire, pk=annee_id, ecole_id=request.user.ecole_id)
+        else:
+            annee = annee_courante(request)
+        if not annee:
+            raise ValidationError("Aucune année scolaire active pour votre établissement.")
+
+        frais = _frais_suivi_par_eleve([eleve], annee)[eleve.id]
+        if not frais:
+            raise ValidationError("Aucun frais enregistré pour cet élève sur cette année scolaire.")
+
+        historique = self._historique_eleve(eleve, annee, frais, timezone.localdate())
+        return self._historiques_pdf(
+            request, [historique], annee, eleve.user.ecole,
+            f"Historique des paiements de {eleve.user.get_full_name()} ({eleve.matricule}) — Réf. {historique['reference']}",
+            f"historique_paiements_{eleve.matricule}_{annee.libelle}.pdf",
+        )
+
+    @action(detail=False, methods=["get"], url_path="historique-paiements-classe-pdf")
+    def historique_paiements_classe_pdf(self, request):
+        """Fiches d'historique des paiements (PDF) de tous les élèves d'une `classe`, une par page,
+        dans l'ordre alphabétique — mêmes élèves que le suivi mensuel de la classe (élèves actifs ;
+        pour une année passée, ceux qui étaient dans la classe cette année-là). Les élèves sans
+        aucun frais sur l'année sont omis."""
+        from academics.models import Classe
+        from people.models import EleveProfile
+
+        if request.user.role not in ("admin", "comptabilite", "directeur"):
+            raise PermissionDenied("Impression réservée à l'administration et à la comptabilité.")
+        classe_id = request.query_params.get("classe")
+        if not classe_id:
+            raise ValidationError("Le paramètre 'classe' est requis.")
+        classe = get_object_or_404(
+            Classe.objects.select_related("annee_scolaire"), pk=classe_id, annee_scolaire__ecole_id=request.user.ecole_id,
+        )
+        annee = classe.annee_scolaire
+        eleves_qs = (
+            EleveProfile.objects.filter(classe=classe, actif=True) if annee.active
+            else EleveProfile.objects.filter(historique_classes__classe=classe).distinct()
+        )
+        eleves = list(eleves_qs.select_related("user", "classe", "parent").order_by("user__last_name", "user__first_name", "id"))
+        frais_par_eleve = _frais_suivi_par_eleve(eleves, annee)
+        aujourd_hui = timezone.localdate()
+        cache_tarifs = {}
+        historiques = [
+            self._historique_eleve(e, annee, frais_par_eleve[e.id], aujourd_hui, cache_tarifs=cache_tarifs)
+            for e in eleves if frais_par_eleve.get(e.id)
+        ]
+        if not historiques:
+            raise ValidationError("Aucun frais enregistré pour les élèves de cette classe sur cette année scolaire.")
+        return self._historiques_pdf(
+            request, historiques, annee, request.user.ecole,
+            f"Historiques des paiements — {classe.nom} ({len(historiques)} élève(s))",
+            f"historiques_paiements_{classe.nom}_{annee.libelle}.pdf".replace(" ", "_"),
+        )
 
     @action(detail=False, methods=["get"], url_path="suivi-mensuel-pdf")
     def suivi_mensuel_pdf(self, request):

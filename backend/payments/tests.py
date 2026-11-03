@@ -177,6 +177,39 @@ class HistoriquePaiementsPdfTests(BaseTests):
         self.assertIn("Le Fondateur", html)
         self.assertIn("Ibrahima Camara", html)
 
+    def test_pdf_par_classe_une_fiche_par_eleve_avec_frais(self):
+        from unittest import mock
+
+        from django.template.loader import render_to_string
+
+        type_mensuel = TypeFrais.objects.create(ecole=self.ecole, nom="Mensualité", montant_standard=100000, periodicite="mensuel")
+        avec_frais = [self._eleve(1), self._eleve(2)]
+        self._eleve(3)  # aucun frais : omis
+        for eleve in avec_frais:
+            frais = Frais.objects.create(
+                eleve=eleve, type_frais=type_mensuel, annee_scolaire=self.annee, montant=100000,
+                date_echeance=date(2026, 10, 1), mois=date(2026, 10, 1),
+            )
+            Paiement.objects.create(frais=frais, montant=40000, mois=date(2026, 10, 1), enregistre_par=self.admin)
+        with mock.patch("payments.views.render_to_string", wraps=render_to_string) as rendu:
+            r = self.client.get("/api/payments/frais/historique-paiements-classe-pdf/", {"classe": self.classe.id})
+        self.assertEqual(r.status_code, 200, r.content[:500])
+        self.assertTrue(r.content.startswith(b"%PDF"))
+        contexte = rendu.call_args.args[1]
+        self.assertEqual([h["eleve"].id for h in contexte["historiques"]], [e.id for e in avec_frais])
+        self.assertEqual(render_to_string(*rendu.call_args.args).count("<pdf:nextpage />"), 1)
+
+    def test_pdf_par_classe_refuse_hors_administration(self):
+        eleve = self._eleve()
+        self.client.force_authenticate(eleve.user)
+        r = self.client.get("/api/payments/frais/historique-paiements-classe-pdf/", {"classe": self.classe.id})
+        self.assertEqual(r.status_code, 403)
+
+    def test_pdf_par_classe_sans_frais(self):
+        self._eleve()
+        r = self.client.get("/api/payments/frais/historique-paiements-classe-pdf/", {"classe": self.classe.id})
+        self.assertEqual(r.status_code, 400)
+
 
 class PaiementsHorsListeTests(BaseTests):
     def setUp(self):

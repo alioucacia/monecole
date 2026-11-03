@@ -77,8 +77,12 @@
 </head>
 <body>
     <div id="pied-page">
-        {{ ecole_nom }} — Historique des paiements de {{ eleve.user.get_full_name }} ({{ eleve.matricule }}) — Réf. {{ reference }} — Page <pdf:pagenumber /> / <pdf:pagecount />
+        {{ ecole_nom }} — {{ pied_page }} — Page <pdf:pagenumber /> / <pdf:pagecount />
     </div>
+
+    {# Une fiche par élève (une seule pour l'historique d'un élève, toute la classe sinon), chacune sur sa page. #}
+    {% for h in historiques %}
+    {% with eleve=h.eleve classe=h.classe parent_nom=h.parent_nom parent_telephone=h.parent_telephone recap=h.recap versements=h.versements suivi=h.suivi total_du=h.total_du total_paye=h.total_paye total_reste=h.total_reste taux=h.taux reference=h.reference %}
 
     <table class="entete">
         <tr>
@@ -238,5 +242,8 @@
         de la catégorie de paiement de l'élève. Édité par {{ edite_par }}. Toute réclamation doit être adressée au service de
         la comptabilité, muni des reçus correspondants.
     </p>
+    {% endwith %}
+    {% if not forloop.last %}<pdf:nextpage />{% endif %}
+    {% endfor %}
 </body>
 </html>

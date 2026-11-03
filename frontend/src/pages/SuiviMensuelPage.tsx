@@ -123,6 +123,21 @@ export default function SuiviMensuelPage() {
     }
   };
 
+  // Historique des paiements de chaque élève de la classe choisie (une fiche par page).
+  const handleImprimerHistoriques = async () => {
+    if (!classeId) return;
+    setImpression(true);
+    setError("");
+    try {
+      const nomClasse = classes.find((c) => String(c.id) === classeId)?.nom ?? classeId;
+      await fraisApi.historiquePaiementsClassePdf(Number(classeId), `historiques_paiements_${nomClasse.replace(/\s+/g, "_")}.pdf`);
+    } catch (err) {
+      setError(await extractBlobErrorMessage(err));
+    } finally {
+      setImpression(false);
+    }
+  };
+
   const handleSuiviMensuelPdf = async (eleveId: number, matricule: string) => {
     setError("");
     try {
@@ -179,6 +194,13 @@ export default function SuiviMensuelPage() {
             </Button>
             <Button variant="secondary" onClick={() => handleImprimer("payes")} disabled={impression || loading || !suivi || suivi.eleves.length === 0}>
               🖨️ Payés
+            </Button>
+            <Button
+              variant="secondary" onClick={handleImprimerHistoriques}
+              disabled={impression || loading || !classeId || !suivi || suivi.eleves.length === 0}
+              title={classeId ? "Historique des paiements de chaque élève de la classe, une fiche par page" : "Choisissez d'abord une classe"}
+            >
+              🖨️ Historiques des paiements de la classe
             </Button>
             <Link to="/paiements" className="text-sm text-brand-600 font-medium hover:underline">← Retour aux paiements</Link>
           </div>
