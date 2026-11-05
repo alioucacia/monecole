@@ -1552,6 +1552,8 @@ class FraisViewSet(viewsets.ModelViewSet):
 
         return {
             "eleve": eleve,
+            # Photo d'identité recadrée au format du cadre du gabarit (20 × 24 mm).
+            "photo_data_uri": _image_data_uri(eleve.user.photo, _mm_px(20, 24)),
             "classe": getattr(
                 (eleve.historique_classes.filter(annee_scolaire=annee).select_related("classe").first() or eleve).classe, "nom", "",
             ),
