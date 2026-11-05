@@ -1776,9 +1776,12 @@ class RendezVousViewSet(viewsets.ModelViewSet):
 
     - Parent : demande un rendez-vous à un enseignant de la classe de son enfant (voir
       `enseignants` pour la liste proposée), voit ses demandes, peut les annuler.
-    - Enseignant : voit les demandes qui lui sont adressées, les accepte ou les refuse
-      (avec un message facultatif, ex : autre créneau proposé).
-    - Administrateur / Directeur Général : voient tous les rendez-vous de l'école (lecture)."""
+    - Enseignant : voit les demandes qui lui sont adressées (lecture seule — il ne peut ni
+      les accepter ni les refuser).
+    - Administrateur : voit tous les rendez-vous de l'école et est SEUL à pouvoir approuver
+      ou refuser une demande (avec un message facultatif, ex : autre créneau proposé) ; le
+      parent et l'enseignant sont alors prévenus.
+    - Directeur Général : voit tous les rendez-vous de l'école (lecture)."""
 
     serializer_class = RendezVousSerializer
     permission_classes = [IsAuthenticated]
@@ -1807,26 +1810,44 @@ class RendezVousViewSet(viewsets.ModelViewSet):
             f"Demande de rendez-vous de {rdv.parent.get_full_name()} (parent de {rdv.eleve.user.get_full_name()}) "
             f"le {rdv.date:%d/%m/%Y} à {rdv.heure:%H:%M} — motif : {rdv.get_motif_display()}."
             + (f" Précision : {rdv.message}" if rdv.message else "")
-            + " Répondez depuis la page Rendez-vous.",
+            + " La demande sera approuvée ou refusée par l'administration.",
         )
+        from accounts.models import User
+
+        for admin in User.objects.filter(ecole_id=rdv.ecole_id, role=User.Role.ADMIN, is_active=True):
+            _notifier_rendez_vous(
+                rdv.parent, admin, "Nouvelle demande de rendez-vous à approuver",
+                f"Demande de rendez-vous de {rdv.parent.get_full_name()} (parent de {rdv.eleve.user.get_full_name()}) "
+                f"avec {rdv.enseignant.get_full_name()} le {rdv.date:%d/%m/%Y} à {rdv.heure:%H:%M} — "
+                f"motif : {rdv.get_motif_display()}."
+                + (f" Précision : {rdv.message}" if rdv.message else "")
+                + " Approuvez-la ou refusez-la depuis la page Rendez-vous.",
+            )
 
     def _repondre(self, request, statut):
         from django.utils import timezone
 
         rdv = self.get_object()
-        if request.user.id != rdv.enseignant_id:
-            raise PermissionDenied("Seul l'enseignant concerné peut répondre à cette demande.")
+        if request.user.role != "admin":
+            raise PermissionDenied("Seul l'administrateur peut approuver ou refuser un rendez-vous.")
         if rdv.statut != RendezVous.Statut.EN_ATTENTE:
             raise ValidationError("Cette demande a déjà reçu une réponse ou a été annulée.")
         rdv.statut = statut
         rdv.reponse = (request.data.get("reponse") or "").strip()[:500]
         rdv.repondu_le = timezone.now()
         rdv.save(update_fields=["statut", "reponse", "repondu_le"])
-        verbe = "accepté" if statut == RendezVous.Statut.ACCEPTE else "refusé"
+        verbe = "approuvé" if statut == RendezVous.Statut.ACCEPTE else "refusé"
+        message = f" Message : {rdv.reponse}" if rdv.reponse else ""
         _notifier_rendez_vous(
-            rdv.enseignant, rdv.parent, f"Rendez-vous {verbe}",
-            f"{rdv.enseignant.get_full_name()} a {verbe} votre rendez-vous du {rdv.date:%d/%m/%Y} à {rdv.heure:%H:%M} "
-            f"({rdv.get_motif_display()})." + (f" Message : {rdv.reponse}" if rdv.reponse else ""),
+            request.user, rdv.parent, f"Rendez-vous {verbe}",
+            f"L'administration a {verbe} votre rendez-vous avec {rdv.enseignant.get_full_name()} "
+            f"le {rdv.date:%d/%m/%Y} à {rdv.heure:%H:%M} ({rdv.get_motif_display()})." + message,
+        )
+        _notifier_rendez_vous(
+            request.user, rdv.enseignant, f"Rendez-vous {verbe}",
+            f"L'administration a {verbe} le rendez-vous demandé par {rdv.parent.get_full_name()} "
+            f"(parent de {rdv.eleve.user.get_full_name()}) le {rdv.date:%d/%m/%Y} à {rdv.heure:%H:%M} "
+            f"({rdv.get_motif_display()})." + message,
         )
         return Response(self.get_serializer(rdv).data)
 

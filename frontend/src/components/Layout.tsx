@@ -110,7 +110,7 @@ const NAV_CATEGORIES: NavCategory[] = [
       { to: "/rapports-annuels", label: "Rapports annuels", icon: "📑", roles: ["admin", "directeur"] },
       { to: "/evaluation-enseignants", label: "Évaluation des enseignants", icon: "📊", roles: ["admin", "directeur"] },
       { to: "/personnel-admin", label: "Personnel administratif", icon: "🗂️", roles: ["admin", "directeur"] },
-      { to: "/comptes-ecole", label: "Comptes de l'établissement", icon: "🔑", roles: ["admin", "directeur", "comptabilite"] },
+      { to: "/comptes-ecole", label: "Comptes de l'établissement", icon: "🔑", roles: ["admin", "directeur"] },
       { to: "/parametres-ecole", label: "Paramètres école", icon: "⚙️", roles: ["admin", "directeur"] },
       { to: "/historique-actions", label: "Historique des actions", icon: "🕵️", roles: ["admin", "directeur"] },
       { to: "/sauvegarde-donnees", label: "Sauvegarde & restauration", icon: "🗄️", roles: ["admin"] },

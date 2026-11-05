@@ -487,6 +487,19 @@ def _supprimer_compte(utilisateur):
         utilisateur.delete()
 
 
+class UserMasqueAdminSerializer(UserSerializer):
+    """Vue des comptes pour un non-administrateur (Directeur, Comptabilité) : l'identifiant de
+    connexion et le rôle des comptes Administrateur sont masqués."""
+
+    def to_representation(self, instance):
+        data = super().to_representation(instance)
+        if instance.role == User.Role.ADMIN:
+            data["username"] = None
+            data["role"] = None
+            data["role_display"] = None
+        return data
+
+
 class UserViewSet(viewsets.ModelViewSet):
     """Gestion des comptes utilisateurs — réservée aux administrateurs de l'établissement
     (chacun ne voit et ne gère que les comptes de sa propre école)."""
@@ -512,7 +525,32 @@ class UserViewSet(viewsets.ModelViewSet):
     def get_serializer_class(self):
         if self.action == "create":
             return UserCreateSerializer
+        if getattr(self.request.user, "role", None) != User.Role.ADMIN:
+            return UserMasqueAdminSerializer
         return UserSerializer
+
+    def filter_queryset(self, queryset):
+        qs = super().filter_queryset(queryset)
+        if getattr(self.request.user, "role", None) == User.Role.ADMIN:
+            return qs
+        # Hors administrateur (Directeur, Comptabilité) : l'identifiant et le rôle d'un compte
+        # Administrateur ne sont jamais divulgués (voir UserMasqueAdminSerializer) — on bloque
+        # donc aussi les moyens détournés de les deviner : filtrer par rôle "admin", ou sonder
+        # l'identifiant via la recherche.
+        if self.request.query_params.get("role") == User.Role.ADMIN:
+            return qs.none()
+        terme = (self.request.query_params.get("search") or "").strip()
+        if terme:
+            from django.db.models import Q
+
+            visible_hors_identifiant = Q()
+            for mot in terme.split():
+                visible_hors_identifiant &= (
+                    Q(first_name__icontains=mot) | Q(last_name__icontains=mot)
+                    | Q(email__icontains=mot) | Q(phone__icontains=mot)
+                )
+            qs = qs.exclude(Q(role=User.Role.ADMIN) & ~visible_hors_identifiant)
+        return qs
 
     def perform_create(self, serializer):
         ecole = self.request.user.ecole

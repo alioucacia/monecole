@@ -291,7 +291,7 @@ export default function App() {
         <Route
           path="/comptes-ecole"
           element={
-            <ProtectedRoute roles={["admin", "directeur", "comptabilite"]}>
+            <ProtectedRoute roles={["admin", "directeur"]}>
               <ComptesEcolePage />
             </ProtectedRoute>
           }

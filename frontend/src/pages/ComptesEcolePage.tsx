@@ -265,7 +265,7 @@ export default function ComptesEcolePage() {
         />
         <Select value={roleFilter} onChange={(e) => setRoleFilter(e.target.value)} className="w-auto">
           <option value="">Tous les rôles</option>
-          {Object.entries(ROLE_LABELS).filter(([v]) => v !== "superadmin").map(([value, label]) => (
+          {Object.entries(ROLE_LABELS).filter(([v]) => v !== "superadmin" && (isAdmin || v !== "admin")).map(([value, label]) => (
             <option key={value} value={value}>{label}</option>
           ))}
         </Select>
@@ -308,9 +308,10 @@ export default function ComptesEcolePage() {
                     )}
                   </td>
                 )}
-                <td className="px-4 py-3 font-medium text-slate-700">{u.full_name || u.username}</td>
-                <td className="px-4 py-3 text-xs font-mono text-slate-400">{u.username}</td>
-                <td className="px-4 py-3"><Badge color={ROLE_COLORS[u.role]}>{u.role_display}</Badge></td>
+                <td className="px-4 py-3 font-medium text-slate-700">{u.full_name || u.username || "—"}</td>
+                {/* Identifiant et rôle d'un Administrateur masqués par l'API pour le Directeur (null). */}
+                <td className="px-4 py-3 text-xs font-mono text-slate-400">{u.username || "—"}</td>
+                <td className="px-4 py-3">{u.role ? <Badge color={ROLE_COLORS[u.role]}>{u.role_display}</Badge> : <span className="text-slate-400">—</span>}</td>
                 <td className="px-4 py-3 text-slate-500 text-xs">{u.email || "—"}</td>
                 <td className="px-4 py-3">
                   <Badge color={u.is_active ? "green" : "slate"}>{u.is_active ? "Actif" : "Désactivé"}</Badge>

@@ -77,7 +77,12 @@ export default function ClassesPage() {
 
   useEffect(() => {
     anneesApi.list().then(({ data }) => setAnnees(unwrapList(data)));
-    enseignantsApi.list().then(({ data }) => setTeachers(unwrapList(data)));
+    // Tous les enseignants de l'école (la pagination par défaut de l'API s'arrête à 20).
+    enseignantsApi.list({ page_size: 500 }).then(({ data }) => setTeachers(
+      unwrapList(data).sort((a, b) =>
+        `${a.user.last_name} ${a.user.first_name}`.localeCompare(`${b.user.last_name} ${b.user.first_name}`, "fr"),
+      ),
+    ));
   }, []);
 
   const openCreate = () => {

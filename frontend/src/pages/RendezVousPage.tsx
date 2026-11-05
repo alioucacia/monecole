@@ -10,7 +10,7 @@ import type { EleveProfile } from "../types";
 
 const STATUTS: Record<StatutRendezVous, { label: string; color: "amber" | "green" | "rose" | "slate" }> = {
   en_attente: { label: "En attente", color: "amber" },
-  accepte: { label: "Accepté", color: "green" },
+  accepte: { label: "Approuvé", color: "green" },
   refuse: { label: "Refusé", color: "rose" },
   annule: { label: "Annulé", color: "slate" },
 };
@@ -31,7 +31,7 @@ function dateLongue(date: string, heure: string) {
 const formVide = { eleve: "", enseignant: "", date: "", heure: "", motif: "resultats", message: "" };
 
 /** Rendez-vous parents ↔ enseignants : le parent demande (enfant, enseignant, date, heure,
- * motif), l'enseignant accepte ou refuse, le parent peut annuler. La direction voit tout. */
+ * motif), l'administrateur approuve ou refuse, le parent peut annuler. La direction voit tout. */
 export default function RendezVousPage() {
   const { user } = useAuth();
   const toast = useToast();
@@ -39,6 +39,8 @@ export default function RendezVousPage() {
   const demander = usePrompt();
   const estParent = user?.role === "parent";
   const estEnseignant = user?.role === "teacher";
+  // Seul l'administrateur approuve ou refuse une demande (voir RendezVousViewSet._repondre).
+  const estAdmin = user?.role === "admin";
 
   const [liste, setListe] = useState<RendezVous[]>([]);
   const [loading, setLoading] = useState(true);
@@ -80,7 +82,7 @@ export default function RendezVousPage() {
     setEnvoi(true);
     try {
       await rendezVousApi.create({ ...form, eleve: Number(form.eleve), enseignant: Number(form.enseignant) });
-      toast.success("Demande envoyée : l'enseignant va l'accepter ou la refuser.");
+      toast.success("Demande envoyée : l'administration va l'approuver ou la refuser.");
       setForm({ ...formVide, eleve: form.eleve });
       charger();
     } catch (err) {
@@ -93,15 +95,15 @@ export default function RendezVousPage() {
   const repondre = async (r: RendezVous, accepter: boolean) => {
     const reponse = await demander(
       accepter
-        ? "Message pour le parent (facultatif) — ex : lieu du rendez-vous."
+        ? "Message pour le parent et l'enseignant (facultatif) — ex : lieu du rendez-vous."
         : "Motif du refus ou autre créneau proposé (facultatif).",
-      { title: accepter ? "Accepter le rendez-vous" : "Refuser le rendez-vous", label: "Message", confirmLabel: accepter ? "Accepter" : "Refuser" },
+      { title: accepter ? "Approuver le rendez-vous" : "Refuser le rendez-vous", label: "Message", confirmLabel: accepter ? "Approuver" : "Refuser" },
     );
     if (reponse === null) return;
     setEnCours(r.id);
     try {
       await (accepter ? rendezVousApi.accepter(r.id, reponse) : rendezVousApi.refuser(r.id, reponse));
-      toast.success(accepter ? "Rendez-vous accepté : le parent est prévenu." : "Rendez-vous refusé : le parent est prévenu.");
+      toast.success(accepter ? "Rendez-vous approuvé : le parent et l'enseignant sont prévenus." : "Rendez-vous refusé : le parent et l'enseignant sont prévenus.");
       charger();
     } catch (err) {
       toast.error(extractErrorMessage(err));
@@ -131,8 +133,9 @@ export default function RendezVousPage() {
       <PageHeader
         title="Rendez-vous"
         description={
-          estParent ? "Demandez un rendez-vous à un enseignant de votre enfant — il l'accepte ou le refuse."
-          : estEnseignant ? "Demandes de rendez-vous des parents : acceptez ou refusez-les."
+          estParent ? "Demandez un rendez-vous à un enseignant de votre enfant — l'administration l'approuve ou le refuse."
+          : estEnseignant ? "Demandes de rendez-vous des parents qui vous sont adressées — elles sont approuvées ou refusées par l'administration."
+          : estAdmin ? "Tous les rendez-vous parents ↔ enseignants de l'établissement : approuvez ou refusez les demandes en attente."
           : "Tous les rendez-vous parents ↔ enseignants de l'établissement."
         }
       />
@@ -185,13 +188,13 @@ export default function RendezVousPage() {
                     {" "}· Élève : {r.eleve_nom}{r.classe_nom ? ` (${r.classe_nom})` : ""}
                   </p>
                   <p className="text-sm text-slate-500">Motif : {r.motif_display}{r.message ? ` — ${r.message}` : ""}</p>
-                  {r.reponse && <p className="text-sm text-brand-700">💬 Réponse de l'enseignant : {r.reponse}</p>}
+                  {r.reponse && <p className="text-sm text-brand-700">💬 Réponse de l'administration : {r.reponse}</p>}
                 </div>
                 <div className="flex flex-col items-end gap-2">
                   <Badge color={STATUTS[r.statut].color}>{STATUTS[r.statut].label}</Badge>
-                  {estEnseignant && r.statut === "en_attente" && (
+                  {estAdmin && r.statut === "en_attente" && (
                     <div className="flex gap-2">
-                      <Button onClick={() => repondre(r, true)} disabled={enCours === r.id}>✓ Accepter</Button>
+                      <Button onClick={() => repondre(r, true)} disabled={enCours === r.id}>✓ Approuver</Button>
                       <Button variant="danger" onClick={() => repondre(r, false)} disabled={enCours === r.id}>✕ Refuser</Button>
                     </div>
                   )}
