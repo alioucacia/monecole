@@ -24,7 +24,7 @@ export default function GradesPage() {
   const { anneeId } = useAnnee();
   const { user } = useAuth();
   const confirmer = useConfirm();
-  const canEdit = user?.role === "admin" || user?.role === "teacher";
+  const canEdit = user?.role === "admin" || user?.role === "teacher" || user?.role === "surveillance";
 
   const [classes, setClasses] = useState<Classe[]>([]);
   const [enseignements, setEnseignements] = useState<Enseignement[]>([]);

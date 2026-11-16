@@ -18,7 +18,7 @@ from rest_framework.views import APIView
 from xhtml2pdf import pisa
 
 from academics.models import AnneeScolaire, Classe, bareme_de_classe
-from accounts.permissions import IsAdminOrTeacherOrReadOnly
+from accounts.permissions import IsAdminOrTeacherOrReadOnly, IsAdminOrTeacherOrSurveillanceOrReadOnly
 from attendance.models import Presence
 from people.models import EleveProfile
 from people.sms import send_sms, send_whatsapp, sms_eleves_parents_autorise
@@ -68,7 +68,8 @@ class PeriodeViewSet(viewsets.ModelViewSet):
 class NoteViewSet(viewsets.ModelViewSet):
     queryset = Note.objects.select_related("eleve__user", "eleve__classe", "matiere", "enseignant", "periode")
     serializer_class = NoteSerializer
-    permission_classes = [IsAdminOrTeacherOrReadOnly]
+    # La Surveillance Générale saisit et corrige les notes comme l'administrateur.
+    permission_classes = [IsAdminOrTeacherOrSurveillanceOrReadOnly]
     filterset_fields = {
         "eleve": ["exact"],
         "eleve__classe": ["exact"],

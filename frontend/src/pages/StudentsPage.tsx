@@ -15,6 +15,7 @@ import { useToast } from "../context/ToastContext";
 import { usePaginated } from "../hooks/usePaginated";
 import type { Classe, Cycle, EleveProfile, User } from "../types";
 import { photoTropLourde, TAILLE_MAX_PHOTO_MO } from "../validation";
+import PhotoPicker from "../components/PhotoPicker";
 
 type ParentMode = "aucun" | "existant" | "nouveau";
 
@@ -674,19 +675,11 @@ export default function StudentsPage() {
                 {(form.first_name[0] || "?").toUpperCase()}
               </div>
             )}
-            <label className="block">
+            <div className="block">
               <span className="block text-sm font-semibold text-slate-600 mb-1.5">Photo (optionnel, {TAILLE_MAX_PHOTO_MO} Mo max)</span>
-              <input
-                type="file" accept="image/*"
-                onChange={(e) => {
-                  const fichier = e.target.files?.[0] || null;
-                  // Photo refusée (trop lourde) : on vide le champ pour qu'il n'affiche pas son nom.
-                  if (fichier && fichier.size > TAILLE_MAX_PHOTO_MO * 1024 * 1024) e.target.value = "";
-                  handlePhotoChange(fichier);
-                }}
-                className="text-sm text-slate-500 file:mr-3 file:py-1.5 file:px-3 file:rounded-full file:border-0 file:text-xs file:font-semibold file:bg-brand-50 file:text-brand-700 hover:file:bg-brand-100"
-              />
-            </label>
+              <PhotoPicker onChange={handlePhotoChange} />
+              {photoFile && <p className="text-xs text-slate-400 mt-1">{photoFile.name}</p>}
+            </div>
           </div>
           <Input label="Prénom" required value={form.first_name} onChange={(e) => setForm({ ...form, first_name: e.target.value })} />
           <Input label="Nom" required value={form.last_name} onChange={(e) => setForm({ ...form, last_name: e.target.value })} />

@@ -30,7 +30,7 @@ export default function BulletinPage() {
   const [sendingWhatsApp, setSendingWhatsApp] = useState(false);
   const [sendMessage, setSendMessage] = useState("");
 
-  const needsSelector = user?.role === "admin" || user?.role === "teacher" || user?.role === "parent";
+  const needsSelector = user?.role === "admin" || user?.role === "teacher" || user?.role === "surveillance" || user?.role === "parent";
   const smsAutorise = !user?.ecole_fonctionnalites_desactivees?.includes("sms_eleves_parents");
   // Tous les rôles voient désormais le même document : le vrai bulletin officiel (PDF, avec les
   // couleurs et le modèle réglés par l'école) — plus de carte interactive séparée pour
@@ -38,7 +38,7 @@ export default function BulletinPage() {
 
   useEffect(() => {
     periodesApi.list().then(({ data }) => setPeriodes(unwrapList(data)));
-    if (user?.role === "admin" || user?.role === "teacher") {
+    if (user?.role === "admin" || user?.role === "teacher" || user?.role === "surveillance") {
       // Classes de l'année affichée (sélecteur du haut).
       classesApi.list({ annee_scolaire: anneeId ?? undefined }).then(({ data }) => setClasses(unwrapList(data)));
     }
@@ -54,7 +54,7 @@ export default function BulletinPage() {
   }, [user]);
 
   useEffect(() => {
-    if ((user?.role === "admin" || user?.role === "teacher") && classeId) {
+    if ((user?.role === "admin" || user?.role === "teacher" || user?.role === "surveillance") && classeId) {
       elevesApi.list({ classe: classeId, page_size: 200 }).then(({ data }) => setEleves(unwrapList(data)));
     }
   }, [classeId, user]);
@@ -145,7 +145,7 @@ export default function BulletinPage() {
       <PageHeader title="Bulletins" description="Consultez, imprimez ou téléchargez les bulletins scolaires." />
 
       <div className="flex flex-wrap gap-3 mb-6 no-print">
-        {(user?.role === "admin" || user?.role === "teacher") && (
+        {(user?.role === "admin" || user?.role === "teacher" || user?.role === "surveillance") && (
           <>
             <CycleSelect
               value={cycleFiltre}

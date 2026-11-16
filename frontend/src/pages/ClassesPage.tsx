@@ -37,8 +37,8 @@ export default function ClassesPage() {
   const isAdmin = user?.role === "admin";
   // Le Surveillant Général peut créer/modifier une classe (nom, niveau, prof principal...) mais
   // pas la supprimer — voir IsAdminOrSurveillanceReadWriteNoDelete côté backend. Même règle pour
-  // l'affectation matière/enseignant dans le détail d'une classe (ClassDetailModal ci-dessous) :
-  // EnseignementViewSet utilise la même permission (affecter oui, retirer non pour le surveillant).
+  // L'affectation matière/enseignant dans le détail d'une classe (ClassDetailModal ci-dessous),
+  // elle, est entièrement ouverte au surveillant : affecter ET retirer (EnseignementViewSet).
   const peutModifier = isAdmin || user?.role === "surveillance";
   const [annees, setAnnees] = useState<AnneeScolaire[]>([]);
   const [teachers, setTeachers] = useState<EnseignantProfile[]>([]);
@@ -226,15 +226,16 @@ export default function ClassesPage() {
       </Modal>
 
       {detailClasse && (
-        <ClassDetailModal classe={detailClasse} isAdmin={isAdmin} peutModifier={peutModifier} onClose={() => setDetailClasse(null)} teachers={teachers} />
+        <ClassDetailModal classe={detailClasse} peutModifier={peutModifier} onClose={() => setDetailClasse(null)} teachers={teachers} />
       )}
     </div>
   );
 }
 
 function ClassDetailModal({
-  classe, isAdmin, peutModifier, onClose, teachers,
-}: { classe: Classe; isAdmin: boolean; peutModifier: boolean; onClose: () => void; teachers: EnseignantProfile[] }) {
+  classe, peutModifier, onClose, teachers,
+}: { classe: Classe; peutModifier: boolean; onClose: () => void; teachers: EnseignantProfile[] }) {
+  const toast = useToast();
   const [matieres, setMatieres] = useState<Matiere[]>([]);
   const [enseignements, setEnseignements] = useState<Enseignement[]>([]);
   const [eleves, setEleves] = useState<EleveProfile[]>([]);
@@ -259,15 +260,25 @@ function ClassDetailModal({
 
   const addEnseignement = async () => {
     if (!newMatiere || !newEnseignant) return;
-    await enseignementsApi.create({ classe: classe.id, matiere: Number(newMatiere), enseignant: Number(newEnseignant) });
-    setNewMatiere("");
-    setNewEnseignant("");
-    loadAll();
+    try {
+      await enseignementsApi.create({ classe: classe.id, matiere: Number(newMatiere), enseignant: Number(newEnseignant) });
+      toast.success("Enseignant affecté.");
+      setNewMatiere("");
+      setNewEnseignant("");
+      loadAll();
+    } catch (err) {
+      toast.error(extractErrorMessage(err));
+    }
   };
 
   const removeEnseignement = async (id: number) => {
-    await enseignementsApi.remove(id);
-    loadAll();
+    try {
+      await enseignementsApi.remove(id);
+      toast.success("Affectation retirée.");
+      loadAll();
+    } catch (err) {
+      toast.error(extractErrorMessage(err));
+    }
   };
 
   return (
@@ -283,7 +294,7 @@ function ClassDetailModal({
               {enseignements.map((e) => (
                 <li key={e.id} className="px-3 py-2 flex items-center justify-between text-sm">
                   <span>{e.matiere_nom} — {e.enseignant_nom}</span>
-                  {isAdmin && <button onClick={() => removeEnseignement(e.id)} className="text-rose-600 hover:underline">Retirer</button>}
+                  {peutModifier && <button onClick={() => removeEnseignement(e.id)} className="text-rose-600 hover:underline">Retirer</button>}
                 </li>
               ))}
             </ul>

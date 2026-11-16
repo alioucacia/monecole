@@ -3,7 +3,12 @@ from rest_framework import viewsets
 from rest_framework.decorators import action
 from rest_framework.response import Response
 
-from accounts.permissions import IsAdminOrReadOnly, IsAdminOrSurveillanceReadWriteNoDelete, IsAdminOrTeacherOrReadOnly
+from accounts.permissions import (
+    IsAdminOrReadOnly,
+    IsAdminOrSurveillanceOrReadOnly,
+    IsAdminOrSurveillanceReadWriteNoDelete,
+    IsAdminOrTeacherOrReadOnly,
+)
 
 from .models import AnneeScolaire, ChapitreProgramme, Classe, Creneau, Enseignement, Matiere, deviner_cycle
 from .serializers import (
@@ -90,7 +95,9 @@ class EnseignementViewSet(viewsets.ModelViewSet):
     # Affectation classe+matière à un professeur : admin et surveillance générale peuvent
     # affecter/modifier, seul l'admin peut retirer une affectation (voir ClassesPage.tsx →
     # ClassDetailModal, section "Enseignements affectés").
-    permission_classes = [IsAdminOrSurveillanceReadWriteNoDelete]
+    # Affecter ET retirer une matière/un enseignant dans une classe : admin et Surveillance
+    # Générale (retirer une affectation ne supprime ni l'enseignant, ni la matière, ni la classe).
+    permission_classes = [IsAdminOrSurveillanceOrReadOnly]
     filterset_fields = ["classe", "matiere", "enseignant"]
 
     def get_queryset(self):
