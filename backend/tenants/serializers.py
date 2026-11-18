@@ -1,3 +1,4 @@
+from django.db import transaction
 from rest_framework import serializers
 
 from core.validators import EXTENSIONS_IMAGE, TAILLE_MAX_IMAGE, valider_taille_fichier
@@ -212,7 +213,35 @@ class EcoleCreateSerializer(serializers.ModelSerializer):
     def validate_logo(self, fichier):
         return valider_taille_fichier(fichier, TAILLE_MAX_IMAGE, EXTENSIONS_IMAGE)
 
+    def validate_admin_username(self, value):
+        from accounts.models import User
+
+        value = value.strip()
+        if User.objects.filter(username__iexact=value).exists():
+            raise serializers.ValidationError("Cet identifiant est déjà utilisé par un autre compte. Choisissez-en un autre.")
+        return value
+
     def create(self, validated_data):
+        # École + compte admin + année scolaire : tout ou rien. Avant, l'école était enregistrée
+        # en premier et restait en base si la suite échouait (identifiant déjà pris...), alors
+        # que le Super Admin recevait une erreur.
+        with transaction.atomic():
+            ecole = self._creer(validated_data)
+
+        # Envoi des identifiants APRÈS l'enregistrement, et sans jamais faire échouer la
+        # création : l'école existe déjà, une panne d'e-mail/SMS est simplement signalée.
+        from accounts.notifications import notifier_creation_admin_ecole
+
+        try:
+            self._notification_admin = notifier_creation_admin_ecole(self._admin, self._mot_de_passe)
+        except Exception:  # noqa: BLE001
+            self._notification_admin = {
+                "email_envoye": False, "sms_envoye": False, "sms_desactives": False,
+                "email": self._admin.email, "telephone": self._admin.phone,
+            }
+        return ecole
+
+    def _creer(self, validated_data):
         from datetime import date
 
         from academics.models import AnneeScolaire
@@ -233,12 +262,9 @@ class EcoleCreateSerializer(serializers.ModelSerializer):
         admin.set_password(password)
         admin.doit_changer_mot_de_passe = True
         admin.save()
-
-        # Identifiants envoyés à l'administrateur par e-mail/SMS — le résultat est renvoyé au
+        # Identifiants envoyés ensuite par e-mail/SMS (voir create) — le résultat est renvoyé au
         # Super Admin (voir to_representation) pour qu'il sache s'il doit les transmettre lui-même.
-        from accounts.notifications import notifier_creation_admin_ecole
-
-        self._notification_admin = notifier_creation_admin_ecole(admin, password)
+        self._admin, self._mot_de_passe = admin, password
 
         if annee_libelle:
             premiere_annee = int(annee_libelle.split("-")[0])

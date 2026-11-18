@@ -8,7 +8,8 @@ from django.apps import apps
 from django.core.files.base import ContentFile
 from django.core.files.storage import default_storage
 from django.core.files.uploadedfile import SimpleUploadedFile
-from django.db import IntegrityError, connection
+from django.core.signals import request_finished
+from django.db import IntegrityError, close_old_connections, connection
 from django.test import TestCase, override_settings
 from rest_framework.test import APIClient
 
@@ -196,7 +197,14 @@ class SauvegardeEcoleApiTests(TemporaireMixin, TestCase):
         self.assertTrue(self.client_api.get(URL).json()["results"][0]["disponible"])
         telechargement = self.client_api.get(f"{URL}{operation.pk}/telecharger/")
         self.assertEqual(telechargement.status_code, 200)
-        telechargement.close()
+        # Fermer la réponse envoie `request_finished`, qui ferme la connexion à la base
+        # (close_old_connections) — normal en production, mais en plein TestCase cela cassait la
+        # suite de ce test ET des suivants (« the connection is closed »).
+        request_finished.disconnect(close_old_connections)
+        try:
+            telechargement.close()
+        finally:
+            request_finished.connect(close_old_connections)
 
         r = self.client_api.post(f"{URL}{operation.pk}/restaurer/", {"mot_de_passe": "faux"}, format="json")
         self.assertEqual(r.status_code, 403)

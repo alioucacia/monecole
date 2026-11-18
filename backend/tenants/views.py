@@ -100,8 +100,20 @@ class EcoleViewSet(viewsets.ModelViewSet):
         nom = instance.nom
         # On journalise avant la suppression : le FK `ecole` de cette entrée passera à NULL
         # (SET_NULL) au moment du DELETE, mais le nom reste conservé dans `details`.
-        _journaliser(self.request, JournalActivite.Action.ECOLE_SUPPRIMEE, instance, f"Suppression définitive de « {nom} »")
-        instance.delete()
+        from django.db import transaction
+
+        from payments.models import Depense, Frais
+
+        with transaction.atomic():
+            _journaliser(self.request, JournalActivite.Action.ECOLE_SUPPRIMEE, instance, f"Suppression définitive de « {nom} »")
+            # Frais → TypeFrais et Dépense → CatégorieDépense sont protégés (PROTECT) : sans ce
+            # nettoyage préalable, supprimer une école ayant des frais ou des dépenses échouait
+            # (ProtectedError, erreur 500). Même ordre que tenants/reinitialisation.py.
+            Frais.objects.filter(type_frais__ecole=instance).delete()
+            Frais.objects.filter(eleve__user__ecole=instance).delete()
+            Depense.objects.filter(ecole=instance).delete()
+            Depense.objects.filter(categorie__ecole=instance).delete()
+            instance.delete()
 
     @action(detail=True, methods=["post"], url_path="reinitialiser")
     def reinitialiser(self, request, pk=None):
@@ -460,7 +472,11 @@ class EcoleViewSet(viewsets.ModelViewSet):
         )
         from accounts.notifications import notifier_creation_admin_ecole
 
-        notification = notifier_creation_admin_ecole(admin, request.data["password"])
+        try:
+            notification = notifier_creation_admin_ecole(admin, request.data["password"])
+        except Exception:  # noqa: BLE001 — le compte existe déjà : une panne d'envoi est seulement signalée
+            notification = {"email_envoye": False, "sms_envoye": False, "sms_desactives": False,
+                            "email": admin.email, "telephone": admin.phone}
         return Response({**UserSerializer(admin).data, "notification": notification}, status=status.HTTP_201_CREATED)
 
     @action(detail=True, methods=["post"], url_path="se-connecter-comme-admin")

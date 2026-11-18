@@ -269,6 +269,10 @@ EMAIL_PORT = config("EMAIL_PORT", default=587, cast=int)
 EMAIL_USE_TLS = config("EMAIL_USE_TLS", default=True, cast=bool)
 EMAIL_HOST_USER = config("EMAIL_HOST_USER", default="")
 EMAIL_HOST_PASSWORD = config("EMAIL_HOST_PASSWORD", default="")
+# Délai maximal (secondes) d'une connexion SMTP : sans lui, un serveur d'e-mails lent ou
+# injoignable bloquait la requête jusqu'à ce que gunicorn la coupe (30 s) — la création d'une
+# école, déjà enregistrée, renvoyait alors une erreur au Super Admin.
+EMAIL_TIMEOUT = config("EMAIL_TIMEOUT", default=10, cast=int)
 DEFAULT_FROM_EMAIL = config("DEFAULT_FROM_EMAIL", default="no-reply@taly-school.com")
 
 # Durée de validité (en secondes) du lien de réinitialisation de mot de passe. 3 jours par défaut.

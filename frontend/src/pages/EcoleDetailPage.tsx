@@ -9,6 +9,21 @@ import { useToast } from "../context/ToastContext";
 import { Badge, Button, Card, EmptyState, Input, Modal, PageHeader, Select, Spinner, StatCard, Table } from "../components/ui";
 import type { Ecole, EcoleStatsDetail, EcoleUtilisateur, Fonctionnalite, PaiementEcole } from "../types";
 
+/** Compare le nom tapé pour confirmer une suppression/réinitialisation au nom de l'école, sans
+ * tenir compte des espaces en trop, des majuscules, des accents ni des apostrophes typographiques
+ * (’ du clavier d'un téléphone au lieu de ') — une comparaison stricte refusait sinon un nom
+ * pourtant correctement saisi (« Le nom saisi ne correspond pas »). */
+function normaliserNom(nom: string): string {
+  return nom
+    .normalize("NFD").replace(/[̀-ͯ]/g, "")
+    .replace(/[‘’`´]/g, "'").replace(/[“”«»]/g, '"').replace(/[‐‑–—]/g, "-")
+    .replace(/\s+/g, " ").trim().toLowerCase();
+}
+
+function memeNomEcole(saisie: string, nom: string): boolean {
+  return normaliserNom(saisie) === normaliserNom(nom);
+}
+
 const STATUT_LABELS: Record<string, { label: string; color: "green" | "amber" | "rose" | "slate" }> = {
   paye: { label: "À jour", color: "green" },
   en_attente: { label: "En attente", color: "slate" },
@@ -277,7 +292,7 @@ export default function EcoleDetailPage() {
       `Cette action est irréversible et supprimera TOUTES les données de « ${ecole.nom} » (élèves, notes, paiements...).`,
       { title: "Suppression définitive", label: "Tapez le nom de l'école pour confirmer", placeholder: ecole.nom, confirmLabel: "Supprimer" }
     );
-    if (saisie !== ecole.nom) {
+    if (saisie === null || !memeNomEcole(saisie, ecole.nom)) {
       if (saisie !== null) toast.warning("Le nom saisi ne correspond pas — suppression annulée.");
       return;
     }
@@ -328,7 +343,7 @@ export default function EcoleDetailPage() {
       "Seuls l'école et ses comptes Administrateur sont conservés. Cette action est irréversible.",
       { title: "Réinitialiser l'école", label: "Tapez le nom de l'école pour confirmer", placeholder: ecole.nom, confirmLabel: "Continuer" }
     );
-    if (saisie !== ecole.nom) {
+    if (saisie === null || !memeNomEcole(saisie, ecole.nom)) {
       if (saisie !== null) toast.warning("Le nom saisi ne correspond pas — réinitialisation annulée.");
       return;
     }

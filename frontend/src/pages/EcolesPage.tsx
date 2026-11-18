@@ -207,6 +207,9 @@ export default function EcolesPage() {
       if (resume.texte) (resume.ok ? toast.success : toast.warning)(resume.texte, 9000);
     } catch (err) {
       setCreateError(extractErrorMessage(err));
+      // Recharge quand même la liste : si la réponse s'est perdue (réseau, délai dépassé) alors
+      // que l'école a bien été enregistrée, elle apparaît tout de suite au lieu d'un doublon.
+      load();
     } finally {
       setCreating(false);
     }
